@@ -1,6 +1,5 @@
 ﻿using AIOMarketMaker.Services;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.VisualStudio.TestPlatform.ObjectModel;
 
 namespace AIOMarketMaker.Tests.Integration
 {
@@ -27,14 +26,16 @@ namespace AIOMarketMaker.Tests.Integration
         [Test]
         public async Task Should_successfully_retrieve_active_listing()
         {
-            //var itemId = (await this._serviceUnderTest.SearchListings(
-            //    "PS5", 
-            //    new SearchFilter { 
-            //        BuyingFormat=BuyingFormat.BUY_NOW, 
-            //        Condition=Condition.NEW}))
-            //    .First().id;
+            var itemId = (await this._serviceUnderTest.SearchListings(
+                "Baseball Card",
+                new SearchFilter
+                {
+                    BuyingFormat = BuyingFormat.BUY_NOW,
+                    Condition = Condition.NEW
+                }))
+                .First().id;
 
-            var listing = await this._serviceUnderTest.GetItemFromListing("177058019688");
+            var listing = await this._serviceUnderTest.GetItemFromListing(itemId);
             Assert.That(listing.id != null);
             Assert.That(listing.title != null);
             Assert.That(listing.price != null);

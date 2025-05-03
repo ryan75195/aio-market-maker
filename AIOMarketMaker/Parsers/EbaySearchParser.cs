@@ -4,16 +4,14 @@ using System.Web;
 using AIOMarketMaker.Models.Ebay;
 using AngleSharp.Dom;
 
-namespace AIOMarketMaker.Services
+namespace AIOMarketMaker.Api.Parsers
 {
-    public interface IEbayItemParser
+    public interface ISearchParser
     {
         IEnumerable<IEbayProductSummary> ParseSearchResults(IDocument document);
-        IEbayProduct ParseProductListing(IDocument document);
-
     }
 
-    public sealed class EbayItemParser : IEbayItemParser
+    public sealed class EbaySearchParser : ISearchParser
     {
         public IEnumerable<IEbayProductSummary> ParseSearchResults(IDocument doc)
         {
@@ -110,7 +108,7 @@ namespace AIOMarketMaker.Services
 
             return decimal.TryParse(numericPart, out var shipping)
                 ? shipping
-                : (decimal?)null;
+                : null;
         }
 
         public static decimal? ExtractPrice(IElement li)
@@ -132,7 +130,7 @@ namespace AIOMarketMaker.Services
 
             return decimal.TryParse(cleaned, out var price)
                 ? price
-                : (decimal?)null;
+                : null;
         }
 
         private static string? ExtractCurrency(IElement li)
@@ -189,67 +187,7 @@ namespace AIOMarketMaker.Services
                                      DateTimeStyles.AssumeLocal,
                                      out var dt)
                    ? dt
-                   : (DateTime?)null;
+                   : null;
         }
-
-        public IEbayProduct ParseProductListing(IDocument document)
-        {
-            string GetBySelector(string selector) =>
-                document.QuerySelector(selector)?.TextContent?.Trim() ?? string.Empty;
-
-            decimal? ParsePrice(string raw)
-            {
-                if (decimal.TryParse(
-                        new string(raw.Where(c => char.IsDigit(c) || c == '.' || c == ',').ToArray()),
-                        out var value))
-                {
-                    return value;
-                }
-                return null;
-            }
-
-            // Parse ID from meta tag or canonical URL
-            var id = document.QuerySelector("link[rel=canonical]")?.GetAttribute("href")?
-                .Split('/')?.LastOrDefault()?.Split('?')?.FirstOrDefault() ?? "UNKNOWN_ID";
-
-            var title = GetBySelector("#itemTitle").Replace("Details about", "").Trim();
-
-            var priceRaw = GetBySelector("#prcIsum")
-                        ?? GetBySelector("#mm-saleDscPrc")
-                        ?? GetBySelector("#prcIsum_bidPrice");
-
-            var price = ParsePrice(priceRaw);
-            var currency = document.QuerySelector("#prcIsum")?.GetAttribute("currencyId");
-
-            var shippingRaw = GetBySelector("#fshippingCost .notranslate");
-            var shippingCost = ParsePrice(shippingRaw);
-
-            var condition = GetBySelector("#vi-itm-cond");
-
-            var imageNodes = document.QuerySelectorAll("#vi_main_img_fs ul li img");
-            var images = imageNodes.Select(img => img.GetAttribute("src")?.Replace("s-l64", "s-l1600")).Where(src => !string.IsNullOrWhiteSpace(src));
-
-            var itemSpecifics = document.QuerySelector("#viTabs_0_is")?.TextContent?.Trim();
-
-            var description = document.QuerySelector("#desc_div")?.TextContent?.Trim()
-                               ?? document.QuerySelector("#viTabs_0_is")?.TextContent?.Trim();
-
-            var url = document.BaseUri;
-
-            return new EbayProduct(
-                id: id,
-                title: title,
-                price: price,
-                currency: currency,
-                shippingCost: shippingCost,
-                Condition: condition,
-                images: images,
-                ItemSpecifics: itemSpecifics,
-                Description: description,
-                url: url,
-                SoldDateUtc: null
-            );
-        }
-
     }
 }

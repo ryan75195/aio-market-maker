@@ -4,7 +4,7 @@
     {
         string? ItemSpecifics { get; init; }
         string? Description { get; init; }
-        string? Condition { get; init; }
+        Condition? Condition { get; init; }
     }
 
     public record EbayProduct(
@@ -13,7 +13,7 @@
         decimal? price,
         string? currency,
         decimal? shippingCost,
-        string? Condition,
+        Condition? Condition,
         IEnumerable<string> images,
         string? ItemSpecifics,
         string? Description,
