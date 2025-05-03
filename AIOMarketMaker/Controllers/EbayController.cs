@@ -28,7 +28,6 @@ namespace AIOMarketMaker.Controllers
             _logger = logger;
         }
 
-        // ────── Endpoint #1: /api/ebay/scrape?query=… ──────
         [Function("ScrapeEbay")]
         public async Task<HttpResponseData> Run(
             [HttpTrigger(AuthorizationLevel.Function, "get", Route = "ebay/scrape")]

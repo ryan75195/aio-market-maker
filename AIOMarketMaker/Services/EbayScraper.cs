@@ -46,13 +46,14 @@ namespace AIOMarketMaker.Services
 
             // 2. fetch html
             var page = await _fetcher.GetStringAsync(urlString);
+            var doc = await LoadDocumentAsync(page);
 
             // 3. check listing type to see if active or sold
             //var hasListingEnded = _parser.hasListingEnded(page);
 
             // 4. parse all data
-            //var item = _parser.Parse(page);
-            throw new NotImplementedException();
+            var item = _parser.ParseProductListing(doc);
+            return item;
             // 5. return object
         }
 

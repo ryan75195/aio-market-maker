@@ -10,7 +10,7 @@ namespace AIOMarketMaker.Services
     public interface IEbayItemParser
     {
         IEnumerable<IEbayProductSummary> ParseSearchResults(IDocument document);
-        IEnumerable<IEbayProduct> ParseProductListing(IDocument document);
+        IEbayProduct ParseProductListing(IDocument document);
 
     }
 
@@ -171,7 +171,7 @@ namespace AIOMarketMaker.Services
                    : (DateTime?)null;
         }
 
-        public IEnumerable<IEbayProduct> ParseProductListing(IDocument document)
+        public IEbayProduct ParseProductListing(IDocument document)
         {
             throw new NotImplementedException();
         }
