@@ -28,31 +28,18 @@ namespace AIOMarketMaker.Services
 
                 var soldTag = li.QuerySelector(".s-item__title--tagblock, .POSITIVE");
                 var isSold = soldTag != null && soldTag.TextContent.Contains("Sold", StringComparison.OrdinalIgnoreCase);
-                if (isSold)
-                {
-                    yield return new SoldEbayProductSummary(
-                        Id: id,
-                        Name: li.QuerySelector(".s-item__link")?.TextContent.Trim(),
-                        Price: ExtractPrice(li),
-                        Currency: ExtractCurrency(li),
-                        ShippingCost: ExtractShippingCost(li),
-                        Images: new List<string> { li.QuerySelector(".s-item__image-wrapper img")?.GetAttribute("src") },
-                        Url: li.QuerySelector(".s-item__link")?.GetAttribute("href"),
-                        SoldDateUtc: ExtractDate(li)
-                    );
-                }
-                else
-                {
-                    yield return new ActiveEbayProductSummary(
-                        Id: id,
-                        Name: li.QuerySelector(".s-item__link")?.TextContent.Trim(),
-                        Price: ExtractPrice(li),
-                        Currency: ExtractCurrency(li),
-                        ShippingCost: ExtractShippingCost(li),
-                        Images: new List<string> { li.QuerySelector(".s-item__image-wrapper img")?.GetAttribute("src") },
-                        Url: li.QuerySelector(".s-item__link")?.GetAttribute("href")
-                    );
-                }
+                yield return new EbayProductSummary(
+                       id: id,
+                       title: li.QuerySelector(".s-item__link")?.TextContent.Trim(),
+                       price: ExtractPrice(li),
+                       currency: ExtractCurrency(li),
+                       shippingCost: ExtractShippingCost(li),
+                       images: new List<string> { li.QuerySelector(".s-item__image-wrapper img")?.GetAttribute("src") },
+                       url: li.QuerySelector(".s-item__link")?.GetAttribute("href"),
+                       soldDateUtc: isSold ? ExtractDate(li) : null,
+                       buyingFormat: BuyingFormat.NULL!,
+                       condition: Condition.NULL!
+                   );
             }
         }
 
