@@ -1,7 +1,6 @@
 ﻿// Services/EbayItemParser.cs
 using System.Globalization;
 using System.Web;
-using AIOMarketMaker.Models;
 using AIOMarketMaker.Models.Ebay;
 using AngleSharp.Dom;
 
@@ -18,7 +17,6 @@ namespace AIOMarketMaker.Services
     {
         public IEnumerable<IEbayProductSummary> ParseSearchResults(IDocument doc)
         {
-            // skip first two junk <li>
             var items = doc.QuerySelectorAll("li.s-item").Skip(2);
 
             foreach (var li in items)
@@ -45,19 +43,15 @@ namespace AIOMarketMaker.Services
 
         private BuyingFormat ExtractBuyingFormat(IElement li)
         {
-            // 1) If there's any ".s-item__bids" element, it's an auction
             if (li.QuerySelector(".s-item__bids") != null)
                 return BuyingFormat.AUCTION;
 
-            // 2) Best-Offer-enabled listings *are* buy-now + best-offer
             if (li.QuerySelector(".s-item__dynamic.s-item__formatBestOfferEnabled") != null)
                 return BuyingFormat.BUY_NOW;
 
-            // 3) Pure Buy-It-Now (when Best Offer isn’t enabled)
             if (li.QuerySelector(".s-item__dynamic.s-item__formatBuyItNow") != null)
                 return BuyingFormat.BUY_NOW;
 
-            // 3) Otherwise treat it as "ALL" (or whatever default you need)
             return BuyingFormat.NULL;
         }
 
@@ -75,13 +69,11 @@ namespace AIOMarketMaker.Services
 
         public static Condition ExtractCondition(IElement listItemElement)
         {
-            // Pull all subtitle elements, trim and ignore empty lines
             var subtitleTexts = listItemElement
                 .QuerySelectorAll(".s-item__subtitle")
                 .Select(node => node.TextContent.Trim())
                 .Where(text => !string.IsNullOrEmpty(text));
 
-            // Find the first mapping whose key appears in any subtitle text
             var matchedPair = ConditionMap
                 .FirstOrDefault(mapping =>
                     subtitleTexts.Any(text =>
@@ -89,7 +81,6 @@ namespace AIOMarketMaker.Services
                     )
                 );
 
-            // If we found a mapping (Key != null), return its value; otherwise NULL
             return matchedPair.Key != null
                 ? matchedPair.Value
                 : Condition.NULL;
@@ -101,7 +92,6 @@ namespace AIOMarketMaker.Services
             if (string.IsNullOrWhiteSpace(rawText))
                 return null;
 
-            // Clean off words, plus‐signs, etc.
             var cleaned = rawText
                 .Replace("delivery", "", StringComparison.OrdinalIgnoreCase)
                 .Replace("postage", "", StringComparison.OrdinalIgnoreCase)
@@ -109,16 +99,13 @@ namespace AIOMarketMaker.Services
                 .Replace("+", "")
                 .Trim();
 
-            // Keep only digits, dots and commas
             var numericPart = new string(cleaned
                 .Where(c => char.IsDigit(c) || c == '.' || c == ',')
                 .ToArray());
 
-            // UK‐style comma decimal
             if (numericPart.Count(c => c == ',') == 1 && !numericPart.Contains('.'))
                 numericPart = numericPart.Replace(',', '.');
 
-            // Remove any thousands‐separator commas
             numericPart = numericPart.Replace(",", "");
 
             return decimal.TryParse(numericPart, out var shipping)
@@ -150,7 +137,6 @@ namespace AIOMarketMaker.Services
 
         private static string? ExtractCurrency(IElement li)
         {
-            // 1) Grab the raw text
             var rawText =
                 li.QuerySelector(".s-item__price .POSITIVE")?.TextContent
                 ?? li.QuerySelector(".s-item__price")?.TextContent;
@@ -158,7 +144,6 @@ namespace AIOMarketMaker.Services
             if (string.IsNullOrWhiteSpace(rawText))
                 return null;
 
-            // 2) Decode any HTML entities (e.g. &pound; → £)
             var decoded = HttpUtility.HtmlDecode(rawText).Trim();
 
             // 3) Pull off everything up to the first digit
@@ -172,7 +157,6 @@ namespace AIOMarketMaker.Services
             if (string.IsNullOrEmpty(symbolPart))
                 return null;
 
-            // 4) Map common symbols to ISO codes
             var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             {
                 ["£"] = "GBP",
@@ -184,13 +168,11 @@ namespace AIOMarketMaker.Services
                 ["EUR"] = "EUR",
                 ["C $"] = "CAD",
                 ["CAD"] = "CAD"
-                // add more as needed…
             };
 
             if (map.TryGetValue(symbolPart, out var iso))
                 return iso;
 
-            // 5) Fallback: return the raw symbol (e.g. "฿" or whatever you scraped)
             return symbolPart;
         }
 
@@ -212,7 +194,62 @@ namespace AIOMarketMaker.Services
 
         public IEbayProduct ParseProductListing(IDocument document)
         {
-            throw new NotImplementedException();
+            string GetBySelector(string selector) =>
+                document.QuerySelector(selector)?.TextContent?.Trim() ?? string.Empty;
+
+            decimal? ParsePrice(string raw)
+            {
+                if (decimal.TryParse(
+                        new string(raw.Where(c => char.IsDigit(c) || c == '.' || c == ',').ToArray()),
+                        out var value))
+                {
+                    return value;
+                }
+                return null;
+            }
+
+            // Parse ID from meta tag or canonical URL
+            var id = document.QuerySelector("link[rel=canonical]")?.GetAttribute("href")?
+                .Split('/')?.LastOrDefault()?.Split('?')?.FirstOrDefault() ?? "UNKNOWN_ID";
+
+            var title = GetBySelector("#itemTitle").Replace("Details about", "").Trim();
+
+            var priceRaw = GetBySelector("#prcIsum")
+                        ?? GetBySelector("#mm-saleDscPrc")
+                        ?? GetBySelector("#prcIsum_bidPrice");
+
+            var price = ParsePrice(priceRaw);
+            var currency = document.QuerySelector("#prcIsum")?.GetAttribute("currencyId");
+
+            var shippingRaw = GetBySelector("#fshippingCost .notranslate");
+            var shippingCost = ParsePrice(shippingRaw);
+
+            var condition = GetBySelector("#vi-itm-cond");
+
+            var imageNodes = document.QuerySelectorAll("#vi_main_img_fs ul li img");
+            var images = imageNodes.Select(img => img.GetAttribute("src")?.Replace("s-l64", "s-l1600")).Where(src => !string.IsNullOrWhiteSpace(src));
+
+            var itemSpecifics = document.QuerySelector("#viTabs_0_is")?.TextContent?.Trim();
+
+            var description = document.QuerySelector("#desc_div")?.TextContent?.Trim()
+                               ?? document.QuerySelector("#viTabs_0_is")?.TextContent?.Trim();
+
+            var url = document.BaseUri;
+
+            return new EbayProduct(
+                id: id,
+                title: title,
+                price: price,
+                currency: currency,
+                shippingCost: shippingCost,
+                Condition: condition,
+                images: images,
+                ItemSpecifics: itemSpecifics,
+                Description: description,
+                url: url,
+                SoldDateUtc: null
+            );
         }
+
     }
 }
