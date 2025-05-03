@@ -8,16 +8,16 @@
     }
 
     public record EbayProduct(
-        string Id,
-        string Name,
-        decimal? Price,
-        string? Currency,
-        decimal? ShippingCost,
+        string id,
+        string title,
+        decimal? price,
+        string? currency,
+        decimal? shippingCost,
         string? Condition,
-        IEnumerable<string> Images,
+        IEnumerable<string> images,
         string? ItemSpecifics,
         string? Description,
-        string? Url,
+        string? url,
         DateTime? SoldDateUtc // Null means it's active
     ) : IEbayProduct;
 }

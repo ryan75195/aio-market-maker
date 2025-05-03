@@ -11,9 +11,7 @@ namespace AIOMarketMaker.Services
     public interface IEbayScraper
     {
         Task<IEbayProduct> GetItemFromListing(string itemId);
-        Task<IEnumerable<ActiveEbayProductSummary>> SearchActiveListings(string query, DateTime? startPeriod);
-        Task<IEnumerable<SoldEbayProductSummary>> SearchSoldListings(string query, DateTime? startPeriod);
-
+        Task<IEnumerable<EbayProductSummary>> SearchListings(string query, SearchFilter? filter = null);
     }
 
     public class EbayScraper : IEbayScraper
@@ -41,43 +39,60 @@ namespace AIOMarketMaker.Services
 
         public async Task<IEbayProduct> GetItemFromListing(string itemId)
         {
-            // 1. use itemId to build the URL
             var urlString = _url.BuildListingUrl(itemId);
-
-            // 2. fetch html
             var page = await _fetcher.GetStringAsync(urlString);
             var doc = await LoadDocumentAsync(page);
-
-            // 3. check listing type to see if active or sold
-            //var hasListingEnded = _parser.hasListingEnded(page);
-
-            // 4. parse all data
             var item = _parser.ParseProductListing(doc);
             return item;
-            // 5. return object
         }
 
-        public async Task<IEnumerable<ActiveEbayProductSummary>> SearchActiveListings(string query, DateTime? startPeriod)
+        public async Task<IEnumerable<EbayProductSummary>> SearchListings(string query, SearchFilter? filter = null)
         {
-            var urlString = _url.BuildSearchUrl(query, sold: false, completed: false);
+            if (filter != null && filter.SoldFilter != null) {
+                var pageOffset = 1;
+                var productList = new List<EbayProductSummary>();
+                var earliestDate = DateTime.UtcNow;
+
+                while (earliestDate > filter.SoldFilter.startDate)
+                {
+                    var products = await GetProductsFromPageAsync(query, pageOffset, filter.SoldFilter != null);
+
+                    products = products.Where(x => x.soldDateUtc <= filter.SoldFilter!.endDate && x.soldDateUtc >= filter.SoldFilter.startDate);
+                    
+                    if( products.Count() == 0)
+                    {
+                        break;
+                    }
+
+                    var soldDates = products
+                      .Where(p => p.soldDateUtc.HasValue)
+                      .Select(p => p.soldDateUtc.Value);
+
+                    earliestDate = soldDates.Min();
+
+                    productList.AddRange(products);
+                    pageOffset++;
+                }
+                return productList;
+
+            }
+
+            else
+            {
+                return await GetProductsFromPageAsync(query, 1, filter.SoldFilter != null);
+            }
+        }
+
+        private async Task<IEnumerable<EbayProductSummary>> GetProductsFromPageAsync(string query, int pageNumber, bool sold)
+        {
+            var urlString = _url.BuildSearchUrl(query, sold, pageNumber);
             var page = await _fetcher.GetStringAsync(urlString);
             var doc = await LoadDocumentAsync(page);
             var products = _parser.ParseSearchResults(doc);
-            return products.OfType<ActiveEbayProductSummary>().ToList();
+            return products.OfType<EbayProductSummary>().ToList();
         }
 
-        public async Task<IEnumerable<SoldEbayProductSummary>> SearchSoldListings(string query, DateTime? startPeriod)
-        {
-            var urlString = _url.BuildSearchUrl(query, sold: true, completed: true);
-            var page = await _fetcher.GetStringAsync(urlString);
-            var doc = await LoadDocumentAsync(page);
-            var products = _parser.ParseSearchResults(doc);
-            return products.OfType<SoldEbayProductSummary>().ToList();
-        }
-
-
-        private readonly IBrowsingContext _browsingContext
-    = BrowsingContext.New(Configuration.Default);
+        private readonly IBrowsingContext _browsingContext = BrowsingContext.New(Configuration.Default);
 
         private async Task<IDocument> LoadDocumentAsync(string html)
         {

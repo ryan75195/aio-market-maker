@@ -52,11 +52,11 @@ namespace AIOMarketMaker.Controllers
                 WriteIndented = false
             };
 
-            var results = sold ?
-                JsonSerializer.Serialize(await _scraper.SearchSoldListings(query, null), options) :
-                JsonSerializer.Serialize(await _scraper.SearchActiveListings(query, null), options);
+            //var results = sold ?
+            //    JsonSerializer.Serialize(await _scraper.SearchSoldListings(query, null), options) :
+            //    JsonSerializer.Serialize(await _scraper.SearchActiveListings(query, null), options);
 
-            await resp.WriteStringAsync(results, token);
+            await resp.WriteStringAsync(null, token);
 
             return resp;
         }
