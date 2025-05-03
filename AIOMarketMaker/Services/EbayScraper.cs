@@ -49,43 +49,48 @@ namespace AIOMarketMaker.Services
         public async Task<IEnumerable<EbayProductSummary>> SearchListings(string query, SearchFilter? filter = null)
         {
             if (filter != null && filter.SoldFilter != null) {
-                var pageOffset = 1;
-                var productList = new List<EbayProductSummary>();
-                var earliestDate = DateTime.UtcNow;
-
-                while (earliestDate > filter.SoldFilter.startDate)
-                {
-                    var products = await GetProductsFromPageAsync(query, pageOffset, filter.SoldFilter != null);
-
-                    products = products.Where(x => x.soldDateUtc <= filter.SoldFilter!.endDate && x.soldDateUtc >= filter.SoldFilter.startDate);
-                    
-                    if( products.Count() == 0)
-                    {
-                        break;
-                    }
-
-                    var soldDates = products
-                      .Where(p => p.soldDateUtc.HasValue)
-                      .Select(p => p.soldDateUtc.Value);
-
-                    earliestDate = soldDates.Min();
-
-                    productList.AddRange(products);
-                    pageOffset++;
-                }
-                return productList;
-
+                
+                return await GetProductsInDateRange(query, filter);
             }
 
             else
             {
-                return await GetProductsFromPageAsync(query, 1, filter.SoldFilter != null);
+                return await GetProductsFromPageAsync(query, 1, filter.SoldFilter != null, filter.Condition, filter.BuyingFormat);
             }
         }
 
-        private async Task<IEnumerable<EbayProductSummary>> GetProductsFromPageAsync(string query, int pageNumber, bool sold)
+        private async Task<IEnumerable<EbayProductSummary>> GetProductsInDateRange(string query, SearchFilter? filter = null)
         {
-            var urlString = _url.BuildSearchUrl(query, sold, pageNumber);
+            var pageOffset = 1;
+            var productList = new List<EbayProductSummary>();
+            var earliestDate = DateTime.UtcNow;
+
+            while (earliestDate > filter.SoldFilter.startDate)
+            {
+                var products = await GetProductsFromPageAsync(query, pageOffset, filter.SoldFilter != null, filter.Condition, filter.BuyingFormat);
+
+                products = products.Where(x => x.soldDateUtc <= filter.SoldFilter!.endDate && x.soldDateUtc >= filter.SoldFilter.startDate);
+
+                if (products.Count() == 0)
+                {
+                    break;
+                }
+
+                var soldDates = products
+                  .Where(p => p.soldDateUtc.HasValue)
+                  .Select(p => p.soldDateUtc.Value);
+
+                earliestDate = soldDates.Min();
+
+                productList.AddRange(products);
+                pageOffset++;
+            }
+            return productList;
+        }
+
+        private async Task<IEnumerable<EbayProductSummary>> GetProductsFromPageAsync(string query, int pageNumber, bool sold, Condition condition, BuyingFormat buyingFormat)
+        {
+            var urlString = _url.BuildSearchUrl(query, sold, pageNumber, condition, buyingFormat);
             var page = await _fetcher.GetStringAsync(urlString);
             var doc = await LoadDocumentAsync(page);
             var products = _parser.ParseSearchResults(doc);

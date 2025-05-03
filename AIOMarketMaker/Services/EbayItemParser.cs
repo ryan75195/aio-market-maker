@@ -37,10 +37,62 @@ namespace AIOMarketMaker.Services
                        images: new List<string> { li.QuerySelector(".s-item__image-wrapper img")?.GetAttribute("src") },
                        url: li.QuerySelector(".s-item__link")?.GetAttribute("href"),
                        soldDateUtc: isSold ? ExtractDate(li) : null,
-                       buyingFormat: BuyingFormat.NULL!,
-                       condition: Condition.NULL!
+                       buyingFormat: ExtractBuyingFormat(li),
+                       condition: ExtractCondition(li)!
                    );
             }
+        }
+
+        private BuyingFormat ExtractBuyingFormat(IElement li)
+        {
+            // 1) If there's any ".s-item__bids" element, it's an auction
+            if (li.QuerySelector(".s-item__bids") != null)
+                return BuyingFormat.AUCTION;
+
+            // 2) Best-Offer-enabled listings *are* buy-now + best-offer
+            if (li.QuerySelector(".s-item__dynamic.s-item__formatBestOfferEnabled") != null)
+                return BuyingFormat.BUY_NOW;
+
+            // 3) Pure Buy-It-Now (when Best Offer isn’t enabled)
+            if (li.QuerySelector(".s-item__dynamic.s-item__formatBuyItNow") != null)
+                return BuyingFormat.BUY_NOW;
+
+            // 3) Otherwise treat it as "ALL" (or whatever default you need)
+            return BuyingFormat.NULL;
+        }
+
+        private static readonly Dictionary<string, Condition> ConditionMap =
+            new Dictionary<string, Condition>(StringComparer.OrdinalIgnoreCase)
+        {
+            { "Brand new",               Condition.NEW },
+            { "Pre-owned",               Condition.USED },
+            { "Opened – never used",     Condition.OPENED_NEVER_USED },
+            { "Parts only",              Condition.FOR_PARTS_NOT_WORKING },
+            { "Excellent - Refurbished", Condition.EXCELLENT_REFURBISHED },
+            { "Very Good - Refurbished", Condition.VERY_GOOD_REFURBISHED },
+            { "Good - Refurbished",      Condition.GOOD_REFURBISHED },
+        };
+
+        public static Condition ExtractCondition(IElement listItemElement)
+        {
+            // Pull all subtitle elements, trim and ignore empty lines
+            var subtitleTexts = listItemElement
+                .QuerySelectorAll(".s-item__subtitle")
+                .Select(node => node.TextContent.Trim())
+                .Where(text => !string.IsNullOrEmpty(text));
+
+            // Find the first mapping whose key appears in any subtitle text
+            var matchedPair = ConditionMap
+                .FirstOrDefault(mapping =>
+                    subtitleTexts.Any(text =>
+                        text.IndexOf(mapping.Key, StringComparison.OrdinalIgnoreCase) >= 0
+                    )
+                );
+
+            // If we found a mapping (Key != null), return its value; otherwise NULL
+            return matchedPair.Key != null
+                ? matchedPair.Value
+                : Condition.NULL;
         }
 
         public static decimal? ExtractShippingCost(IElement li)

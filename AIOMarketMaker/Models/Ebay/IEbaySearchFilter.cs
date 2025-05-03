@@ -12,14 +12,17 @@ public enum Condition
 {
     NEW,
     USED,
-    NOT_SPECIFIED,
-    ANY,
-    NULL
+    FOR_PARTS_NOT_WORKING,
+    VERY_GOOD_REFURBISHED,
+    EXCELLENT_REFURBISHED,
+    OPENED_NEVER_USED,
+    NULL,
+    GOOD_REFURBISHED,
 }
 
 public record SearchFilter
 {
-    public SoldRange? SoldFilter { get; set; }
-    public BuyingFormat? BuyingFormat { get; init; }
-    public Condition? Condition { get; init; }
+    public SoldRange SoldFilter { get; set; }
+    public BuyingFormat BuyingFormat { get; init; }
+    public Condition Condition { get; init; }
 }

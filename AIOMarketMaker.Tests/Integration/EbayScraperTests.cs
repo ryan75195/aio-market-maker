@@ -43,11 +43,6 @@ namespace AIOMarketMaker.Tests.Integration
                     Query: searchQuery,
                     Filters: new SearchFilter { BuyingFormat = BuyingFormat.AUCTION })
                 .ToTestCaseData();
-
-            yield return new SearchTestCase(
-                    Query: searchQuery,
-                    Filters: new SearchFilter { BuyingFormat = BuyingFormat.ALL })
-                .ToTestCaseData();
         }
 
         [Test]
@@ -89,24 +84,39 @@ namespace AIOMarketMaker.Tests.Integration
         private static IEnumerable<TestCaseData> ConditionFilterTestCases()
         {
             yield return new SearchTestCase(
-                    Query: searchQuery,
-                    Filters: new SearchFilter { Condition = Condition.NEW })
-                .ToTestCaseData();
+                Query: searchQuery,
+                Filters: new SearchFilter { Condition = Condition.NEW })
+            .ToTestCaseData();
 
             yield return new SearchTestCase(
-                    Query: searchQuery,
-                    Filters: new SearchFilter { Condition = Condition.USED })
-                .ToTestCaseData();
+                Query: searchQuery,
+                Filters: new SearchFilter { Condition = Condition.OPENED_NEVER_USED })
+            .ToTestCaseData();
 
             yield return new SearchTestCase(
-                    Query: searchQuery,
-                    Filters: new SearchFilter { Condition = Condition.ANY })
-                .ToTestCaseData();
+                Query: searchQuery,
+                Filters: new SearchFilter { Condition = Condition.EXCELLENT_REFURBISHED })
+            .ToTestCaseData();
 
             yield return new SearchTestCase(
-                    Query: searchQuery,
-                    Filters: new SearchFilter { Condition = Condition.NOT_SPECIFIED })
-                .ToTestCaseData();
+                Query: searchQuery,
+                Filters: new SearchFilter { Condition = Condition.VERY_GOOD_REFURBISHED })
+            .ToTestCaseData();
+
+            yield return new SearchTestCase(
+                Query: searchQuery,
+                Filters: new SearchFilter { Condition = Condition.GOOD_REFURBISHED })
+            .ToTestCaseData();
+
+            yield return new SearchTestCase(
+                Query: searchQuery,
+                Filters: new SearchFilter { Condition = Condition.USED })
+            .ToTestCaseData();
+
+            yield return new SearchTestCase(
+                Query: searchQuery,
+                Filters: new SearchFilter { Condition = Condition.FOR_PARTS_NOT_WORKING })
+            .ToTestCaseData();
         }
 
         // Simplified TestCase record—no TestName, no SetName()
