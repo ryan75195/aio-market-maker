@@ -3,7 +3,6 @@ using AIOMarketMaker.Models;
 using AIOMarketMaker.Models.Ebay;
 using AngleSharp;
 using AngleSharp.Dom;
-using Microsoft.AspNetCore.Html;
 using Microsoft.Extensions.Logging;
 
 namespace AIOMarketMaker.Services
@@ -11,7 +10,7 @@ namespace AIOMarketMaker.Services
     public interface IEbayScraper
     {
         Task<IEbayProduct> GetItemFromListing(string itemId);
-        Task<IEnumerable<EbayProductSummary>> SearchListings(string query, SearchFilter? filter = null);
+        Task<IEnumerable<EbayProductSummary>> SearchListings(string query, SearchFilter filter);
     }
 
     public class EbayScraper : IEbayScraper
@@ -19,10 +18,7 @@ namespace AIOMarketMaker.Services
         private readonly IEbayUrlBuilder _url;
         private readonly IHtmlFetcher _fetcher;
         private readonly IEbayItemParser _parser;
-        private readonly ILogger<EbayScraper> _log;
-        private readonly IBrowsingContext _ctx;
 
-        private const int PerPage = 240;
 
         public EbayScraper(
             IEbayUrlBuilder url,
@@ -33,8 +29,6 @@ namespace AIOMarketMaker.Services
             _url = url;
             _fetcher = fetcher;
             _parser = parser;
-            _log = log;
-            _ctx = BrowsingContext.New(Configuration.Default);
         }
 
         public async Task<IEbayProduct> GetItemFromListing(string itemId)
@@ -46,17 +40,11 @@ namespace AIOMarketMaker.Services
             return item;
         }
 
-        public async Task<IEnumerable<EbayProductSummary>> SearchListings(string query, SearchFilter? filter = null)
+        public async Task<IEnumerable<EbayProductSummary>> SearchListings(string query, SearchFilter filter)
         {
-            if (filter != null && filter.SoldFilter != null) {
-                
-                return await GetProductsInDateRange(query, filter);
-            }
-
-            else
-            {
-                return await GetProductsFromPageAsync(query, 1, filter.SoldFilter != null, filter.Condition, filter.BuyingFormat);
-            }
+            return (filter != null && filter.SoldFilter != null) ? 
+                await GetProductsInDateRange(query, filter) : 
+                await GetProductsFromPageAsync(query, 1, filter.SoldFilter != null, filter.Condition, filter.BuyingFormat);
         }
 
         private async Task<IEnumerable<EbayProductSummary>> GetProductsInDateRange(string query, SearchFilter? filter = null)

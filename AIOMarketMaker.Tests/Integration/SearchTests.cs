@@ -3,7 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace AIOMarketMaker.Tests.Integration
 {
-    public class Tests
+    public class SearchTests
     {
         private ServiceProvider _provider = null!;
         private IEbayScraper _serviceUnderTest = null!;
