@@ -1,4 +1,5 @@
 ﻿// Services/EbayScraper.cs
+using AIOMarketMaker.Api.Parsers;
 using AIOMarketMaker.Models;
 using AIOMarketMaker.Models.Ebay;
 using AngleSharp;
@@ -17,18 +18,22 @@ namespace AIOMarketMaker.Services
     {
         private readonly IEbayUrlBuilder _url;
         private readonly IHtmlFetcher _fetcher;
-        private readonly IEbayItemParser _parser;
+        private readonly IListingParser _listingParser;
+        private readonly ISearchParser _searchParser;
 
 
         public EbayScraper(
             IEbayUrlBuilder url,
             IHtmlFetcher fetcher,
-            IEbayItemParser parser,
+            ISearchParser searchParser,
+            IListingParser listingParser,
             ILogger<EbayScraper> log)
         {
             _url = url;
             _fetcher = fetcher;
-            _parser = parser;
+            _searchParser = searchParser;
+            _listingParser = listingParser;
+
         }
 
         public async Task<IEbayProduct> GetItemFromListing(string itemId)
@@ -36,8 +41,25 @@ namespace AIOMarketMaker.Services
             var urlString = _url.BuildListingUrl(itemId);
             var page = await _fetcher.GetStringAsync(urlString);
             var doc = await LoadDocumentAsync(page);
-            var item = _parser.ParseProductListing(doc);
-            return item;
+
+            var parsedListing = _listingParser.ParseProductListing(doc);
+            var descriptionHtml = await _fetcher.GetStringAsync(parsedListing.descriptionSource);
+            var descriptionDoc = await LoadDocumentAsync(descriptionHtml);
+            var description = _listingParser.ParseDescription(descriptionDoc);
+
+            return new EbayProduct(
+                id: parsedListing.id,
+                title: parsedListing.title,
+                price: parsedListing.price,
+                currency: parsedListing.currency,
+                shippingCost: parsedListing.shippingCost,
+                Condition: parsedListing.Condition,
+                images: parsedListing.images,
+                ItemSpecifics: parsedListing.ItemSpecifics,
+                Description: description,
+                url: parsedListing.url,
+                SoldDateUtc: parsedListing.SoldDateUtc
+            );
         }
 
         public async Task<IEnumerable<EbayProductSummary>> SearchListings(string query, SearchFilter filter)
@@ -81,7 +103,7 @@ namespace AIOMarketMaker.Services
             var urlString = _url.BuildSearchUrl(query, sold, pageNumber, condition, buyingFormat);
             var page = await _fetcher.GetStringAsync(urlString);
             var doc = await LoadDocumentAsync(page);
-            var products = _parser.ParseSearchResults(doc);
+            var products = _searchParser.ParseSearchResults(doc);
             return products.OfType<EbayProductSummary>().ToList();
         }
 
