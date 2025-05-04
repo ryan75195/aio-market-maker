@@ -1,9 +1,12 @@
 ﻿// Services/EbayItemParser.cs
+using System.Runtime.CompilerServices;
 using System.Globalization;
 using System.Web;
 using AIOMarketMaker.Models.Ebay;
 using AngleSharp.Dom;
 using AngleSharp.Text;
+
+[assembly: InternalsVisibleTo("AIOMarketMaker.Tests")]
 
 namespace AIOMarketMaker.Services
 {
@@ -11,14 +14,15 @@ namespace AIOMarketMaker.Services
     public record ExtractedEbayListing(
         string id,
         string title,
-        decimal? price,
-        string? currency,
-        decimal? shippingCost,
-        Condition? Condition,
+        decimal price,
+        string currency,
+        decimal shippingCost,
+        Condition Condition,
         IEnumerable<string> images,
+        EbayListingStatus listingStatus,
+        PurchaseFormat purchaseFormat,
         string? ItemSpecifics,
         string? descriptionSource,
-        string? url,
         DateTime? SoldDateUtc // Null means it's active
     );
 
@@ -40,8 +44,9 @@ namespace AIOMarketMaker.Services
             var condition = GetProductCondition(document);
             var images = GetProductImages(document);
             var itemSpecifics = GetItemSpecifics(document);
-            var description = GetItemDescription(document);
-            var url = GetProductUrl(document);
+            var description = GetItemDescriptionUrl(document);
+            var listingStatus = GetListingStatus(document);
+            var purchaseFormat = GetPurchaseFormat(document);
 
             return new ExtractedEbayListing(
                 id: id,
@@ -53,9 +58,22 @@ namespace AIOMarketMaker.Services
                 images: images,
                 ItemSpecifics: itemSpecifics,
                 descriptionSource: description,
-                url: url,
+                listingStatus: listingStatus,
+                purchaseFormat: purchaseFormat,
                 SoldDateUtc: null
             );
+        }
+
+        internal PurchaseFormat GetPurchaseFormat(IDocument document)
+        {
+            //throw new NotImplementedException();
+            return PurchaseFormat.BuyItNowWithBestOffer;
+        }
+
+        internal EbayListingStatus GetListingStatus(IDocument document)
+        {
+            //throw new NotImplementedException();
+            return EbayListingStatus.Active;
         }
 
         public string ParseDescription(IDocument document)
@@ -63,24 +81,18 @@ namespace AIOMarketMaker.Services
             return document.QuerySelector(".x-item-description-child").TextContent;
         }
 
-        private string? GetProductUrl(IDocument document)
+        internal string? GetItemDescriptionUrl(IDocument document)
         {
-            return document.BaseUri;
-        }
-
-        private string? GetItemDescription(IDocument document)
-        {
-            // come back to this one as we need to navigate to this URL and get the content
             var descriptionUrl = document.QuerySelector("#desc_ifr")?.GetAttribute("src");
             return descriptionUrl;
         }
 
-        private string? GetItemSpecifics(IDocument document)
+        internal string? GetItemSpecifics(IDocument document)
         {
             return document.QuerySelector(".ux-layout-section-evo.ux-layout-section--features")?.TextContent;
         }
 
-        private IEnumerable<string> GetProductImages(IDocument document)
+        internal IEnumerable<string> GetProductImages(IDocument document)
         {
             var container = document.QuerySelector(".ux-image-grid.no-scrollbar");
 
@@ -98,7 +110,7 @@ namespace AIOMarketMaker.Services
         }
 
 
-        private static readonly Dictionary<string, Condition> ConditionMap =
+        internal static readonly Dictionary<string, Condition> ConditionMap =
             new Dictionary<string, Condition>(StringComparer.OrdinalIgnoreCase)
         {
             { "Brand new",               Condition.NEW },
@@ -110,7 +122,7 @@ namespace AIOMarketMaker.Services
             { "Good - Refurbished",      Condition.GOOD_REFURBISHED },
         };
 
-        private Condition? GetProductCondition(IDocument document)
+        internal Condition GetProductCondition(IDocument document)
         {
             var subtitleTexts = document
                 .QuerySelectorAll(".x-item-condition-text")
@@ -129,7 +141,7 @@ namespace AIOMarketMaker.Services
                 : Condition.NULL;
         }
 
-        private decimal? GetShippingPrice(IDocument document)
+        internal decimal GetShippingPrice(IDocument document)
         {
             try
             {
@@ -141,22 +153,22 @@ namespace AIOMarketMaker.Services
             }
         }
 
-        private string? GetCurrency(IDocument document)
+        internal string GetCurrency(IDocument document)
         {
             return document.QuerySelector(".x-price-primary")?.TextContent.First().ToString();
         }
 
-        private decimal? GetProductPrice(IDocument document)
+        internal decimal GetProductPrice(IDocument document)
         {
             return decimal.Parse(document.QuerySelector(".x-price-primary")?.TextContent.Substring(1));
         }
 
-        private string GetProductTitle(IDocument document)
+        internal string GetProductTitle(IDocument document)
         {
             return document.QuerySelector(".x-item-title__mainTitle")?.TextContent;
         }
 
-        private string GetProductId(IDocument document)
+        internal string GetProductId(IDocument document)
         {
             return document.QuerySelector(".ux-layout-section__textual-display--itemId")?.TextContent.Split(":")[1];
         }

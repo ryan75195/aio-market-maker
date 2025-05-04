@@ -25,16 +25,16 @@ namespace AIOMarketMaker.Api.Parsers
                 var soldTag = li.QuerySelector(".s-item__title--tagblock, .POSITIVE");
                 var isSold = soldTag != null && soldTag.TextContent.Contains("Sold", StringComparison.OrdinalIgnoreCase);
                 yield return new EbayProductSummary(
-                       id: id,
-                       title: li.QuerySelector(".s-item__link")?.TextContent.Trim(),
-                       price: ExtractPrice(li),
-                       currency: ExtractCurrency(li),
-                       shippingCost: ExtractShippingCost(li),
-                       images: new List<string> { li.QuerySelector(".s-item__image-wrapper img")?.GetAttribute("src") },
-                       url: li.QuerySelector(".s-item__link")?.GetAttribute("href"),
-                       soldDateUtc: isSold ? ExtractDate(li) : null,
-                       buyingFormat: ExtractBuyingFormat(li),
-                       condition: ExtractCondition(li)!
+                       ListingId: id,
+                       Title: li.QuerySelector(".s-item__link")?.TextContent.Trim(),
+                       Price: ExtractPrice(li),
+                       Currency: ExtractCurrency(li),
+                       ShippingCost: ExtractShippingCost(li),
+                       Images: new List<string> { li.QuerySelector(".s-item__image-wrapper img")?.GetAttribute("src") },
+                       Url: li.QuerySelector(".s-item__link")?.GetAttribute("href"),
+                       SoldDateUtc: isSold ? ExtractDate(li) : null,
+                       BuyingFormat: ExtractBuyingFormat(li),
+                       Condition: ExtractCondition(li)!
                    );
             }
         }
@@ -84,11 +84,9 @@ namespace AIOMarketMaker.Api.Parsers
                 : Condition.NULL;
         }
 
-        public static decimal? ExtractShippingCost(IElement li)
+        public static decimal ExtractShippingCost(IElement li)
         {
             var rawText = li.QuerySelector("span.s-item__shipping")?.TextContent;
-            if (string.IsNullOrWhiteSpace(rawText))
-                return null;
 
             var cleaned = rawText
                 .Replace("delivery", "", StringComparison.OrdinalIgnoreCase)
@@ -106,18 +104,14 @@ namespace AIOMarketMaker.Api.Parsers
 
             numericPart = numericPart.Replace(",", "");
 
-            return decimal.TryParse(numericPart, out var shipping)
-                ? shipping
-                : null;
+            return decimal.Parse(numericPart);
         }
 
-        public static decimal? ExtractPrice(IElement li)
+        public static decimal ExtractPrice(IElement li)
         {
             var rawText =
                 li.QuerySelector(".s-item__price .POSITIVE")?.TextContent
                 ?? li.QuerySelector(".s-item__price")?.TextContent;
-            if (string.IsNullOrWhiteSpace(rawText))
-                return null;
 
             var cleaned = new string(rawText
                 .Where(c => char.IsDigit(c) || c == '.' || c == ',')
@@ -128,12 +122,10 @@ namespace AIOMarketMaker.Api.Parsers
 
             cleaned = cleaned.Replace(",", "");
 
-            return decimal.TryParse(cleaned, out var price)
-                ? price
-                : null;
+            return decimal.Parse(cleaned);
         }
 
-        private static string? ExtractCurrency(IElement li)
+        private static string ExtractCurrency(IElement li)
         {
             var rawText =
                 li.QuerySelector(".s-item__price .POSITIVE")?.TextContent
