@@ -3,15 +3,15 @@ namespace AIOMarketMaker.Models.Ebay
 {
     public interface IProduct
     {
-        string id { get; init; }
+        string ListingId { get; init; }
 
-        string title { get; init; }
+        string Title { get; init; }
 
-        decimal? price { get; init; }
+        decimal Price { get; init; }
     
-        string? currency {  get; init; }
+        string Currency {  get; init; }
 
-        string? url { get; init; }
+        string Url { get; init; }
 
     }
 }

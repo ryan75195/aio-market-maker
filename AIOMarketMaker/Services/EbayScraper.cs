@@ -10,7 +10,7 @@ namespace AIOMarketMaker.Services
 {
     public interface IEbayScraper
     {
-        Task<IEbayProduct> GetItemFromListing(string itemId);
+        Task<EbayProduct> GetItemFromListing(string itemId);
         Task<IEnumerable<EbayProductSummary>> SearchListings(string query, SearchFilter filter);
     }
 
@@ -36,7 +36,7 @@ namespace AIOMarketMaker.Services
 
         }
 
-        public async Task<IEbayProduct> GetItemFromListing(string itemId)
+        public async Task<EbayProduct> GetItemFromListing(string itemId)
         {
             var urlString = _url.BuildListingUrl(itemId);
             var page = await _fetcher.GetStringAsync(urlString);
@@ -48,17 +48,19 @@ namespace AIOMarketMaker.Services
             var description = _listingParser.ParseDescription(descriptionDoc);
 
             return new EbayProduct(
-                id: parsedListing.id,
-                title: parsedListing.title,
-                price: parsedListing.price,
-                currency: parsedListing.currency,
-                shippingCost: parsedListing.shippingCost,
+                ListingId: parsedListing.id,
+                Title: parsedListing.title,
+                Price: parsedListing.price,
+                Currency: parsedListing.currency,
+                ShippingCost: parsedListing.shippingCost,
                 Condition: parsedListing.Condition,
-                images: parsedListing.images,
+                Images: parsedListing.images,
                 ItemSpecifics: parsedListing.ItemSpecifics,
                 Description: description,
-                url: parsedListing.url,
-                SoldDateUtc: parsedListing.SoldDateUtc
+                Url: urlString,
+                SoldDateUtc: parsedListing.SoldDateUtc,
+                ListingStatus: parsedListing.listingStatus,
+                PurchaseFormat: parsedListing.purchaseFormat
             );
         }
 
@@ -79,7 +81,7 @@ namespace AIOMarketMaker.Services
             {
                 var products = await GetProductsFromPageAsync(query, pageOffset, filter.SoldFilter != null, filter.Condition, filter.BuyingFormat);
 
-                products = products.Where(x => x.soldDateUtc <= filter.SoldFilter!.endDate && x.soldDateUtc >= filter.SoldFilter.startDate);
+                products = products.Where(x => x.SoldDateUtc <= filter.SoldFilter!.endDate && x.SoldDateUtc >= filter.SoldFilter.startDate);
 
                 if (products.Count() == 0)
                 {
@@ -87,8 +89,8 @@ namespace AIOMarketMaker.Services
                 }
 
                 var soldDates = products
-                  .Where(p => p.soldDateUtc.HasValue)
-                  .Select(p => p.soldDateUtc.Value);
+                  .Where(p => p.SoldDateUtc.HasValue)
+                  .Select(p => p.SoldDateUtc.Value);
 
                 earliestDate = soldDates.Min();
 
