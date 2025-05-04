@@ -2,9 +2,9 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Playwright;
 
-namespace AIOMarketMaker.Tests.Integration
+namespace AIOMarketMaker.Tests.Contract
 {
-    public class SearchIntegrationTests
+    public class SearchContractTests
     {
         private ServiceProvider _provider = null!;
         private IEbayScraper _serviceUnderTest = null!;
