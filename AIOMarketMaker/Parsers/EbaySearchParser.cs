@@ -15,7 +15,9 @@ namespace AIOMarketMaker.Api.Parsers
     {
         public IEnumerable<IEbayProductSummary> ParseSearchResults(IDocument doc)
         {
-            var items = doc.QuerySelectorAll("li.s-item").Skip(2);
+            var items = doc.QuerySelectorAll(
+                "li.s-item[id]:not([id=\"\"])"
+            );
 
             foreach (var li in items)
             {
@@ -86,7 +88,8 @@ namespace AIOMarketMaker.Api.Parsers
 
         public static decimal ExtractShippingCost(IElement li)
         {
-            var rawText = li.QuerySelector("span.s-item__shipping")?.TextContent;
+            var shippingElement = li.QuerySelector("span.s-item__shipping, span.s-item__logisticsCost, span.s-item__paidDeliveryInfo");
+            var rawText = shippingElement?.TextContent?.Trim();
 
             var cleaned = rawText
                 .Replace("delivery", "", StringComparison.OrdinalIgnoreCase)

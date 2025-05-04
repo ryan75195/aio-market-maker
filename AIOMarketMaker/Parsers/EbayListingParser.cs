@@ -5,6 +5,7 @@ using System.Web;
 using AIOMarketMaker.Models.Ebay;
 using AngleSharp.Dom;
 using AngleSharp.Text;
+using Microsoft.Extensions.Logging;
 
 [assembly: InternalsVisibleTo("AIOMarketMaker.Tests")]
 
@@ -72,13 +73,27 @@ namespace AIOMarketMaker.Services
 
         internal EbayListingStatus GetListingStatus(IDocument document)
         {
-            //throw new NotImplementedException();
+            var node = document.QuerySelector(".d-statusmessage")?.TextContent;
+            if (node == null) // bit of a flakey check.
+            {
+                return EbayListingStatus.Active;
+            }
+            else if (node.Contains("Bidding ended on "))
+            {
+                return EbayListingStatus.Ended;
+            }
+            else if (node.Contains("Item sold on") || node.Contains("This listing sold on"))
+            {                
+                return EbayListingStatus.Sold;
+            }
+            
             return EbayListingStatus.Active;
         }
 
         public string ParseDescription(IDocument document)
         {
-            return document.QuerySelector(".x-item-description-child").TextContent;
+            var node = document.QuerySelector(".x-item-description-child");
+            return node?.TextContent ?? string.Empty;
         }
 
         internal string? GetItemDescriptionUrl(IDocument document)
@@ -114,7 +129,9 @@ namespace AIOMarketMaker.Services
             new Dictionary<string, Condition>(StringComparer.OrdinalIgnoreCase)
         {
             { "Brand new",               Condition.NEW },
+            { "New",               Condition.NEW },
             { "Pre-owned",               Condition.USED },
+            { "Used",                    Condition.USED },
             { "Opened – never used",     Condition.OPENED_NEVER_USED },
             { "Parts only",              Condition.FOR_PARTS_NOT_WORKING },
             { "Excellent - Refurbished", Condition.EXCELLENT_REFURBISHED },
@@ -124,16 +141,16 @@ namespace AIOMarketMaker.Services
 
         internal Condition GetProductCondition(IDocument document)
         {
-            var subtitleTexts = document
-                .QuerySelectorAll(".x-item-condition-text")
-                .Select(node => node.TextContent.Trim())
-                .Where(text => !string.IsNullOrEmpty(text));
+            // grab the text (null-safe)
+            var el = document.QuerySelector(".x-item-condition-text .ux-textspans");
+            var text = el?.Text() ?? string.Empty;
 
+            // find the first mapping whose key appears in that text (case-insensitive)
             var matchedPair = ConditionMap
                 .FirstOrDefault(mapping =>
-                    subtitleTexts.Any(text =>
-                        text.IndexOf(mapping.Key, StringComparison.OrdinalIgnoreCase) >= 0
-                    )
+                    // either of these will work:
+                    // text.Contains(mapping.Key, StringComparison.OrdinalIgnoreCase)
+                    text.IndexOf(mapping.Key, StringComparison.OrdinalIgnoreCase) >= 0
                 );
 
             return matchedPair.Key != null

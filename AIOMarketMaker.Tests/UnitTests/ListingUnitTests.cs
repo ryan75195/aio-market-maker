@@ -2,22 +2,14 @@ using AIOMarketMaker.Api.Parsers;
 using AIOMarketMaker.Models.Ebay;
 using AIOMarketMaker.Services;
 using AngleSharp;
-using AngleSharp.Attributes;
 using AngleSharp.Dom;
-using CsvHelper;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Playwright;
 using Moq;
-using System.Diagnostics.Metrics;
-using System.Reflection;
-using System.Runtime.Intrinsics.X86;
 using System.Text.RegularExpressions;
-using static AIOMarketMaker.Tests.Integration.SearchIntegrationTests;
 
 namespace AIOMarketMaker.Tests.Unit
 {
-
-
     public class ListingUnitTests
     {
         private ServiceProvider _provider = null!;
@@ -29,7 +21,6 @@ namespace AIOMarketMaker.Tests.Unit
         [SetUp]
         public async Task SetupAsync()
         {
-    
             var services = new ServiceCollection();
             services.AddLogging();
             services.AddSingleton<IEbayUrlBuilder, EbayUrlBuilder>();
@@ -64,12 +55,7 @@ namespace AIOMarketMaker.Tests.Unit
         [Test, TestCaseSource(nameof(ParseIdTestCases))]
         public async Task Should_parse_product_id(string testCaseName, string expectedResponse)
         {
-            var dataDir = Path.GetFullPath(Path.Combine(TestContext.CurrentContext.TestDirectory, "../../../Data/Listings"));
-
-            var htmlPath = Path.Combine(dataDir, testCaseName + ".htm");
-            var html = await File.ReadAllTextAsync(htmlPath);
-            var doc = await LoadDocumentAsync(html);
-
+            var doc = await LoadTestHtmlDocumentAsync(testCaseName);
             var parser = (EbayListingParser)_serviceUnderTest;
             var result = parser.GetProductId(doc!);
 
@@ -87,107 +73,253 @@ namespace AIOMarketMaker.Tests.Unit
         }
 
 
-        //[Test]
-        //public async Task Should_parse_listing_status()
-        //{
-        //    var results = await this._serviceUnderTest.GetItemFromListing("dummy_id");
-        //    Assert.AreEqual(EbayListingStatus.Active, results.ListingStatus);
-        //}
+        [Test, TestCaseSource(nameof(ParseStatusTestCases))]
+        public async Task Should_parse_listing_status(string testCaseName, EbayListingStatus expectedResponse)
+        {
+            var doc = await LoadTestHtmlDocumentAsync(testCaseName);
+            var parser = (EbayListingParser)_serviceUnderTest;
+            var result = parser.GetListingStatus(doc!);
 
-        //[Test]
-        //public async Task Should_parse_product_priceAsync()
-        //{
-        //    var results = await this._serviceUnderTest.GetItemFromListing("dummy_id");
-        //    Assert.AreEqual(659.51, results.Price);
-        //}
+            Assert.That(result, Is.EqualTo(expectedResponse));
+        }
 
-        //[Test]
-        //public async Task Should_parse_product_currencyAsync()
-        //{
-        //    var results = await this._serviceUnderTest.GetItemFromListing("dummy_id");
-        //    Assert.AreEqual("£", results.Currency);
-        //}
+        private static IEnumerable<object> ParseStatusTestCases()
+        {
+            yield return new TestCaseData("ActiveAuctionWithOfferAvailable", EbayListingStatus.Active);
+            yield return new TestCaseData("ActiveBuyItNowListing", EbayListingStatus.Active);
+            yield return new TestCaseData("ActiveBuyNowListingWithOffer", EbayListingStatus.Active);
+            yield return new TestCaseData("BiddingEndedNoSale", EbayListingStatus.Ended);
+            yield return new TestCaseData("SoldBidListing", EbayListingStatus.Sold);
+            yield return new TestCaseData("SoldBuyNowListing", EbayListingStatus.Sold);
+        }
 
-        //[Test]
-        //public async Task Should_parse_product_shipping_costAsync()
-        //{
-        //    var results = await this._serviceUnderTest.GetItemFromListing("dummy_id");
-        //    Assert.AreEqual(12.35, results.ShippingCost);
-        //}
+        [Test, TestCaseSource(nameof(ParsePriceTestCases))]
+        public async Task Should_parse_product_price(string testCaseName, double expectedResponse)
+        {
+            var doc = await LoadTestHtmlDocumentAsync(testCaseName);
+            var parser = (EbayListingParser)_serviceUnderTest;
+            var result = parser.GetProductPrice(doc!);
 
-        //[Test]
-        //public async Task Should_parse_product_conditionAsync()
-        //{
-        //    var results = await this._serviceUnderTest.GetItemFromListing("dummy_id");
-        //    Assert.AreEqual(Condition.OPENED_NEVER_USED, results.Condition);
-        //}
+            Assert.That(result, Is.EqualTo(expectedResponse));
+        }
 
-        //[Test]
-        //public async Task Should_parse_product_images()
-        //{
-        //    var results = await this._serviceUnderTest.GetItemFromListing("dummy_id");
+        private static IEnumerable<object> ParsePriceTestCases()
+        {
+            yield return new TestCaseData("ActiveAuctionWithOfferAvailable", 363.72d);
+            yield return new TestCaseData("ActiveBuyItNowListing", 659.51d);
+            yield return new TestCaseData("ActiveBuyNowListingWithOffer", 247.01d);
+            yield return new TestCaseData("BiddingEndedNoSale", 328.02d);
+            yield return new TestCaseData("SoldBidListing", 316.34d);
+            yield return new TestCaseData("SoldBuyNowListing", 265.92d);
+        }
 
-        //    var expectedImages = new[]
-        //    {
-        //        "ActiveBuyItNowListing_files/s-l140_004.jpg",
-        //        "ActiveBuyItNowListing_files/s-l140_005.jpg",
-        //        "ActiveBuyItNowListing_files/s-l140_006.jpg",
-        //        "ActiveBuyItNowListing_files/s-l140.jpg",
-        //        "ActiveBuyItNowListing_files/s-l140_007.jpg",
-        //        "ActiveBuyItNowListing_files/s-l140_003.jpg",
-        //        "ActiveBuyItNowListing_files/s-l140_002.jpg"
-        //    };
+        [Test, TestCaseSource(nameof(ParseCurrencyTestCases))]
+        public async Task Should_parse_product_currency(string testCaseName, string expectedResponse)
+        {
+            var doc = await LoadTestHtmlDocumentAsync(testCaseName);
+            var parser = (EbayListingParser)_serviceUnderTest;
+            var result = parser.GetCurrency(doc!);
 
-        //    CollectionAssert.AreEquivalent(expectedImages, results.Images);
-        //}
+            Assert.That(result, Is.EqualTo(expectedResponse));
+        }
 
-        //[Test]
-        //public async Task Should_parse_product_item_specifics()
-        //{
-        //    var results = await this._serviceUnderTest.GetItemFromListing("dummy_id");
-        //    Console.Write(results.ItemSpecifics);
-        //    Assert.That(results.ItemSpecifics.Contains("ConditionOpened – never used: An item in excellent, new condition with no wear. The item may be missing the"));
-        //}
+        private static IEnumerable<object> ParseCurrencyTestCases()
+        {
+            yield return new TestCaseData("ActiveAuctionWithOfferAvailable", "£");
+            yield return new TestCaseData("ActiveBuyItNowListing", "£");
+            yield return new TestCaseData("ActiveBuyNowListingWithOffer", "£");
+            yield return new TestCaseData("BiddingEndedNoSale", "£");
+            yield return new TestCaseData("SoldBidListing", "£");
+            yield return new TestCaseData("SoldBuyNowListing", "£");
+        }
 
-        //[Test]
-        //public async Task Should_parse_product_descriptionAsync()
-        //{
-        //    // 1) Compute the test-data directory at discovery & run time
-        //    var dataDir = Path.GetFullPath(
-        //        Path.Combine(TestContext.CurrentContext.TestDirectory, "../../../Data/Listings"));
+        [Test, TestCaseSource(nameof(ParseShippingCostTestCases))]
+        public async Task Should_parse_product_shipping_costAsync(string testCaseName, decimal expectedResponse)
+        {
+            var doc = await LoadTestHtmlDocumentAsync(testCaseName);
+            var parser = (EbayListingParser)_serviceUnderTest;
+            var result = parser.GetShippingPrice(doc!);
 
-        //    // 2) Build your two paths
-        //    var htmlPath = Path.Combine(dataDir, testCaseName + ".htm");
-        //    var descPath = Directory
-        //        .EnumerateFiles(Path.Combine(dataDir, testCaseName + "_files"), "*_002.htm", SearchOption.TopDirectoryOnly)
-        //        .FirstOrDefault()
-        //        ?? throw new FileNotFoundException($"No *_002.htm in {testCaseName}_files");
+            Assert.That(result, Is.EqualTo(expectedResponse));
+        }
 
-        //    // 3) Read & stub
-        //    var html = await File.ReadAllTextAsync(htmlPath);
-        //    var desc = await File.ReadAllTextAsync(descPath);
+        private static IEnumerable<object> ParseShippingCostTestCases()
+        {
+            yield return new TestCaseData("ActiveAuctionWithOfferAvailable", 8.41m);
+            yield return new TestCaseData("ActiveBuyItNowListing", 12.35m);
+            yield return new TestCaseData("ActiveBuyNowListingWithOffer", 8.41m);
+            yield return new TestCaseData("BiddingEndedNoSale", 0m);
+            yield return new TestCaseData("SoldBidListing", 8.41m);
+            yield return new TestCaseData("SoldBuyNowListing", 0m);
+        }
 
-        //    // description URL is the *relative* path your code expects:
-        //    var descUrl = descPath.Split("Listings\\")[1];
-        //    var doc = await LoadDocumentAsync(html);
+        [Test, TestCaseSource(nameof(ParseConditionTestCases))]
+        public async Task Should_parse_product_conditionAsync(string testCaseName, Condition expectedResponse)
+        {
+            var doc = await LoadTestHtmlDocumentAsync(testCaseName);
+            var parser = (EbayListingParser)_serviceUnderTest;
+            var result = parser.GetProductCondition(doc!);
 
-        //    // 4) Exercise & assert
-        //    var parser = (EbayListingParser)_serviceUnderTest;
-        //    var result = parser.GetProductId(doc!);
+            Assert.That(result, Is.EqualTo(expectedResponse));
+        }
 
-        //    Assert.AreEqual(
-        //        Path.GetFileNameWithoutExtension(descPath).Split('_')[0],
-        //        result
-        //    );
-        //}
+        private static IEnumerable<object> ParseConditionTestCases()
+        {
+            yield return new TestCaseData("ActiveAuctionWithOfferAvailable", Condition.NEW);
+            yield return new TestCaseData("ActiveBuyItNowListing", Condition.USED);
+            yield return new TestCaseData("ActiveBuyNowListingWithOffer", Condition.USED);
+            yield return new TestCaseData("BiddingEndedNoSale", Condition.NEW);
+            yield return new TestCaseData("SoldBidListing", Condition.USED);
+            yield return new TestCaseData("SoldBuyNowListing", Condition.USED);
+        }
 
-        //[Test]
-        //public async Task Should_parse_product_urlAsync()
-        //{
-        //    var results = await this._serviceUnderTest.GetItemFromListing("dummy_id");
-        //    // verify this is correct in live
-        //    Assert.AreEqual("http://localhost/", results.Url);
-        //}
+
+        [Test, TestCaseSource(nameof(ParseSpecificsTestCases))]
+        public async Task Should_parse_product_item_specifics(string testCaseName, string expectedResponse)
+        {
+            var doc = await LoadTestHtmlDocumentAsync(testCaseName);
+            var parser = (EbayListingParser)_serviceUnderTest;
+            var result = parser.GetItemSpecifics(doc!);
+
+            Assert.That(result.Contains(expectedResponse));
+        }
+
+        private static IEnumerable<object> ParseSpecificsTestCases()
+        {
+            yield return new TestCaseData("ActiveAuctionWithOfferAvailable", "ConditionNew: A brand-new, unused, unopened and undamaged item in original retail packaging");
+            yield return new TestCaseData("ActiveBuyItNowListing", "ConditionOpened – never used: An item in excellent, new condition with no wear. The item may be missing the");
+            yield return new TestCaseData("ActiveBuyNowListingWithOffer", "ConditionUsed: An item that has been previously used. The item may have some signs of cosmetic wear, but is");
+            yield return new TestCaseData("BiddingEndedNoSale", "ConditionNew: A brand-new, unused, unopened and undamaged item in original retail packaging");
+            yield return new TestCaseData("SoldBidListing", "ConditionUsed: An item that has been previously used. The item may have some signs of cosmetic wear, but is");
+            yield return new TestCaseData("SoldBuyNowListing", "ConditionUsed: An item that has been previously used. The item may have some signs of cosmetic wear, but is");
+        }
+
+
+        [Test, TestCaseSource(nameof(ParseImagesTestCases))]
+        public async Task Should_parse_product_images(string testCaseName, string[] expectedResponse)
+        {
+            var doc = await LoadTestHtmlDocumentAsync(testCaseName);
+            var parser = (EbayListingParser)_serviceUnderTest;
+            var result = parser.GetProductImages(doc!);
+
+            CollectionAssert.AreEquivalent(expectedResponse, result);
+        }
+
+        private static IEnumerable<object> ParseImagesTestCases()
+        {
+            yield return new TestCaseData(
+                "ActiveAuctionWithOfferAvailable",
+                new[]
+                {
+                    "ActiveAuctionWithOfferAvailable_files/s-l140_003.jpg",
+                    "ActiveAuctionWithOfferAvailable_files/s-l140_004.jpg",
+                    "ActiveAuctionWithOfferAvailable_files/s-l140.jpg",
+                    "ActiveAuctionWithOfferAvailable_files/s-l140_002.jpg"
+                }
+            );
+
+            yield return new TestCaseData(
+                "ActiveBuyItNowListing",
+                new[]
+                {
+                                "ActiveBuyItNowListing_files/s-l140_004.jpg",
+                                "ActiveBuyItNowListing_files/s-l140_005.jpg",
+                                "ActiveBuyItNowListing_files/s-l140_006.jpg",
+                                "ActiveBuyItNowListing_files/s-l140.jpg",
+                                "ActiveBuyItNowListing_files/s-l140_007.jpg",
+                                "ActiveBuyItNowListing_files/s-l140_003.jpg",
+                                "ActiveBuyItNowListing_files/s-l140_002.jpg"
+                }
+            );
+
+            yield return new TestCaseData(
+                "ActiveBuyNowListingWithOffer",
+                new[]
+                {
+                    "ActiveBuyNowListingWithOffer_files/s-l140_004.jpg",
+                    "ActiveBuyNowListingWithOffer_files/s-l140.jpg",
+                    "ActiveBuyNowListingWithOffer_files/s-l140_005.jpg",
+                    "ActiveBuyNowListingWithOffer_files/s-l140_002.jpg",
+                    "ActiveBuyNowListingWithOffer_files/s-l140_006.jpg",
+                    "ActiveBuyNowListingWithOffer_files/s-l140_003.jpg"
+                }
+            );
+
+            yield return new TestCaseData(
+                "BiddingEndedNoSale",
+                new[]
+                {
+                    "BiddingEndedNoSale_files/s-l140.jpg",
+                    "BiddingEndedNoSale_files/s-l140_005.jpg",
+                    "BiddingEndedNoSale_files/s-l140_003.jpg",
+                    "BiddingEndedNoSale_files/s-l140_004.jpg",
+                    "BiddingEndedNoSale_files/s-l140_002.jpg"
+                }
+            );
+
+
+            yield return new TestCaseData(
+                "SoldBidListing",
+                new[]
+                {
+                    "SoldBidListing_files/s-l140.jpg",
+                    "SoldBidListing_files/s-l140_002.jpg",
+                    "SoldBidListing_files/s-l140_003.jpg"
+                }
+            );
+
+
+            yield return new TestCaseData(
+                "SoldBuyNowListing",
+                new[]
+                {
+                    "SoldBuyNowListing_files/s-l140.jpg",
+                    "SoldBuyNowListing_files/s-l140_007.jpg",
+                    "SoldBuyNowListing_files/s-l140_004.jpg",
+                    "SoldBuyNowListing_files/s-l140_005.jpg",
+                    "SoldBuyNowListing_files/s-l140_006.jpg",
+                    "SoldBuyNowListing_files/s-l140_003.jpg",
+                    "SoldBuyNowListing_files/s-l140_002.jpg"
+                }
+            );
+        }
+
+        [Test, TestCaseSource(nameof(ParseDescriptionTestCases))]
+        public async Task Should_parse_product_descriptionAsync(string testCaseName, string expectedResponse)
+        {
+
+            var dataDir = Path.GetFullPath(Path.Combine(TestContext.CurrentContext.TestDirectory, "../../../Data/Listings"));
+            var descPath = Directory
+                .EnumerateFiles(Path.Combine(dataDir, testCaseName + "_files"), "*_002.htm", SearchOption.TopDirectoryOnly)
+                .FirstOrDefault()
+                ?? throw new FileNotFoundException($"No *_002.htm in {testCaseName}_files");
+
+            var html = await File.ReadAllTextAsync(descPath);
+            var doc = await LoadDocumentAsync(html);
+
+            var parser = (EbayListingParser)_serviceUnderTest;
+            var result = parser.ParseDescription(doc!);
+
+            Assert.That(result.Contains(expectedResponse));
+        }
+
+        private static IEnumerable<object> ParseDescriptionTestCases()
+        {
+            //yield return new TestCaseData("ActiveAuctionWithOfferAvailable", "Bought direct from PlayStation but never opened or used.");
+            yield return new TestCaseData("ActiveBuyItNowListing", "be advised that the PlayStation 5 Pro has been opened and used but has");
+            //yield return new TestCaseData("ActiveBuyNowListingWithOffer", "Console comes with 1 controller, power cable and headset. All fully working");
+            yield return new TestCaseData("BiddingEndedNoSale", "The new PS5 is slimmed down, but it's still just as fast. It's 24% lighter and 30% smaller than the original");
+            yield return new TestCaseData("SoldBidListing", "Mint condition Sony PlayStation 5 BluRay disc edition, 825GB. Full original boxing.Comes with Spiderman Miles Morales");
+            yield return new TestCaseData("SoldBuyNowListing", "Excellent condition, fully working. Items included:- Box- Controller- Power cable - HDMI cable  Feel free to ask any questions");
+        }
+
+        private async Task<IDocument> LoadTestHtmlDocumentAsync(string testCaseName)
+        {
+            var dataDir = Path.GetFullPath(Path.Combine(TestContext.CurrentContext.TestDirectory, "../../../Data/Listings"));
+            var htmlPath = Path.Combine(dataDir, testCaseName + ".htm");
+            var html = await File.ReadAllTextAsync(htmlPath);
+            return await LoadDocumentAsync(html);
+        }
 
         private async Task<IDocument> LoadDocumentAsync(string html)
         {
