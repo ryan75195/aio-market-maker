@@ -67,5 +67,37 @@ namespace AIOMarketMaker.Api.Utils
             var utcDate = localDate.ToUniversalTime();
             return utcDate;
         }
+
+        private static readonly IReadOnlyDictionary<string, string> _symbolToIso =
+       new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+       {
+           ["£"] = "GBP",
+           ["GBP"] = "GBP",
+           ["$"] = "USD",
+           ["US $"] = "USD",
+           ["USD"] = "USD",
+           ["€"] = "EUR",
+           ["EUR"] = "EUR",
+           ["C $"] = "CAD",
+           ["CAD"] = "CAD"
+       };
+
+        /// <summary>
+        /// Map a currency symbol (or code) to its ISO 4217 code.
+        /// Returns null if input is null/empty, or the raw symbol if unknown.
+        /// </summary>
+        public static string ToIso(string symbolPart)
+        {
+            if (string.IsNullOrWhiteSpace(symbolPart))
+                return null;
+
+            symbolPart = symbolPart.Trim();
+
+            if (_symbolToIso.TryGetValue(symbolPart, out var iso))
+                return iso;
+
+            // unknown symbol—just return it
+            return symbolPart;
+        }
     }
 }

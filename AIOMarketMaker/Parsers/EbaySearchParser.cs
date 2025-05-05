@@ -3,6 +3,7 @@ using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Text.RegularExpressions;
 using System.Web;
+using AIOMarketMaker.Api.Utils;
 using AIOMarketMaker.Models.Ebay;
 using AngleSharp.Dom;
 
@@ -170,26 +171,7 @@ namespace AIOMarketMaker.Api.Parsers
                 .ToArray())
                 .Trim();
 
-            if (string.IsNullOrEmpty(symbolPart))
-                return null;
-
-            var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-            {
-                ["£"] = "GBP",
-                ["GBP"] = "GBP",
-                ["$"] = "USD",
-                ["US $"] = "USD",
-                ["USD"] = "USD",
-                ["€"] = "EUR",
-                ["EUR"] = "EUR",
-                ["C $"] = "CAD",
-                ["CAD"] = "CAD"
-            };
-
-            if (map.TryGetValue(symbolPart, out var iso))
-                return iso;
-
-            return symbolPart;
+            return StringParsing.ToIso(symbolPart);
         }
 
         public DateTime? ExtractDate(IElement li)
