@@ -28,35 +28,61 @@ namespace AIOMarketMaker.Controllers
             _logger = logger;
         }
 
-        [Function("ScrapeEbay")]
-        public async Task<HttpResponseData> Run(
-            [HttpTrigger(AuthorizationLevel.Function, "get", Route = "ebay/scrape")]
+        [Function("Search")]
+        public async Task<HttpResponseData> Search(
+            [HttpTrigger(AuthorizationLevel.Function, "get", Route = "ebay/search")]
             HttpRequestData req,
             CancellationToken token)
         {
-            var qs = HttpUtility.ParseQueryString(req.Url.Query);
+            var inputs = HttpUtility.ParseQueryString(req.Url.Query);
 
-            var query = qs["query"];
-            var sold = bool.Parse(qs["sold"]);
-            var daysBack = 365;
-            if (int.TryParse(qs["daysBack"], out var d)) daysBack = d;
+            var query = inputs["query"];
+            var buyingFormatString = inputs["buyingFormat"];
+            var conditionString = inputs["condition"];
 
+
+            var condition = (Condition)Enum.Parse(
+                typeof(Condition),
+                conditionString,
+                ignoreCase: true
+            );
+
+            var buyingFormat = (BuyingFormat)Enum.Parse(
+                typeof(BuyingFormat),
+                buyingFormatString,
+                ignoreCase: true
+            );
+
+            var lowerDateBound = inputs["lowerDateBound"];
+            var upperDateBound = inputs["upperDateBound"];
+            var dateRangeFilter = (lowerDateBound != null && upperDateBound != null) ? 
+                new SearchDateRange(DateTime.Parse(lowerDateBound), DateTime.Parse(upperDateBound)): null;
+
+            var filter = new SearchFilter(dateRangeFilter, buyingFormat, condition);
+
+            var listings = await _scraper.SearchListings(query, filter);
+
+            // 4) Serialize & return
+            var resp = req.CreateResponse(HttpStatusCode.OK);
+            await resp.WriteAsJsonAsync(listings);
+
+            return resp;
+        }
+
+        [Function("Listing")]
+        public async Task<HttpResponseData> Listing(
+    [HttpTrigger(AuthorizationLevel.Function, "get", Route = "ebay/listing")]
+            HttpRequestData req,
+    CancellationToken token)
+        {
+            var inputs = HttpUtility.ParseQueryString(req.Url.Query);
+
+            var listingId = inputs["listingId"];
+
+            var listing = await _scraper.GetItemFromListing(listingId);
 
             var resp = req.CreateResponse(HttpStatusCode.OK);
-            resp.Headers.Add("Content-Type", "application/json; charset=utf-8");
-
-            // Serialize using System.Text.Json
-            var options = new JsonSerializerOptions
-            {
-                PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-                WriteIndented = false
-            };
-
-            //var results = sold ?
-            //    JsonSerializer.Serialize(await _scraper.SearchSoldListings(query, null), options) :
-            //    JsonSerializer.Serialize(await _scraper.SearchActiveListings(query, null), options);
-
-            await resp.WriteStringAsync(null, token);
+            await resp.WriteAsJsonAsync(listing);
 
             return resp;
         }

@@ -6,6 +6,7 @@ using AIOMarketMaker.Models.Ebay;
 using AngleSharp.Dom;
 using AngleSharp.Text;
 using Microsoft.Extensions.Logging;
+using AIOMarketMaker.Api.Utils;
 
 [assembly: InternalsVisibleTo("AIOMarketMaker.Tests")]
 
@@ -48,6 +49,7 @@ namespace AIOMarketMaker.Services
             var description = GetItemDescriptionUrl(document);
             var listingStatus = GetListingStatus(document);
             var purchaseFormat = GetPurchaseFormat(document);
+            var soldDate = GetEndDate(document);
 
             return new ExtractedEbayListing(
                 id: id,
@@ -61,14 +63,31 @@ namespace AIOMarketMaker.Services
                 descriptionSource: description,
                 listingStatus: listingStatus,
                 purchaseFormat: purchaseFormat,
-                SoldDateUtc: null
+                SoldDateUtc: soldDate
             );
         }
 
         internal PurchaseFormat GetPurchaseFormat(IDocument document)
         {
-            //throw new NotImplementedException();
-            return PurchaseFormat.BuyItNowWithBestOffer;
+            var buyingComponentText = document.QuerySelector(".x-buybox-cta").TextContent;
+            if (buyingComponentText.Contains("Submit bid") && buyingComponentText.Contains("Make offer")) 
+            {
+                return PurchaseFormat.AuctionWithBestOffer;
+            }
+            if (buyingComponentText.Contains("Buy it now") && buyingComponentText.Contains("Make offer")) 
+            {
+                return PurchaseFormat.BuyItNowWithBestOffer;
+            }
+            if (buyingComponentText.Contains("Submit bid")) 
+            {
+                return PurchaseFormat.Auction;
+            }
+            if (buyingComponentText.Contains("Buy it now")) 
+            {
+                return PurchaseFormat.BuyItNow;
+            }
+
+            return PurchaseFormat.Unknown;
         }
 
         internal EbayListingStatus GetListingStatus(IDocument document)
@@ -188,6 +207,12 @@ namespace AIOMarketMaker.Services
         internal string GetProductId(IDocument document)
         {
             return document.QuerySelector(".ux-layout-section__textual-display--itemId")?.TextContent.Split(":")[1];
+        }
+
+        internal DateTime? GetEndDate(IDocument document)
+        {
+            var text = document.QuerySelector(".d-statusmessage")?.TextContent;
+            return StringParsing.ParseEndDate(text);
         }
     }
 }

@@ -11,7 +11,7 @@ namespace AIOMarketMaker.Services
     public interface IEbayScraper
     {
         Task<EbayProduct> GetItemFromListing(string itemId);
-        Task<IEnumerable<EbayProductSummary>> SearchListings(string query, SearchFilter filter);
+        Task<IEnumerable<EbayProductSummary>> SearchListings(string query, SearchFilter? filter);
     }
 
     public class EbayScraper : IEbayScraper
@@ -58,43 +58,46 @@ namespace AIOMarketMaker.Services
                 ItemSpecifics: parsedListing.ItemSpecifics,
                 Description: description,
                 Url: urlString,
-                SoldDateUtc: parsedListing.SoldDateUtc,
+                EndDateUtc: parsedListing.SoldDateUtc,
                 ListingStatus: parsedListing.listingStatus,
                 PurchaseFormat: parsedListing.purchaseFormat
             );
         }
 
-        public async Task<IEnumerable<EbayProductSummary>> SearchListings(string query, SearchFilter filter)
+        public async Task<IEnumerable<EbayProductSummary>> SearchListings(string query, SearchFilter? filter)
         {
-            return (filter != null && filter.SoldFilter != null) ? 
+            return (filter != null && filter.SearchDateRange != null) ? 
                 await GetProductsInDateRange(query, filter) : 
-                await GetProductsFromPageAsync(query, 1, filter.SoldFilter != null, filter.Condition, filter.BuyingFormat);
+                await GetProductsFromPageAsync(query, 1, filter.SearchDateRange != null, filter.Condition, filter.BuyingFormat);
         }
 
+        // I need tests :( Move me to my own service and write some unit tests. 
         private async Task<IEnumerable<EbayProductSummary>> GetProductsInDateRange(string query, SearchFilter? filter = null)
         {
             var pageOffset = 1;
             var productList = new List<EbayProductSummary>();
+            var lastPageProducts = new List<EbayProductSummary>();
             var earliestDate = DateTime.UtcNow;
 
-            while (earliestDate > filter.SoldFilter.startDate)
+            while (earliestDate > filter.SearchDateRange.startDate)
             {
-                var products = await GetProductsFromPageAsync(query, pageOffset, filter.SoldFilter != null, filter.Condition, filter.BuyingFormat);
+                var products = await GetProductsFromPageAsync(query, pageOffset, filter.SearchDateRange != null, filter.Condition, filter.BuyingFormat);
 
-                products = products.Where(x => x.SoldDateUtc <= filter.SoldFilter!.endDate && x.SoldDateUtc >= filter.SoldFilter.startDate);
+                products = products.Where(x => x.EndDateUtc <= filter.SearchDateRange!.endDate && x.EndDateUtc >= filter.SearchDateRange.startDate);
 
-                if (products.Count() == 0)
+                if (products.Count() == 0 || products.All(p => lastPageProducts.Any(lp => lp.ListingId == p.ListingId)))
                 {
                     break;
                 }
 
                 var soldDates = products
-                  .Where(p => p.SoldDateUtc.HasValue)
-                  .Select(p => p.SoldDateUtc.Value);
+                  .Where(p => p.EndDateUtc.HasValue)
+                  .Select(p => p.EndDateUtc.Value);
 
                 earliestDate = soldDates.Min();
 
                 productList.AddRange(products);
+                lastPageProducts = products.ToList();
                 pageOffset++;
             }
             return productList;
