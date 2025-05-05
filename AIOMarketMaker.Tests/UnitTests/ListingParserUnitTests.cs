@@ -167,9 +167,9 @@ namespace AIOMarketMaker.Tests.Unit
             yield return new TestCaseData("ActiveAuctionWithOfferAvailable", null);
             yield return new TestCaseData("ActiveBuyItNowListing", null);
             yield return new TestCaseData("ActiveBuyNowListingWithOffer", null);
-            yield return new TestCaseData("BiddingEndedNoSale", new DateTime(2025, 5, 4, 12, 8, 0));
-            yield return new TestCaseData("SoldBidListing", new DateTime(2025, 5, 4, 12, 3, 0));
-            yield return new TestCaseData("SoldBuyNowListing", new DateTime(2025, 5, 4, 11, 21, 0));
+            yield return new TestCaseData("BiddingEndedNoSale", new DateTime(2025, 5, 4, 11, 8, 0));
+            yield return new TestCaseData("SoldBidListing", new DateTime(2025, 5, 4, 11, 3, 0));
+            yield return new TestCaseData("SoldBuyNowListing", new DateTime(2025, 5, 4, 10, 21, 0));
         }
 
         [Test, TestCaseSource(nameof(ParseCurrencyTestCases))]
@@ -372,32 +372,19 @@ namespace AIOMarketMaker.Tests.Unit
             yield return new TestCaseData("SoldBuyNowListing", "Excellent condition, fully working. Items included:- Box- Controller- Power cable - HDMI cable  Feel free to ask any questions");
         }
 
-        //[Test]
-        //public async Task Should_return_end_date_as_utc()
-        //{
-        //    // Arrange
-        //    var doc = await LoadTestHtmlDocumentAsync("ActiveBuyItNowListing");
-        //    var items = doc.QuerySelectorAll("li.s-item[id]:not([id=\"\"])");
+        [Test]
+        public async Task Should_return_end_date_as_utc()
+        {
+            var doc = await LoadTestHtmlDocumentAsync("SoldBidListing");
+            var item = doc.QuerySelector("li.s-item[id]:not([id=\"\"])");
 
-        //    // Act
-        //    var endDates = items
-        //        .Select(parser.ExtractDate)
-        //        .ToList();
+            var parser = (EbayListingParser)_serviceUnderTest;
+            var endDate = parser.GetEndDate(doc);
 
-        //    var parser = (EbayListingParser)_serviceUnderTest;
-        //    var result = parser.ParseDescription(doc!);
-
-        //    // Assert
-        //    Assert.Multiple(() =>
-        //    {
-        //        Assert.That(endDates, Is.Not.Empty,
-        //            "❌ Expected at least one end date to validate");
-
-        //        Assert.That(endDates,
-        //            Is.All.Matches<DateTime>(d => d.Kind == DateTimeKind.Utc),
-        //            "❌ One or more dates were not DateTimeKind.Utc");
-        //    });
-        //}
+            Assert.That(endDate.HasValue, Is.True, "❌ Expected a non-null end date");
+            Assert.That(endDate.Value.Kind, Is.EqualTo(DateTimeKind.Utc),
+                $"❌ Expected DateTimeKind.Utc but got {endDate.Value.Kind}");
+        }
 
         private async Task<IDocument> LoadTestHtmlDocumentAsync(string testCaseName)
         {

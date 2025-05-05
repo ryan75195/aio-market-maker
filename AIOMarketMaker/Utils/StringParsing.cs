@@ -55,16 +55,17 @@ namespace AIOMarketMaker.Api.Utils
             else if (ampm.Equals("AM", StringComparison.OrdinalIgnoreCase) && hour == 12)
                 hour = 0;
 
-            // Build with current year
+            // Build a Local DateTime first
             var now = DateTime.Now;
-            var result = new DateTime(now.Year, monthDt.Month, day, hour, minute, 0, DateTimeKind.Local);
+            var localDate = new DateTime(now.Year, monthDt.Month, day, hour, minute, 0, DateTimeKind.Local);
 
-            // If in the (near) future, assume it was last year
-            if (result > now)
-                result = result.AddYears(-1);
+            // If it parsed into the future, assume last year
+            if (localDate > now)
+                localDate = localDate.AddYears(-1);
 
-            return result;
-
+            // Convert to UTC
+            var utcDate = localDate.ToUniversalTime();
+            return utcDate;
         }
     }
 }
