@@ -184,12 +184,12 @@ namespace AIOMarketMaker.Tests.Unit
 
         private static IEnumerable<object> ParseCurrencyTestCases()
         {
-            yield return new TestCaseData("ActiveAuctionWithOfferAvailable", "£");
-            yield return new TestCaseData("ActiveBuyItNowListing", "£");
-            yield return new TestCaseData("ActiveBuyNowListingWithOffer", "£");
-            yield return new TestCaseData("BiddingEndedNoSale", "£");
-            yield return new TestCaseData("SoldBidListing", "£");
-            yield return new TestCaseData("SoldBuyNowListing", "£");
+            yield return new TestCaseData("ActiveAuctionWithOfferAvailable", "GBP");
+            yield return new TestCaseData("ActiveBuyItNowListing", "GBP");
+            yield return new TestCaseData("ActiveBuyNowListingWithOffer", "GBP");
+            yield return new TestCaseData("BiddingEndedNoSale", "GBP");
+            yield return new TestCaseData("SoldBidListing", "GBP");
+            yield return new TestCaseData("SoldBuyNowListing", "GBP");
         }
 
         [Test, TestCaseSource(nameof(ParseShippingCostTestCases))]

@@ -191,7 +191,8 @@ namespace AIOMarketMaker.Services
 
         internal string GetCurrency(IDocument document)
         {
-            return document.QuerySelector(".x-price-primary")?.TextContent.First().ToString();
+            var symbol = document.QuerySelector(".x-price-primary")?.TextContent.First().ToString();
+            return StringParsing.ToIso(symbol);
         }
 
         internal decimal GetProductPrice(IDocument document)
