@@ -5,6 +5,7 @@ using AIOMarketMaker.Models.Ebay;
 using AngleSharp;
 using AngleSharp.Dom;
 using Microsoft.Extensions.Logging;
+using Microsoft.Playwright;
 
 namespace AIOMarketMaker.Services
 {
@@ -60,7 +61,8 @@ namespace AIOMarketMaker.Services
                 Url: urlString,
                 EndDateUtc: parsedListing.SoldDateUtc,
                 ListingStatus: parsedListing.listingStatus,
-                PurchaseFormat: parsedListing.purchaseFormat
+                PurchaseFormat: parsedListing.purchaseFormat,
+                Location: parsedListing.Location
             );
         }
 

@@ -7,6 +7,7 @@ using AngleSharp.Dom;
 using AngleSharp.Text;
 using Microsoft.Extensions.Logging;
 using AIOMarketMaker.Api.Utils;
+using Microsoft.Playwright;
 
 [assembly: InternalsVisibleTo("AIOMarketMaker.Tests")]
 
@@ -25,7 +26,8 @@ namespace AIOMarketMaker.Services
         PurchaseFormat purchaseFormat,
         string? ItemSpecifics,
         string? descriptionSource,
-        DateTime? SoldDateUtc // Null means it's active
+        DateTime? SoldDateUtc, // Null means it's active
+        string Location
     );
 
     public interface IListingParser
@@ -50,6 +52,7 @@ namespace AIOMarketMaker.Services
             var listingStatus = GetListingStatus(document);
             var purchaseFormat = GetPurchaseFormat(document);
             var soldDate = GetEndDate(document);
+            var location = GetLocation(document);
 
             return new ExtractedEbayListing(
                 id: id,
@@ -63,7 +66,8 @@ namespace AIOMarketMaker.Services
                 descriptionSource: description,
                 listingStatus: listingStatus,
                 purchaseFormat: purchaseFormat,
-                SoldDateUtc: soldDate
+                SoldDateUtc: soldDate,
+                Location: location
             );
         }
 
@@ -214,6 +218,13 @@ namespace AIOMarketMaker.Services
         {
             var text = document.QuerySelector(".d-statusmessage")?.TextContent;
             return StringParsing.ParseEndDate(text);
+        }
+
+        internal string GetLocation(IDocument document)
+        {
+            var locationStr = document.QuerySelector(".ux-labels-values--shipping .ux-textspans--SECONDARY").TextContent;
+            var location = locationStr.Split(":")[1].Trim();
+            return location;
         }
     }
 }
