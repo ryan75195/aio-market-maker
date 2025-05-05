@@ -1,6 +1,7 @@
 ﻿using AIOMarketMaker.Services;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Playwright;
+using AIOMarketMaker.Tests.Utils;
 
 namespace AIOMarketMaker.Tests.Contract
 {
@@ -41,27 +42,8 @@ namespace AIOMarketMaker.Tests.Contract
             var itemId = "135758131788";
 
             var listing = await this._serviceUnderTest.GetItemFromListing(itemId);
-            var validIsoOrSymbols = new[] { "GBP", "$", "£", "€", "USD", "EUR" };
-
-            Assert.Multiple(() =>
-            {
-                // Identity
-                Assert.That(listing, Is.Not.Null, "Listing must not be null");
-                Assert.That(listing.ListingId, Is.EqualTo(itemId), "ID must match");
-                Assert.That(listing.Url, Does.StartWith("https://").And.Contains(itemId));
-
-                // Presence
-                Assert.That(listing.Title, Is.Not.Null.And.Not.Empty);
-                //Assert.That(listing.Condition, Is.Not.Null);
-                Assert.That(listing.Description, Is.Not.Null);
-                Assert.That(listing.ItemSpecifics, Is.Not.Null);
-
-                // Value checks
-                Assert.That(listing.Price, Is.GreaterThan(0));
-                Assert.That(validIsoOrSymbols, Does.Contain(listing.Currency), "Currency should be valid ISO code or known symbol");
-                Assert.That(listing.ShippingCost, Is.GreaterThanOrEqualTo(0));
-                Assert.That(listing.Images, Is.Not.Null.And.Not.Empty);
-            });
+         
+            ListingAssertions.AssertValidActiveListing(listing, itemId);
         }
 
         [Test]
@@ -69,6 +51,7 @@ namespace AIOMarketMaker.Tests.Contract
         {
             var itemId = "256918168190";
             var listing = await this._serviceUnderTest.GetItemFromListing(itemId);
+            ListingAssertions.AssertValidSoldListing(listing, itemId);
         }
     }
 }

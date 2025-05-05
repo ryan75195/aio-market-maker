@@ -1,4 +1,4 @@
-using AIOMarketMaker.Api.Parsers;
+Ôªøusing AIOMarketMaker.Api.Parsers;
 using AIOMarketMaker.Models.Ebay;
 using AIOMarketMaker.Services;
 using AngleSharp;
@@ -10,7 +10,7 @@ using System.Text.RegularExpressions;
 
 namespace AIOMarketMaker.Tests.Unit
 {
-    public class ListingUnitTests
+    public class ListingParserUnitTests
     {
         private ServiceProvider _provider = null!;
         private IListingParser _serviceUnderTest = null!;
@@ -72,6 +72,27 @@ namespace AIOMarketMaker.Tests.Unit
             yield return new TestCaseData("SoldBuyNowListing", "256918168190");
         }
 
+        [Test, TestCaseSource(nameof(ParseTitleTestCases))]
+        public async Task Should_parse_product_title(string testCaseName, string expectedResponse)
+        {
+            var doc = await LoadTestHtmlDocumentAsync(testCaseName);
+            var parser = (EbayListingParser)_serviceUnderTest;
+            var result = parser.GetProductTitle(doc!);
+
+            Assert.That(result, Is.EqualTo(expectedResponse));
+        }
+
+        private static IEnumerable<object> ParseTitleTestCases()
+        {
+            yield return new TestCaseData("ActiveAuctionListing", "Sony PS5 Blu-Ray Edition Console - White");
+            yield return new TestCaseData("ActiveAuctionWithOfferAvailable", "SONY PlayStation 5 Slim Digital Edition 1TB White Game Console - PS5");
+            yield return new TestCaseData("ActiveBuyItNowListing", "PlayStation 5 Pro, 2TB,With Disc Drive, Controller & Charging Doc.");
+            yield return new TestCaseData("ActiveBuyNowListingWithOffer", "Sony PlayStation 5 Digital Edition 825GB-WHITE Console With Headset");
+            yield return new TestCaseData("BiddingEndedNoSale", "PlayStation 5 Digital Edition Slim");
+            yield return new TestCaseData("SoldBidListing", "Sony PlayStation 5 Disc Edition Console 825GB Boxed with 2 Games ");
+            yield return new TestCaseData("SoldBuyNowListing", "PlayStation 5 Slim Digital Edition Console");
+        }
+
 
         [Test, TestCaseSource(nameof(ParseStatusTestCases))]
         public async Task Should_parse_listing_status(string testCaseName, EbayListingStatus expectedResponse)
@@ -113,6 +134,44 @@ namespace AIOMarketMaker.Tests.Unit
             yield return new TestCaseData("SoldBuyNowListing", 265.92d);
         }
 
+        [Test, TestCaseSource(nameof(PurchaseFormatTestCases))]
+        public async Task Should_parse_purchase_format(string testCaseName, PurchaseFormat expectedResponse)
+        {
+            var doc = await LoadTestHtmlDocumentAsync(testCaseName);
+            var parser = (EbayListingParser)_serviceUnderTest;
+            var result = parser.GetPurchaseFormat(doc!);
+
+            Assert.That(result, Is.EqualTo(expectedResponse));
+        }
+
+        private static IEnumerable<object> PurchaseFormatTestCases()
+        {
+            yield return new TestCaseData("ActiveAuctionListing", PurchaseFormat.Auction);
+            yield return new TestCaseData("ActiveAuctionWithOfferAvailable", PurchaseFormat.AuctionWithBestOffer);
+            yield return new TestCaseData("ActiveBuyItNowListing", PurchaseFormat.BuyItNow);
+            yield return new TestCaseData("ActiveBuyNowListingWithOffer", PurchaseFormat.BuyItNowWithBestOffer);
+        }
+
+        [Test, TestCaseSource(nameof(ParseEndDateTestCases))]
+        public async Task Should_parse_end_date(string testCaseName, DateTime? expectedResponse)
+        {
+            var doc = await LoadTestHtmlDocumentAsync(testCaseName);
+            var parser = (EbayListingParser)_serviceUnderTest;
+            var result = parser.GetEndDate(doc!);
+
+            Assert.That(result, Is.EqualTo(expectedResponse));
+        }
+
+        private static IEnumerable<object> ParseEndDateTestCases()
+        {
+            yield return new TestCaseData("ActiveAuctionWithOfferAvailable", null);
+            yield return new TestCaseData("ActiveBuyItNowListing", null);
+            yield return new TestCaseData("ActiveBuyNowListingWithOffer", null);
+            yield return new TestCaseData("BiddingEndedNoSale", new DateTime(2025, 5, 4, 12, 8, 0));
+            yield return new TestCaseData("SoldBidListing", new DateTime(2025, 5, 4, 12, 3, 0));
+            yield return new TestCaseData("SoldBuyNowListing", new DateTime(2025, 5, 4, 11, 21, 0));
+        }
+
         [Test, TestCaseSource(nameof(ParseCurrencyTestCases))]
         public async Task Should_parse_product_currency(string testCaseName, string expectedResponse)
         {
@@ -125,16 +184,16 @@ namespace AIOMarketMaker.Tests.Unit
 
         private static IEnumerable<object> ParseCurrencyTestCases()
         {
-            yield return new TestCaseData("ActiveAuctionWithOfferAvailable", "£");
-            yield return new TestCaseData("ActiveBuyItNowListing", "£");
-            yield return new TestCaseData("ActiveBuyNowListingWithOffer", "£");
-            yield return new TestCaseData("BiddingEndedNoSale", "£");
-            yield return new TestCaseData("SoldBidListing", "£");
-            yield return new TestCaseData("SoldBuyNowListing", "£");
+            yield return new TestCaseData("ActiveAuctionWithOfferAvailable", "¬£");
+            yield return new TestCaseData("ActiveBuyItNowListing", "¬£");
+            yield return new TestCaseData("ActiveBuyNowListingWithOffer", "¬£");
+            yield return new TestCaseData("BiddingEndedNoSale", "¬£");
+            yield return new TestCaseData("SoldBidListing", "¬£");
+            yield return new TestCaseData("SoldBuyNowListing", "¬£");
         }
 
         [Test, TestCaseSource(nameof(ParseShippingCostTestCases))]
-        public async Task Should_parse_product_shipping_costAsync(string testCaseName, decimal expectedResponse)
+        public async Task Should_parse_product_shipping_cost(string testCaseName, decimal expectedResponse)
         {
             var doc = await LoadTestHtmlDocumentAsync(testCaseName);
             var parser = (EbayListingParser)_serviceUnderTest;
@@ -154,7 +213,7 @@ namespace AIOMarketMaker.Tests.Unit
         }
 
         [Test, TestCaseSource(nameof(ParseConditionTestCases))]
-        public async Task Should_parse_product_conditionAsync(string testCaseName, Condition expectedResponse)
+        public async Task Should_parse_product_condition(string testCaseName, Condition expectedResponse)
         {
             var doc = await LoadTestHtmlDocumentAsync(testCaseName);
             var parser = (EbayListingParser)_serviceUnderTest;
@@ -187,7 +246,7 @@ namespace AIOMarketMaker.Tests.Unit
         private static IEnumerable<object> ParseSpecificsTestCases()
         {
             yield return new TestCaseData("ActiveAuctionWithOfferAvailable", "ConditionNew: A brand-new, unused, unopened and undamaged item in original retail packaging");
-            yield return new TestCaseData("ActiveBuyItNowListing", "ConditionOpened ñ never used: An item in excellent, new condition with no wear. The item may be missing the");
+            yield return new TestCaseData("ActiveBuyItNowListing", "ConditionOpened ‚Äì never used: An item in excellent, new condition with no wear. The item may be missing the");
             yield return new TestCaseData("ActiveBuyNowListingWithOffer", "ConditionUsed: An item that has been previously used. The item may have some signs of cosmetic wear, but is");
             yield return new TestCaseData("BiddingEndedNoSale", "ConditionNew: A brand-new, unused, unopened and undamaged item in original retail packaging");
             yield return new TestCaseData("SoldBidListing", "ConditionUsed: An item that has been previously used. The item may have some signs of cosmetic wear, but is");
@@ -285,7 +344,7 @@ namespace AIOMarketMaker.Tests.Unit
         }
 
         [Test, TestCaseSource(nameof(ParseDescriptionTestCases))]
-        public async Task Should_parse_product_descriptionAsync(string testCaseName, string expectedResponse)
+        public async Task Should_parse_product_description(string testCaseName, string expectedResponse)
         {
 
             var dataDir = Path.GetFullPath(Path.Combine(TestContext.CurrentContext.TestDirectory, "../../../Data/Listings"));
@@ -308,10 +367,37 @@ namespace AIOMarketMaker.Tests.Unit
             //yield return new TestCaseData("ActiveAuctionWithOfferAvailable", "Bought direct from PlayStation but never opened or used.");
             yield return new TestCaseData("ActiveBuyItNowListing", "be advised that the PlayStation 5 Pro has been opened and used but has");
             //yield return new TestCaseData("ActiveBuyNowListingWithOffer", "Console comes with 1 controller, power cable and headset. All fully working");
-            yield return new TestCaseData("BiddingEndedNoSale", "The†new†PS5†is†slimmed†down,†but†it's†still†just†as†fast.†It's†24%†lighter†and†30%†smaller†than†the†original");
+            yield return new TestCaseData("BiddingEndedNoSale", "The¬†new¬†PS5¬†is¬†slimmed¬†down,¬†but¬†it's¬†still¬†just¬†as¬†fast.¬†It's¬†24%¬†lighter¬†and¬†30%¬†smaller¬†than¬†the¬†original");
             yield return new TestCaseData("SoldBidListing", "Mint condition Sony PlayStation 5 BluRay disc edition, 825GB. Full original boxing.Comes with Spiderman Miles Morales");
-            yield return new TestCaseData("SoldBuyNowListing", "Excellent†condition,†fully†working.†Items†included:-†Box-†Controller-†Power†cable†-†HDMI†cable††Feel†free†to†ask†any†questions");
+            yield return new TestCaseData("SoldBuyNowListing", "Excellent¬†condition,¬†fully¬†working.¬†Items¬†included:-¬†Box-¬†Controller-¬†Power¬†cable¬†-¬†HDMI¬†cable¬†¬†Feel¬†free¬†to¬†ask¬†any¬†questions");
         }
+
+        //[Test]
+        //public async Task Should_return_end_date_as_utc()
+        //{
+        //    // Arrange
+        //    var doc = await LoadTestHtmlDocumentAsync("ActiveBuyItNowListing");
+        //    var items = doc.QuerySelectorAll("li.s-item[id]:not([id=\"\"])");
+
+        //    // Act
+        //    var endDates = items
+        //        .Select(parser.ExtractDate)
+        //        .ToList();
+
+        //    var parser = (EbayListingParser)_serviceUnderTest;
+        //    var result = parser.ParseDescription(doc!);
+
+        //    // Assert
+        //    Assert.Multiple(() =>
+        //    {
+        //        Assert.That(endDates, Is.Not.Empty,
+        //            "‚ùå Expected at least one end date to validate");
+
+        //        Assert.That(endDates,
+        //            Is.All.Matches<DateTime>(d => d.Kind == DateTimeKind.Utc),
+        //            "‚ùå One or more dates were not DateTimeKind.Utc");
+        //    });
+        //}
 
         private async Task<IDocument> LoadTestHtmlDocumentAsync(string testCaseName)
         {

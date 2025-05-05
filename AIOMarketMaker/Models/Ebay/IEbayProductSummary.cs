@@ -17,6 +17,6 @@ namespace AIOMarketMaker.Models.Ebay
            BuyingFormat BuyingFormat,
            Condition Condition,
            IEnumerable<string> Images,
-           DateTime? SoldDateUtc
+           DateTime? EndDateUtc
     ) : IEbayProductSummary;
 }

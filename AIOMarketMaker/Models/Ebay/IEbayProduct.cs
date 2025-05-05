@@ -1,5 +1,8 @@
-﻿namespace AIOMarketMaker.Models.Ebay
+﻿using System.Text.Json.Serialization;
+
+namespace AIOMarketMaker.Models.Ebay
 {
+    [JsonConverter(typeof(JsonStringEnumConverter))]
     public enum EbayListingStatus
     {
         Active,
@@ -8,15 +11,14 @@
         Unknown
     }
 
+    [JsonConverter(typeof(JsonStringEnumConverter))]
     public enum PurchaseFormat
     {
         Auction,
         AuctionWithBestOffer,
         BuyItNow,
         BuyItNowWithBestOffer,
-        SoldByBid,
-        SoldByBuyNow,
-        AuctionEndedNoSale
+        Unknown
     }
 
     public record EbayProduct(
@@ -32,6 +34,6 @@
         PurchaseFormat PurchaseFormat,
         string? Description,
         string? ItemSpecifics, // make a dict
-        DateTime? SoldDateUtc 
+        DateTime? EndDateUtc 
     ) : IEbayProductSummary;
 }

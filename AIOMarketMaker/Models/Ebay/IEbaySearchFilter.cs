@@ -1,5 +1,8 @@
-﻿public record SoldRange(DateTime startDate, DateTime endDate);
+﻿using System.Text.Json.Serialization;
 
+public record SearchDateRange(DateTime startDate, DateTime endDate);
+
+[JsonConverter(typeof(JsonStringEnumConverter))]
 public enum BuyingFormat
 {
     BUY_NOW,
@@ -8,6 +11,7 @@ public enum BuyingFormat
     NULL
 }
 
+[JsonConverter(typeof(JsonStringEnumConverter))]
 public enum Condition
 {
     NEW,
@@ -20,9 +24,8 @@ public enum Condition
     GOOD_REFURBISHED,
 }
 
-public record SearchFilter
-{
-    public SoldRange SoldFilter { get; set; }
-    public BuyingFormat BuyingFormat { get; init; }
-    public Condition Condition { get; init; }
-}
+public record SearchFilter(
+    SearchDateRange SearchDateRange,
+    BuyingFormat BuyingFormat,
+    Condition Condition
+);
