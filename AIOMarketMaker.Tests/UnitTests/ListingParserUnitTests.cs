@@ -192,6 +192,28 @@ namespace AIOMarketMaker.Tests.Unit
             yield return new TestCaseData("SoldBuyNowListing", "GBP");
         }
 
+
+        [Test, TestCaseSource(nameof(ParseLocationTestCases))]
+        public async Task Should_parse_product_location(string testCaseName, string expectedResponse)
+        {
+            var doc = await LoadTestHtmlDocumentAsync(testCaseName);
+            var parser = (EbayListingParser)_serviceUnderTest;
+            var result = parser.GetLocation(doc!);
+
+            Assert.That(result, Is.EqualTo(expectedResponse));
+        }
+
+        private static IEnumerable<object> ParseLocationTestCases()
+        {
+            yield return new TestCaseData("ActiveAuctionListing", "Sheffield, United Kingdom");
+            yield return new TestCaseData("ActiveAuctionWithOfferAvailable", "Worthing, United Kingdom");
+            yield return new TestCaseData("ActiveBuyItNowListing", "Leek, United Kingdom");
+            yield return new TestCaseData("ActiveBuyNowListingWithOffer", "Skelmersdale, United Kingdom");
+            yield return new TestCaseData("BiddingEndedNoSale", "Croydon, United Kingdom");
+            yield return new TestCaseData("SoldBidListing", "London, United Kingdom");
+            yield return new TestCaseData("SoldBuyNowListing", "Preston, United Kingdom");
+        }
+
         [Test, TestCaseSource(nameof(ParseShippingCostTestCases))]
         public async Task Should_parse_product_shipping_cost(string testCaseName, decimal expectedResponse)
         {

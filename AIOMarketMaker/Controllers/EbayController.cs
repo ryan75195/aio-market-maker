@@ -9,6 +9,8 @@ using Microsoft.Azure.Functions.Worker.Http;
 using Microsoft.Extensions.Logging;
 using AIOMarketMaker.Services;
 using System.Text.Json;
+using System.Text.Json.Serialization;
+using System.Reflection;
 
 namespace AIOMarketMaker.Controllers
 {
@@ -64,8 +66,16 @@ namespace AIOMarketMaker.Controllers
 
             // 4) Serialize & return
             var resp = req.CreateResponse(HttpStatusCode.OK);
-            await resp.WriteAsJsonAsync(listings);
+            var options = new JsonSerializerOptions
+            {
+                PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+                DictionaryKeyPolicy = JsonNamingPolicy.CamelCase,
+                DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
+            };
 
+            // serialize with camelCase
+            var json = JsonSerializer.Serialize(listings, options);
+            await resp.WriteStringAsync(json);
             return resp;
         }
 
@@ -78,13 +88,21 @@ namespace AIOMarketMaker.Controllers
             var inputs = HttpUtility.ParseQueryString(req.Url.Query);
 
             var listingId = inputs["listingId"];
-
-            var listing = await _scraper.GetItemFromListing(listingId);
-
             var resp = req.CreateResponse(HttpStatusCode.OK);
-            await resp.WriteAsJsonAsync(listing);
+            var listing = await _scraper.GetItemFromListing(listingId);
+            var options = new JsonSerializerOptions
+            {
+                PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+                DictionaryKeyPolicy = JsonNamingPolicy.CamelCase,
+                DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
+            };
+
+            // serialize with camelCase
+            var json = JsonSerializer.Serialize(listing, options);
+            await resp.WriteStringAsync(json);
 
             return resp;
+
         }
     }
 }

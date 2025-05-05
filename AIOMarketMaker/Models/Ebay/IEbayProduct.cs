@@ -34,6 +34,7 @@ namespace AIOMarketMaker.Models.Ebay
         PurchaseFormat PurchaseFormat,
         string? Description,
         string? ItemSpecifics, // make a dict
-        DateTime? EndDateUtc 
+        DateTime? EndDateUtc,
+        string Location
     ) : IEbayProductSummary;
 }
