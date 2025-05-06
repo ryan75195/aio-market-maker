@@ -116,7 +116,15 @@ namespace AIOMarketMaker.Services
         public string ParseDescription(IDocument document)
         {
             var node = document.QuerySelector(".x-item-description-child");
-            return node?.TextContent ?? string.Empty;
+            var text = node?.TextContent ?? string.Empty;
+
+            text = text.Replace('\u00A0', ' ');
+
+            text = System.Text.RegularExpressions.Regex
+                .Replace(text, @"\s+", " ")
+                .Trim();
+
+            return text;
         }
 
         internal string? GetItemDescriptionUrl(IDocument document)
