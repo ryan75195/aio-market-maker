@@ -381,7 +381,7 @@ namespace AIOMarketMaker.Tests.Unit
             var parser = (EbayListingParser)_serviceUnderTest;
             var result = parser.ParseDescription(doc!);
 
-            Assert.That(result.Contains(expectedResponse));
+            Assert.That(result, Does.Contain(expectedResponse));
         }
 
         private static IEnumerable<object> ParseDescriptionTestCases()
@@ -389,9 +389,9 @@ namespace AIOMarketMaker.Tests.Unit
             //yield return new TestCaseData("ActiveAuctionWithOfferAvailable", "Bought direct from PlayStation but never opened or used.");
             yield return new TestCaseData("ActiveBuyItNowListing", "be advised that the PlayStation 5 Pro has been opened and used but has");
             //yield return new TestCaseData("ActiveBuyNowListingWithOffer", "Console comes with 1 controller, power cable and headset. All fully working");
-            yield return new TestCaseData("BiddingEndedNoSale", "The new PS5 is slimmed down, but it's still just as fast. It's 24% lighter and 30% smaller than the original");
+            yield return new TestCaseData("BiddingEndedNoSale", "The new PS5 is slimmed down, but it's still just as fast. It's 24% lighter and 30% smaller than the original");
             yield return new TestCaseData("SoldBidListing", "Mint condition Sony PlayStation 5 BluRay disc edition, 825GB. Full original boxing.Comes with Spiderman Miles Morales");
-            yield return new TestCaseData("SoldBuyNowListing", "Excellent condition, fully working. Items included:- Box- Controller- Power cable - HDMI cable  Feel free to ask any questions");
+            yield return new TestCaseData("SoldBuyNowListing", "Excellent condition, fully working. Items included:- Box- Controller- Power cable - HDMI cable Feel free to ask any questions.");
         }
 
         [Test]
@@ -406,6 +406,23 @@ namespace AIOMarketMaker.Tests.Unit
             Assert.That(endDate.HasValue, Is.True, "❌ Expected a non-null end date");
             Assert.That(endDate.Value.Kind, Is.EqualTo(DateTimeKind.Utc),
                 $"❌ Expected DateTimeKind.Utc but got {endDate.Value.Kind}");
+        }
+
+        [Test]
+        public async Task Should_remove_nbsp_from_description()
+        {
+            var html = @"
+                <div class=""x-item-description-child"">
+                  First line&nbsp;with NBSP
+                  <p>Second&nbsp;paragraph</p>
+                </div>";
+
+            var document = await LoadDocumentAsync(html);
+            var parser = (EbayListingParser)_serviceUnderTest;
+            var result = parser.ParseDescription(document);
+
+            Assert.That(result, Does.Not.Contain("\u00A0"),
+                "Parsed description should not contain non‑breaking spaces");
         }
 
         private async Task<IDocument> LoadTestHtmlDocumentAsync(string testCaseName)
