@@ -11,6 +11,8 @@ using AIOMarketMaker.Services;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Reflection;
+using AngleSharp.Dom;
+using AIOMarketMaker.Models.Ebay;
 
 namespace AIOMarketMaker.Controllers
 {
@@ -102,7 +104,52 @@ namespace AIOMarketMaker.Controllers
             await resp.WriteStringAsync(json);
 
             return resp;
+        }
 
+        [Function("ListingsBatch")]
+        public async Task<HttpResponseData> ListingsBatch([HttpTrigger(AuthorizationLevel.Function, "get", Route = "ebay/listings")] HttpRequestData req)
+        {
+            var idsParam = HttpUtility.ParseQueryString(req.Url.Query)["listingIds"];
+            var ids = idsParam?.Split(',', StringSplitOptions.RemoveEmptyEntries)
+                             .ToArray();
+            if (ids == null || ids.Length == 0)
+                return req.CreateResponse(HttpStatusCode.BadRequest);
+
+            // 1) Start all fetch tasks in parallel
+            var fetchTasks = ids.Select(async id =>
+            {
+                try
+                {
+                    var item = await _scraper.GetItemFromListing(id);
+                    return (Success: true, Item: item, Id: id, Error: (string)null);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning("Failed listing {Id}: {Msg}", id, ex.Message);
+                    return (Success: false, Item: (EbayProduct)null, Id: id, Error: ex.Message);
+                }
+            }).ToArray();
+
+            // 2) Await all of them
+            var fetchResults = await Task.WhenAll(fetchTasks);
+
+            // 3) Collect only the successful ones (or propagate errors as you like)
+            var listings = fetchResults
+                .Where(r => r.Success)
+                .Select(r => r.Item)
+                .ToList();
+
+            var resp = req.CreateResponse(HttpStatusCode.OK);
+            var options = new JsonSerializerOptions
+            {
+                PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+                DictionaryKeyPolicy = JsonNamingPolicy.CamelCase,
+                DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
+            };
+
+            var json = JsonSerializer.Serialize(listings, options);
+            await resp.WriteStringAsync(json);
+            return resp;
         }
     }
 }
