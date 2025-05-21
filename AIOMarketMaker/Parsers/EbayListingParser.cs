@@ -7,7 +7,6 @@ using AngleSharp.Dom;
 using AngleSharp.Text;
 using Microsoft.Extensions.Logging;
 using AIOMarketMaker.Api.Utils;
-using Microsoft.Playwright;
 
 [assembly: InternalsVisibleTo("AIOMarketMaker.Tests")]
 

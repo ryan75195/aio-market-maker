@@ -1,75 +1,99 @@
 ﻿// Services/EbayScraper.cs
 using AIOMarketMaker.Api.Parsers;
+using AIOMarketMaker.Api.Services;
 using AIOMarketMaker.Models;
 using AIOMarketMaker.Models.Ebay;
 using AngleSharp;
 using AngleSharp.Dom;
 using Microsoft.Extensions.Logging;
-using Microsoft.Playwright;
+using ScraperWorker.Services;
+using System.Data.SqlTypes;
 
 namespace AIOMarketMaker.Services
 {
     public interface IEbayScraper
     {
-        Task<EbayProduct> GetItemFromListing(string itemId);
+        Task<IEnumerable<EbayProduct>> GetItemsFromListings(string[] itemIds);
         Task<IEnumerable<EbayProductSummary>> SearchListings(string query, SearchFilter? filter);
     }
 
     public class EbayScraper : IEbayScraper
     {
         private readonly IEbayUrlBuilder _url;
-        private readonly IHtmlFetcher _fetcher;
+        private readonly IWebscraperClient _fetcher;
         private readonly IListingParser _listingParser;
+        private readonly ILogger<EbayScraper> _logger;
         private readonly ISearchParser _searchParser;
+        private readonly IJobRepository _jobRepository;
 
 
         public EbayScraper(
             IEbayUrlBuilder url,
-            IHtmlFetcher fetcher,
+            IWebscraperClient fetcher,
             ISearchParser searchParser,
             IListingParser listingParser,
+            IJobRepository jobRepository,
             ILogger<EbayScraper> log)
         {
             _url = url;
             _fetcher = fetcher;
             _searchParser = searchParser;
             _listingParser = listingParser;
-
+            _jobRepository = jobRepository;
+            _logger = log;
         }
 
-        public async Task<EbayProduct> GetItemFromListing(string itemId)
+        public async Task<IEnumerable<EbayProduct>> GetItemsFromListings(string[] itemIds)
         {
-            var urlString = _url.BuildListingUrl(itemId);
-            var page = await _fetcher.GetStringAsync(urlString);
-            var doc = await LoadDocumentAsync(page);
+            var results = new List<EbayProduct>();
+            var urls = itemIds.Select(_url.BuildListingUrl);
+            var job = await _fetcher.NewJobAsync(urls);
+            var jobId = job.JobId;
 
-            var parsedListing = _listingParser.ParseProductListing(doc);
-            var descriptionHtml = await _fetcher.GetStringAsync(parsedListing.descriptionSource);
-            var descriptionDoc = await LoadDocumentAsync(descriptionHtml);
-            var description = _listingParser.ParseDescription(descriptionDoc);
+            var jobStatus = JobStatusType.Pending;
+            while (jobStatus != JobStatusType.Success && jobStatus != JobStatusType.Failure)
+            {
+                var currentStatus = await _fetcher.GetStatusAsync(jobId);
+                _logger.LogInformation(currentStatus?.ToLogString());
+                jobStatus = currentStatus.Status;
+                await Task.Delay(1000);
+            }
 
-            return new EbayProduct(
-                ListingId: parsedListing.id,
-                Title: parsedListing.title,
-                Price: parsedListing.price,
-                Currency: parsedListing.currency,
-                ShippingCost: parsedListing.shippingCost,
-                Condition: parsedListing.Condition,
-                Images: parsedListing.images,
-                ItemSpecifics: parsedListing.ItemSpecifics,
-                Description: description,
-                Url: urlString,
-                EndDateUtc: parsedListing.SoldDateUtc,
-                ListingStatus: parsedListing.listingStatus,
-                PurchaseFormat: parsedListing.purchaseFormat,
-                Location: parsedListing.Location
-            );
+            var resultMetadata = await _fetcher.GetResultsAsync(jobId);
+            foreach (var result in resultMetadata)
+            {
+                var downloadLink = result.BlobUri;
+                var html = await _jobRepository.GetFileContentsAsync(jobId, downloadLink, new CancellationToken());
+                var doc = await LoadDocumentAsync(html);
+                var parsedListing = _listingParser.ParseProductListing(doc);
+                var descriptionHtml = ""; //await _fetcher.GetStringAsync(parsedListing.descriptionSource);
+                var descriptionDoc = await LoadDocumentAsync(descriptionHtml);
+                var description = "foo"; // _listingParser.ParseDescription(descriptionDoc);
+
+                results.Add(new EbayProduct(
+                    ListingId: parsedListing.id,
+                    Title: parsedListing.title,
+                    Price: parsedListing.price,
+                    Currency: parsedListing.currency,
+                    ShippingCost: parsedListing.shippingCost,
+                    Condition: parsedListing.Condition,
+                    Images: parsedListing.images,
+                    ItemSpecifics: parsedListing.ItemSpecifics,
+                    Description: description,
+                    Url: result.Url,
+                    EndDateUtc: parsedListing.SoldDateUtc,
+                    ListingStatus: parsedListing.listingStatus,
+                    PurchaseFormat: parsedListing.purchaseFormat,
+                    Location: parsedListing.Location
+                ));
+            }
+            return results;
         }
 
         public async Task<IEnumerable<EbayProductSummary>> SearchListings(string query, SearchFilter? filter)
         {
-            return (filter != null && filter.SearchDateRange != null) ? 
-                await GetProductsInDateRange(query, filter) : 
+            return (filter != null && filter.SearchDateRange != null) ?
+                await GetProductsInDateRange(query, filter) :
                 await GetProductsFromPageAsync(query, 1, filter.SearchDateRange != null, filter.Condition, filter.BuyingFormat);
         }
 
@@ -108,7 +132,7 @@ namespace AIOMarketMaker.Services
         private async Task<IEnumerable<EbayProductSummary>> GetProductsFromPageAsync(string query, int pageNumber, bool sold, Condition condition, BuyingFormat buyingFormat)
         {
             var urlString = _url.BuildSearchUrl(query, sold, pageNumber, condition, buyingFormat);
-            var page = await _fetcher.GetStringAsync(urlString);
+            var page = await _fetcher.GetPageHtmlAsync(urlString);
             var doc = await LoadDocumentAsync(page);
             var products = _searchParser.ParseSearchResults(doc);
             return products.OfType<EbayProductSummary>().ToList();

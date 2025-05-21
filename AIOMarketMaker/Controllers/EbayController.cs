@@ -19,16 +19,13 @@ namespace AIOMarketMaker.Controllers
     public class EbayController
     {
         private readonly IEbayScraper _scraper;
-        private readonly IHtmlFetcher _fetcher;
         private readonly ILogger<EbayController> _logger;
 
         public EbayController(
             IEbayScraper scraper,
-            IHtmlFetcher fetcher,
             ILogger<EbayController> logger)
         {
             _scraper = scraper;
-            _fetcher = fetcher;
             _logger = logger;
         }
 
@@ -91,7 +88,7 @@ namespace AIOMarketMaker.Controllers
 
             var listingId = inputs["listingId"];
             var resp = req.CreateResponse(HttpStatusCode.OK);
-            var listing = await _scraper.GetItemFromListing(listingId);
+            var listing = await _scraper.GetItemsFromListings([listingId]);
             var options = new JsonSerializerOptions
             {
                 PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
@@ -115,29 +112,7 @@ namespace AIOMarketMaker.Controllers
             if (ids == null || ids.Length == 0)
                 return req.CreateResponse(HttpStatusCode.BadRequest);
 
-            // 1) Start all fetch tasks in parallel
-            var fetchTasks = ids.Select(async id =>
-            {
-                try
-                {
-                    var item = await _scraper.GetItemFromListing(id);
-                    return (Success: true, Item: item, Id: id, Error: (string)null);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning("Failed listing {Id}: {Msg}", id, ex.Message);
-                    return (Success: false, Item: (EbayProduct)null, Id: id, Error: ex.Message);
-                }
-            }).ToArray();
-
-            // 2) Await all of them
-            var fetchResults = await Task.WhenAll(fetchTasks);
-
-            // 3) Collect only the successful ones (or propagate errors as you like)
-            var listings = fetchResults
-                .Where(r => r.Success)
-                .Select(r => r.Item)
-                .ToList();
+            var fetchResults = await _scraper.GetItemsFromListings(ids);
 
             var resp = req.CreateResponse(HttpStatusCode.OK);
             var options = new JsonSerializerOptions
@@ -147,7 +122,7 @@ namespace AIOMarketMaker.Controllers
                 DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
             };
 
-            var json = JsonSerializer.Serialize(listings, options);
+            var json = JsonSerializer.Serialize(fetchResults, options);
             await resp.WriteStringAsync(json);
             return resp;
         }

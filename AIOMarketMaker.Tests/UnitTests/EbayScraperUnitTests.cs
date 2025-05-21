@@ -1,13 +1,12 @@
 ﻿using AIOMarketMaker.Api.Parsers;
-using AIOMarketMaker.Models.Ebay;
+using AIOMarketMaker.Api.Services;
 using AIOMarketMaker.Services;
 using AIOMarketMaker.Tests.Utils;
 using AngleSharp;
 using AngleSharp.Dom;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Playwright;
 using Moq;
-using System.Reflection;
+using ScraperWorker.Services;
 using System.Text.RegularExpressions;
 
 namespace AIOMarketMaker.Tests.Unit
@@ -17,7 +16,8 @@ namespace AIOMarketMaker.Tests.Unit
         private ServiceProvider _provider = null!;
         private IEbayScraper _serviceUnderTest = null!;
         private IEbayUrlBuilder _urlBuilder;
-        private Mock<IHtmlFetcher> _mockFetcher;
+        private Mock<IWebscraperClient> _mockFetcher;
+        private Mock<IJobRepository> _mockJobRepository;
 
         public string NormalizeWhitespace(string s) => Regex.Replace(s, @"\s+", " ").Trim();
 
@@ -31,14 +31,18 @@ namespace AIOMarketMaker.Tests.Unit
             services.AddSingleton<IListingParser, EbayListingParser>();
             services.AddSingleton<IEbayScraper, EbayScraper>();
             services.AddSingleton<IEbayUrlBuilder, EbayUrlBuilder>();
+            //services.AddSingleton<TableServiceClient>();
+            //services.AddSingleton<BlobServiceClient>();
 
-            _mockFetcher = new Mock<IHtmlFetcher>();
-            services.AddSingleton<IHtmlFetcher>(_mockFetcher.Object);
+            _mockFetcher = new Mock<IWebscraperClient>();
+            _mockJobRepository = new Mock<IJobRepository>();
+
+            services.AddSingleton<IWebscraperClient>(_mockFetcher.Object);
+            services.AddSingleton<IJobRepository>(_mockJobRepository.Object);
 
             _provider = services.BuildServiceProvider();
             _serviceUnderTest = _provider.GetRequiredService<IEbayScraper>();
             _urlBuilder = _provider.GetRequiredService<IEbayUrlBuilder>();
-
         }
 
         [TearDown]
@@ -47,10 +51,6 @@ namespace AIOMarketMaker.Tests.Unit
             try
             {
                 await _provider.DisposeAsync();
-            }
-            catch (PlaywrightException ex)
-            {
-                Console.WriteLine($"Playwright exception during teardown: {ex.Message}");
             }
             catch (Exception ex)
             {
@@ -67,15 +67,27 @@ namespace AIOMarketMaker.Tests.Unit
             var id = "306278488042";
             var url = _urlBuilder.BuildListingUrl(id);
 
-            var descriptionHtml = "<div class=\"x-item-description-child\">summy description text</div>";
+            var descriptionHtml = "<div class=\"x-item-description-child\">dummy description text</div>";
+
+            this._mockFetcher
+                .Setup(x => x.NewJobAsync(It.IsAny<IEnumerable<string>>(), It.IsAny<IEnumerable<object>>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new StartResponse(id));
+
+            this._mockFetcher
+                .Setup(x => x.GetStatusAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new JobEntity(id, DateTime.UtcNow, JobStatusType.Success, 5, 5, 5, 0));
+
+            this._mockFetcher
+                .Setup(x => x.GetResultsAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new List<JobItemEntity> { new JobItemEntity(id, JobStatusType.Success, url, DateTime.Now, "www.dummybloburl.com", "") } );
 
             // stub the description fetch (matches any URL)
-            Stub_ReturnsAsync(descriptionHtml);
-            Stub_ReturnsAsync(html, url);
+            //Stub_ReturnsAsync(descriptionHtml);
+            Stub_ReturnsAsync(html);
 
-            var result = await _serviceUnderTest.GetItemFromListing(id);
+            var result = await _serviceUnderTest.GetItemsFromListings([id]);
 
-            ListingAssertions.AssertValidActiveListing(result, id);
+            ListingAssertions.AssertValidActiveListing(result.First(), id);
         }
 
         [Test]
@@ -92,9 +104,9 @@ namespace AIOMarketMaker.Tests.Unit
             Stub_ReturnsAsync(descriptionHtml); 
             Stub_ReturnsAsync(html, url);
 
-            var result = await _serviceUnderTest.GetItemFromListing(id);
+            var result = await _serviceUnderTest.GetItemsFromListings([id]);
 
-            ListingAssertions.AssertValidSoldListing(result, id);
+            ListingAssertions.AssertValidSoldListing(result.First(), id);
         }
 
         [Test]
@@ -132,14 +144,14 @@ namespace AIOMarketMaker.Tests.Unit
         {
             if (url is null)
             {
-                _mockFetcher
-                    .Setup(x => x.GetStringAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+                _mockJobRepository
+                    .Setup(x => x.GetFileContentsAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
                     .ReturnsAsync(returnHtml);
             }
             else
             {
-                _mockFetcher
-                    .Setup(x => x.GetStringAsync(url, It.IsAny<CancellationToken>()))
+                _mockJobRepository
+                    .Setup(x => x.GetFileContentsAsync(It.IsAny<string>(), url, It.IsAny<CancellationToken>()))
                     .ReturnsAsync(returnHtml);
             }
         }
