@@ -101,8 +101,20 @@ namespace AIOMarketMaker.Tests.Unit
 
             var descriptionHtml = "<div class=\"x-item-description-child\">summy description text</div>";
 
-            Stub_ReturnsAsync(descriptionHtml); 
-            Stub_ReturnsAsync(html, url);
+            this._mockFetcher
+                .Setup(x => x.NewJobAsync(It.IsAny<IEnumerable<string>>(), It.IsAny<IEnumerable<object>>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new StartResponse(id));
+
+            this._mockFetcher
+                .Setup(x => x.GetStatusAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new JobEntity(id, DateTime.UtcNow, JobStatusType.Success, 5, 5, 5, 0));
+
+            this._mockFetcher
+                .Setup(x => x.GetResultsAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new List<JobItemEntity> { new JobItemEntity(id, JobStatusType.Success, url, DateTime.Now, "www.dummybloburl.com", "") });
+
+
+            Stub_ReturnsAsync(html);
 
             var result = await _serviceUnderTest.GetItemsFromListings([id]);
 
@@ -118,7 +130,27 @@ namespace AIOMarketMaker.Tests.Unit
 
             var query = "";
             var url = _urlBuilder.BuildSearchUrl(query, true, 1, Condition.USED, BuyingFormat.BUY_NOW);
-            Stub_ReturnsAsync(html);
+            //Stub_ReturnsAsync(html, url);
+
+            this._mockFetcher
+                .Setup(x => x.GetPageHtmlAsync(It.IsAny<string>(), It.IsAny<IEnumerable<object>?>(), It.IsAny<TimeSpan?>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(html);
+
+            this._mockFetcher
+                .Setup(x => x.NewJobAsync(It.IsAny<IEnumerable<string>>(), It.IsAny<IEnumerable<object>>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new StartResponse("dummy_id"));
+
+            this._mockFetcher
+                .Setup(x => x.GetStatusAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new JobEntity("dummy_id", DateTime.UtcNow, JobStatusType.Success, 5, 5, 5, 0));
+
+            this._mockFetcher
+                .Setup(x => x.GetResultsAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new List<JobItemEntity> { new JobItemEntity("dummy_id", JobStatusType.Success, url, DateTime.Now, "www.dummybloburl.com", "") });
+
+           
+            
+            
             var start = new DateTime(2025, 5, 5).AddDays(-7);
             var end = new DateTime(2025, 5, 5);
 
