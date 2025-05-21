@@ -1,34 +1,31 @@
 ﻿using AIOMarketMaker.Services;
 using Microsoft.Extensions.DependencyInjection;
 using AIOMarketMaker.Tests.Utils;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Hosting;
 
 namespace AIOMarketMaker.Tests.Contract
 {
     public class ListingContractTests
     {
-        private ServiceProvider _provider = null!;
         private IEbayScraper _serviceUnderTest = null!;
 
         [SetUp]
         public void Setup()
         {
-            var services = new ServiceCollection();
-            services.AddEbayScraperPipeline();
-            _provider = services.BuildServiceProvider();
-            _serviceUnderTest = _provider.GetRequiredService<IEbayScraper>();
-        }
+            Environment.SetEnvironmentVariable(
+              "StorageConnectionString",
+              "DefaultEndpointsProtocol=https;AccountName=webscraperstorageacc;AccountKey=zio92liWbgYZN9oS/L65JV2RZp21eXanu19X1G+ioDO7UI0qAMj5wAICuaSPwOcwnM+fk4Y3pvgs+AStZmZOHg==;EndpointSuffix=core.windows.net"
+            );
 
-        [TearDown]
-        public async Task TearDownAsync()
-        {
-            try
-            {
-                await _provider.DisposeAsync();
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Unexpected teardown exception: {ex.Message}");
-            }
+            var config = new ConfigurationBuilder()
+                .AddEnvironmentVariables()
+                .Build();
+
+            var services = new ServiceCollection();
+            services.AddEbayScraperPipeline(config);
+            var provider = services.BuildServiceProvider();
+            _serviceUnderTest = provider.GetRequiredService<IEbayScraper>();
         }
 
         [Test]

@@ -6,8 +6,8 @@ using Microsoft.Extensions.Hosting;
 var builder = FunctionsApplication.CreateBuilder(args);
 builder.ConfigureFunctionsWebApplication();
 
-// ← instead of inlining all the registrations, just:
-builder.Services.AddEbayScraperPipeline();
+// 👇 Use builder.Configuration directly
+builder.Services.AddEbayScraperPipeline(builder.Configuration);
 
 var host = builder.Build();
 host.Run();
