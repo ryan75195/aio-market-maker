@@ -1,5 +1,7 @@
 ﻿// FILE: WebscraperClient.cs
 using System.Net.Http.Json;
+using System.Text.Json.Serialization;
+using System.Text.Json;
 using ScraperWorker.Services;       // JobEntity, JobItemEntity
 
 namespace AIOMarketMaker.Api.Services
@@ -80,7 +82,17 @@ namespace AIOMarketMaker.Api.Services
                 return null;
 
             resp.EnsureSuccessStatusCode();
-            return await resp.Content.ReadFromJsonAsync<JobEntity>(cancellationToken: ct);
+
+            var opts = new JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive = true
+            };
+            opts.Converters.Add(new JsonStringEnumConverter(JsonNamingPolicy.CamelCase));
+
+            var wrapper = await resp.Content
+                .ReadFromJsonAsync<JobStatus>(opts, ct);
+
+            return wrapper?.Job;
         }
 
         /// <summary>
@@ -94,8 +106,16 @@ namespace AIOMarketMaker.Api.Services
             var resp = await _http.GetAsync(uri, ct);
             resp.EnsureSuccessStatusCode();
 
-            var items = await resp.Content.ReadFromJsonAsync<List<JobItemEntity>>(cancellationToken: ct);
-            return items ?? new List<JobItemEntity>();
+            var opts = new JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive = true
+            };
+            opts.Converters.Add(new JsonStringEnumConverter(JsonNamingPolicy.CamelCase));
+
+            var wrapper = await resp.Content
+                .ReadFromJsonAsync<List<JobItemEntity>>(opts, ct);
+
+            return wrapper ?? new List<JobItemEntity>();
         }
     }
 }

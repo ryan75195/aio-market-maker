@@ -55,14 +55,14 @@ namespace AIOMarketMaker.Services
             {
                 var currentStatus = await _fetcher.GetStatusAsync(jobId);
                 _logger.LogInformation(currentStatus?.ToLogString());
-                jobStatus = currentStatus.Status;
+                jobStatus = currentStatus != null ? currentStatus.Status : jobStatus;
                 await Task.Delay(1000);
             }
 
             var resultMetadata = await _fetcher.GetResultsAsync(jobId);
             foreach (var result in resultMetadata)
             {
-                var downloadLink = result.BlobUri;
+                var downloadLink = result.Url;
                 var html = await _jobRepository.GetFileContentsAsync(jobId, downloadLink, new CancellationToken());
                 var doc = await LoadDocumentAsync(html);
                 var parsedListing = _listingParser.ParseProductListing(doc);
