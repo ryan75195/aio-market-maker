@@ -34,5 +34,6 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\AIOWebScraper\AIOWebScraper.Storage.Azure\AIOWebScraper.Storage.Azure.csproj" />
+    <ProjectReference Include="..\AIOMarketMaker.Core\AIOMarketMaker.Core.csproj" />
   </ItemGroup>
 </Project>
