@@ -1,6 +1,5 @@
 ﻿using AIOMarketMaker.Services;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Playwright;
 using AIOMarketMaker.Tests.Utils;
 
 namespace AIOMarketMaker.Tests.Contract
@@ -26,10 +25,6 @@ namespace AIOMarketMaker.Tests.Contract
             {
                 await _provider.DisposeAsync();
             }
-            catch (PlaywrightException ex)
-            {
-                Console.WriteLine($"Playwright exception during teardown: {ex.Message}");
-            }
             catch (Exception ex)
             {
                 Console.WriteLine($"Unexpected teardown exception: {ex.Message}");
@@ -41,17 +36,17 @@ namespace AIOMarketMaker.Tests.Contract
         {
             var itemId = "135758131788";
 
-            var listing = await this._serviceUnderTest.GetItemFromListing(itemId);
+            var listing = await this._serviceUnderTest.GetItemsFromListings([itemId]);
          
-            ListingAssertions.AssertValidActiveListing(listing, itemId);
+            ListingAssertions.AssertValidActiveListing(listing.First(), itemId);
         }
 
         [Test]
         public async Task Should_successfully_retrieve_sold()
         {
             var itemId = "256918168190";
-            var listing = await this._serviceUnderTest.GetItemFromListing(itemId);
-            ListingAssertions.AssertValidSoldListing(listing, itemId);
+            var listing = await this._serviceUnderTest.GetItemsFromListings([itemId]);
+            ListingAssertions.AssertValidSoldListing(listing.First(), itemId);
         }
     }
 }

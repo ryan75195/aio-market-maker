@@ -7,6 +7,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AIOMarketMaker.Api", "AIOMa
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AIOMarketMaker.Tests", "AIOMarketMaker.Tests\AIOMarketMaker.Tests.csproj", "{3CC92A69-F751-4147-A632-31EFDC56921D}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AIOWebScraper.Storage.Azure", "..\AIOWebScraper\AIOWebScraper.Storage.Azure\AIOWebScraper.Storage.Azure.csproj", "{5250E634-98D2-0600-D255-6CC64A94BB40}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -21,6 +23,10 @@ Global
 		{3CC92A69-F751-4147-A632-31EFDC56921D}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{3CC92A69-F751-4147-A632-31EFDC56921D}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{3CC92A69-F751-4147-A632-31EFDC56921D}.Release|Any CPU.Build.0 = Release|Any CPU
+		{5250E634-98D2-0600-D255-6CC64A94BB40}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{5250E634-98D2-0600-D255-6CC64A94BB40}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{5250E634-98D2-0600-D255-6CC64A94BB40}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{5250E634-98D2-0600-D255-6CC64A94BB40}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

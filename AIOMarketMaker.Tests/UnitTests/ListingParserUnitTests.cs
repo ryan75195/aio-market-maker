@@ -4,7 +4,6 @@ using AIOMarketMaker.Services;
 using AngleSharp;
 using AngleSharp.Dom;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Playwright;
 using Moq;
 using System.Text.RegularExpressions;
 
@@ -14,7 +13,6 @@ namespace AIOMarketMaker.Tests.Unit
     {
         private ServiceProvider _provider = null!;
         private IListingParser _serviceUnderTest = null!;
-        private Mock<IHtmlFetcher> _mockFetcher;
 
         public string NormalizeWhitespace(string s) => Regex.Replace(s, @"\s+", " ").Trim();
 
@@ -28,9 +26,6 @@ namespace AIOMarketMaker.Tests.Unit
             services.AddSingleton<EbayListingParser>();
             services.AddSingleton<IEbayScraper, EbayScraper>();
 
-            _mockFetcher = new Mock<IHtmlFetcher>();
-            services.AddSingleton<IHtmlFetcher>(_mockFetcher.Object);
-
             _provider = services.BuildServiceProvider();
             _serviceUnderTest = _provider.GetRequiredService<EbayListingParser>();
         }
@@ -41,10 +36,6 @@ namespace AIOMarketMaker.Tests.Unit
             try
             {
                 await _provider.DisposeAsync();
-            }
-            catch (PlaywrightException ex)
-            {
-                Console.WriteLine($"Playwright exception during teardown: {ex.Message}");
             }
             catch (Exception ex)
             {
