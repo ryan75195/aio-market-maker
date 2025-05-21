@@ -11,6 +11,7 @@
 
   <ItemGroup>
     <PackageReference Include="coverlet.collector" Version="6.0.0" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="8.0.1" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.8.0" />
     <PackageReference Include="Moq" Version="4.20.72" />
     <PackageReference Include="NUnit" Version="3.14.0" />
@@ -20,6 +21,8 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\AIOWebScraper\AIOWebScraper.Storage.Azure\AIOWebScraper.Storage.Azure.csproj" />
+    <ProjectReference Include="..\AIOMarketMaker.Core\AIOMarketMaker.Core.csproj" />
+    <ProjectReference Include="..\AIOMarketMaker.Etl\AIOMarketMaker.Etl.csproj" />
     <ProjectReference Include="..\AIOMarketMaker\AIOMarketMaker.Api.csproj" />
   </ItemGroup>
 
