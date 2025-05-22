@@ -92,9 +92,17 @@ namespace AIOMarketMaker.Services
 
         public async Task<IEnumerable<EbayProductSummary>> SearchListings(string query, SearchFilter? filter)
         {
+            var defaultFilter = new SearchFilter(
+                new SearchDateRange(DateTime.Now - new TimeSpan(7, 0, 0, 0), DateTime.Now),
+                BuyingFormat.BUY_NOW,
+                Condition.NEW
+            );
+
+            filter = filter ?? defaultFilter;
+
             return (filter != null && filter.SearchDateRange != null) ?
                 await GetProductsInDateRange(query, filter) :
-                await GetProductsFromPageAsync(query, 1, filter.SearchDateRange != null, filter.Condition, filter.BuyingFormat);
+                await GetProductsFromPageAsync(query, 1, filter != null && filter.SearchDateRange != null, filter.Condition, filter.BuyingFormat);
         }
 
         // I need tests :( Move me to my own service and write some unit tests. 
