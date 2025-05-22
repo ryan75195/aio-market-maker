@@ -14,25 +14,25 @@ namespace AIOMarketMaker.Services
 {
 
     public record ExtractedEbayListing(
-        string id,
-        string title,
-        decimal price,
-        string currency,
-        decimal shippingCost,
-        Condition Condition,
-        IEnumerable<string> images,
-        EbayListingStatus listingStatus,
-        PurchaseFormat purchaseFormat,
+        string? id,
+        string? title,
+        decimal? price,
+        string? currency,
+        decimal? shippingCost,
+        Condition? Condition,
+        IEnumerable<string>? images,
+        EbayListingStatus? listingStatus,
+        PurchaseFormat? purchaseFormat,
         string? ItemSpecifics,
         string? descriptionSource,
         DateTime? SoldDateUtc, // Null means it's active
-        string Location
+        string? Location
     );
 
     public interface IListingParser
     {
         ExtractedEbayListing ParseProductListing(IDocument document);
-        string ParseDescription(IDocument document);
+        string? ParseDescription(IDocument document);
     }
 
     public class EbayListingParser : IListingParser
@@ -72,7 +72,11 @@ namespace AIOMarketMaker.Services
 
         internal PurchaseFormat GetPurchaseFormat(IDocument document)
         {
-            var buyingComponentText = document.QuerySelector(".x-buybox-cta").TextContent;
+            var buyingComponentText = document.QuerySelector(".x-buybox-cta")?.TextContent;
+            
+            if (buyingComponentText == null)
+                return PurchaseFormat.Unknown;
+
             if (buyingComponentText.Contains("Submit bid") && buyingComponentText.Contains("Make offer")) 
             {
                 return PurchaseFormat.AuctionWithBestOffer;
@@ -93,7 +97,7 @@ namespace AIOMarketMaker.Services
             return PurchaseFormat.Unknown;
         }
 
-        internal EbayListingStatus GetListingStatus(IDocument document)
+        internal EbayListingStatus? GetListingStatus(IDocument document)
         {
             var node = document.QuerySelector(".d-statusmessage")?.TextContent;
             if (node == null) // bit of a flakey check.
@@ -112,9 +116,13 @@ namespace AIOMarketMaker.Services
             return EbayListingStatus.Active;
         }
 
-        public string ParseDescription(IDocument document)
+        public string? ParseDescription(IDocument document)
         {
             var node = document.QuerySelector(".x-item-description-child");
+            if (node == null) {
+                return null;
+            }
+
             var text = node?.TextContent ?? string.Empty;
 
             text = text.Replace('\u00A0', ' ');
@@ -206,9 +214,11 @@ namespace AIOMarketMaker.Services
             return StringParsing.ToIso(symbol);
         }
 
-        internal decimal GetProductPrice(IDocument document)
+        internal decimal? GetProductPrice(IDocument document)
         {
-            return decimal.Parse(document.QuerySelector(".x-price-primary")?.TextContent.Substring(1));
+            decimal result;
+            var success = decimal.TryParse(document.QuerySelector(".x-price-primary")?.TextContent.Substring(1), out result);
+            return success ? result : null;
         }
 
         internal string GetProductTitle(IDocument document)
@@ -218,7 +228,7 @@ namespace AIOMarketMaker.Services
 
         internal string GetProductId(IDocument document)
         {
-            return document.QuerySelector(".ux-layout-section__textual-display--itemId")?.TextContent.Split(":")[1];
+            return document.QuerySelector(".ux-layout-section__textual-display--itemId")?.TextContent.Split(":")[1].StripLeadingTrailingSpaces();
         }
 
         internal DateTime? GetEndDate(IDocument document)
@@ -227,9 +237,11 @@ namespace AIOMarketMaker.Services
             return StringParsing.ParseEndDate(text);
         }
 
-        internal string GetLocation(IDocument document)
+        internal string? GetLocation(IDocument document)
         {
-            var locationStr = document.QuerySelector(".ux-labels-values--shipping .ux-textspans--SECONDARY").TextContent;
+            var locationStr = document.QuerySelector(".ux-labels-values--shipping .ux-textspans--SECONDARY")?.TextContent;
+            if (locationStr == null)
+                return null;
             var location = locationStr.Split(":")[1].Trim();
             return location;
         }

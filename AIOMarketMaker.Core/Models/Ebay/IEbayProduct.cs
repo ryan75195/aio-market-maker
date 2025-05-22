@@ -22,19 +22,19 @@ namespace AIOMarketMaker.Models.Ebay
     }
 
     public record EbayProduct(
-        string ListingId,
-        string Title,
-        decimal Price,
-        string Currency,
-        decimal ShippingCost,
-        string Url,
-        Condition Condition,
-        IEnumerable<string> Images,
-        EbayListingStatus ListingStatus,
-        PurchaseFormat PurchaseFormat,
+        string? ListingId,
+        string? Title,
+        decimal? Price,
+        string? Currency,
+        decimal? ShippingCost,
+        string? Url,
+        Condition? Condition,
+        IEnumerable<string>? Images,
+        EbayListingStatus? ListingStatus,
+        PurchaseFormat? PurchaseFormat,
         string? Description,
         string? ItemSpecifics, // make a dict
         DateTime? EndDateUtc,
-        string Location
+        string? Location
     ) : IEbayProductSummary;
 }
