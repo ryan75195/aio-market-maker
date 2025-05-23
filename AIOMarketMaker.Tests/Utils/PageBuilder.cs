@@ -43,7 +43,7 @@ namespace AIOMarketMaker.Tests.Utils
                 var sym = currencySymbol ?? "";
                 // include location span only if locationText != null
                 var locSpan = locationText != null
-                    ? $@"<span class=""ux-textspans--SECONDARY"">Location: {locationText}</span>": "";
+                    ? $@"<span class=""ux-textspans--SECONDARY"">{locationText}</span>": "";
                 parts.Add($@"<div class=""ux-labels-values--shipping"">
                                 <div></div>
                                 <div><div><div>

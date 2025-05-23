@@ -242,8 +242,13 @@ namespace AIOMarketMaker.Services
             var locationStr = document.QuerySelector(".ux-labels-values--shipping .ux-textspans--SECONDARY")?.TextContent;
             if (locationStr == null)
                 return null;
-            var location = locationStr.Split(":")[1].Trim();
-            return location;
+
+            if (locationStr.Contains(":"))
+            {
+                return locationStr.Split(":")[1].Trim();
+            }
+
+            return locationStr;
         }
     }
 }
