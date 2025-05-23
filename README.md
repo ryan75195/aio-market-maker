@@ -1,44 +1,42 @@
 # 🛒 AIOMarketMaker
 
-**AIOMarketMaker** is a fully automated eBay flipping system that combines scalable scraping infrastructure, AI-driven market analysis, and API-connected fulfillment to identify and act on profitable arbitrage opportunities — without manual effort. It is designed to virtualize the entire trade lifecycle: sourcing, buying, storing, listing, and shipping.
+**AIOMarketMaker** is an intelligent eBay data pipeline that combines scalable web scraping with AI-powered data processing to create a clean, structured database of eBay marketplace data for analysis and insights.
 
 ---
 
 ## 🔍 Overview
 
-AIOMarketMaker continuously monitors eBay to detect and act on price inefficiencies at scale. The system intelligently scans live listings, compares them to historical data, and uses AI to reason about which items have the highest potential for profit. When a high-confidence opportunity is found, the system auto-purchases the item, sends it to a fulfillment center, and relists it for resale — all without human intervention.
+AIOMarketMaker continuously monitors eBay by scraping search terms stored in Azure Tables, then uses Large Language Models (LLMs) to extract and structure meaningful data from raw eBay listings. The system runs on a scheduled basis to maintain an up-to-date, clean product database that can be used for market analysis, pricing research, and trend identification.
 
-The ultimate goal: create a hands-free trading loop that reinvests profits, scales with volume, and requires no direct involvement in logistics.
+The goal: create a robust ETL pipeline that transforms unstructured eBay marketplace data into structured, analysis-ready datasets.
 
 ---
 
 ## ✨ Features
 
-### 📦 Scalable Market Scrapers
-- Collects large volumes of current and historical eBay data.
-- Horizontally scalable infrastructure with support for proxies and bot detection bypassing.
-- Designed to run continuously and adapt to load.
+### 📦 Automated Data Collection
+- Periodically scrapes eBay based on configurable search terms stored in Azure Tables
+- Horizontally scalable infrastructure with support for proxies and bot detection bypassing
+- Tracks both current listings and historical sold data
+- Handles incremental updates and change detection
 
 ### 🧠 AI-Powered Data Processing
-- Cleans and extracts structured meaning from unstructured listing data.
-- Transforms scraped data into a normalized internal format for analysis and entity resolution.
+- Uses LLMs to extract structured data from unstructured eBay listing HTML
+- Cleans and normalizes product information (titles, descriptions, specifications)
+- Performs entity resolution and deduplication
+- Transforms scraped data into a consistent schema for analysis
 
-### 📊 Trade Signal Generation
-- Calculates trade metrics like:
-  - Estimated market value
-  - Daily trade volume
-  - Average listing duration
-- Identifies flip candidates using reasoning, historical success, and statistical signals.
+### 📊 Clean Data Pipeline
+- ETL process that maintains data quality and consistency
+- Stores processed data in a structured database optimized for queries
+- Tracks data lineage and processing metadata
+- Supports both batch and incremental processing modes
 
-### 🤖 Autonomous Purchasing & Fulfillment
-- Places orders automatically when confidence thresholds are met.
-- Routes items to third-party fulfillment providers via API.
-- Fulfillment centers repackage, assign SKUs, and store items.
-
-### 🔁 Virtualized Reselling Loop
-- Automatically posts new listings for fulfilled SKUs.
-- Upon sale, fulfillment provider ships the product to the buyer.
-- System reinvests profits into new trades manually or automatically.
+### 🔄 Scheduled Processing
+- Runs on configurable schedules (cron-based)
+- Manages search term priorities and rotation
+- Monitors processing health and data quality metrics
+- Provides logging and alerting for pipeline issues
 
 ---
 
