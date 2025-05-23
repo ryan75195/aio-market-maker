@@ -195,6 +195,7 @@ namespace AIOMarketMaker.Tests.Unit
             yield return new TestCaseData("SoldBidListing", "London, United Kingdom", PageBuilder.LoadTestHtmlDocument("SoldBidListing"));
             yield return new TestCaseData("SoldBuyNowListing", "Preston, United Kingdom", PageBuilder.LoadTestHtmlDocument("SoldBuyNowListing"));
             yield return new TestCaseData("MissingLocation", null, PageBuilder.BuildEmptyDocument());
+            yield return new TestCaseData("Location with no colon", "Some Location", PageBuilder.BuildProductPage(locationText: "Some Location", shippingCost: 0));
         }
 
         [Test, TestCaseSource(nameof(ParseShippingCostTestCases))]

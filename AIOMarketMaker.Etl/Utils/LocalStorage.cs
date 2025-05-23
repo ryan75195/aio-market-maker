@@ -31,15 +31,7 @@ namespace AIOMarketMaker.Etl.Utils
             // Optional: flatten ItemSpecifics if needed
             foreach (var product in products)
             {
-                // Flatten the ItemSpecifics dictionary into a string if needed
-                var dict = product.ItemSpecifics is not null
-                    ? System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, string>>(product.ItemSpecifics)
-                    : null;
-
-                var flatItemSpecifics = dict is not null
-                    ? string.Join("; ", dict.Select(kvp => $"{kvp.Key}={kvp.Value}"))
-                    : "";
-
+               
                 // Write anonymous object to flatten nested/complex properties
                 csv.WriteRecord(new
                 {
@@ -53,7 +45,7 @@ namespace AIOMarketMaker.Etl.Utils
                     product.ListingStatus,
                     product.PurchaseFormat,
                     Description = product.Description ?? "",
-                    ItemSpecifics = flatItemSpecifics,
+                    product.ItemSpecifics,
                     EndDateUtc = product.EndDateUtc?.ToString("o"),
                     product.Location,
                     Images = string.Join(",", product.Images)
