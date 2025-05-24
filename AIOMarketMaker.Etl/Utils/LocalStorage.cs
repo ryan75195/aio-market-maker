@@ -28,32 +28,38 @@ namespace AIOMarketMaker.Etl.Utils
             await using var writer = new StreamWriter(outputPath);
             await using var csv = new CsvWriter(writer, config);
 
-            // Optional: flatten ItemSpecifics if needed
-            foreach (var product in products)
+            // Build a list of flat records first
+            var records = products.Select(p => new
             {
-               
-                // Write anonymous object to flatten nested/complex properties
-                csv.WriteRecord(new
-                {
-                    product.ListingId,
-                    product.Title,
-                    product.Price,
-                    product.Currency,
-                    product.ShippingCost,
-                    product.Url,
-                    product.Condition,
-                    product.ListingStatus,
-                    product.PurchaseFormat,
-                    Description = product.Description ?? "",
-                    product.ItemSpecifics,
-                    EndDateUtc = product.EndDateUtc?.ToString("o"),
-                    product.Location,
-                    Images = string.Join(",", product.Images)
-                });
+                p.ListingId,
+                p.Title,
+                p.Price,
+                p.Currency,
+                p.ShippingCost,
+                p.Url,
+                p.Condition,
+                p.ListingStatus,
+                p.PurchaseFormat,
+                Description = p.Description ?? "",
+                p.ItemSpecifics,
+                EndDateUtc = p.EndDateUtc?.ToString("o"),
+                p.Location,
+                Images = string.Join(",", p.Images)
+            }).ToList();
 
+            if (records.Count > 0)
+            {
+                // 1) Write header based on the anonymous‐type’s properties
+                csv.WriteHeader(records[0].GetType());
                 await csv.NextRecordAsync();
+
+                // 2) Write every record
+                foreach (var rec in records)
+                {
+                    csv.WriteRecord(rec);
+                    await csv.NextRecordAsync();
+                }
             }
         }
-
     }
 }

@@ -26,18 +26,19 @@ namespace AIOMarketMaker.Services
         string? ItemSpecifics,
         string? descriptionSource,
         DateTime? SoldDateUtc, // Null means it's active
-        string? Location
+        string? Location,
+        string? Url
     );
 
     public interface IListingParser
     {
-        ExtractedEbayListing ParseProductListing(IDocument document);
+        ExtractedEbayListing ParseProductListing(IDocument document, string url);
         string? ParseDescription(IDocument document);
     }
 
     public class EbayListingParser : IListingParser
     {
-        public ExtractedEbayListing ParseProductListing(IDocument document)
+        public ExtractedEbayListing ParseProductListing(IDocument document, string url)
         {
             var id = GetProductId(document);
             var title = GetProductTitle(document);
@@ -66,7 +67,8 @@ namespace AIOMarketMaker.Services
                 listingStatus: listingStatus,
                 purchaseFormat: purchaseFormat,
                 SoldDateUtc: soldDate,
-                Location: location
+                Location: location,
+                Url: url
             );
         }
 

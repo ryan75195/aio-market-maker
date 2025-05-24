@@ -47,47 +47,55 @@ namespace AIOMarketMaker.Services
         {
             var results = new List<EbayProduct>();
             var urls = itemIds.Select(_url.BuildListingUrl);
-            var job = await _fetcher.NewJobAsync(urls);
-            var jobId = job.JobId;
-
-            var jobStatus = JobStatusType.Pending;
-            while (jobStatus != JobStatusType.Success && jobStatus != JobStatusType.Failure)
+            var resultMetadata = await _fetcher.RunJobAsync(urls);
+            var baseListings = await Task.WhenAll(resultMetadata.Select(x => ParseProductListingAsync(x, x.PartitionKey)));
+            var descriptions = await FetchProductDescriptionsAsync(baseListings);
+            var fullListings = baseListings.Select(listing =>
             {
-                var currentStatus = await _fetcher.GetStatusAsync(jobId);
-                _logger.LogInformation(currentStatus?.ToLogString());
-                jobStatus = currentStatus != null ? currentStatus.Status : jobStatus;
-                await Task.Delay(1000);
-            }
+                var description = descriptions.Where(x => x.url == listing.descriptionSource).First().description;
 
-            var resultMetadata = await _fetcher.GetResultsAsync(jobId);
-            foreach (var result in resultMetadata)
-            {
-                var downloadLink = result.Url;
-                var html = await _jobRepository.GetFileContentsAsync(jobId, downloadLink, new CancellationToken());
-                var doc = await LoadDocumentAsync(html);
-                var parsedListing = _listingParser.ParseProductListing(doc);
-                var descriptionHtml = ""; //await _fetcher.GetStringAsync(parsedListing.descriptionSource);
-                var descriptionDoc = await LoadDocumentAsync(descriptionHtml);
-                var description = "foo"; // _listingParser.ParseDescription(descriptionDoc);
-
-                results.Add(new EbayProduct(
-                    ListingId: parsedListing.id,
-                    Title: parsedListing.title,
-                    Price: parsedListing.price,
-                    Currency: parsedListing.currency,
-                    ShippingCost: parsedListing.shippingCost,
-                    Condition: parsedListing.Condition,
-                    Images: parsedListing.images,
-                    ItemSpecifics: parsedListing.ItemSpecifics,
+                return new EbayProduct(
+                    ListingId: listing.id,
+                    Title: listing.title,
+                    Price: listing.price,
+                    Currency: listing.currency,
+                    ShippingCost: listing.shippingCost,
+                    Condition: listing.Condition,
+                    Images: listing.images,
+                    ItemSpecifics: listing.ItemSpecifics,
                     Description: description,
-                    Url: result.Url,
-                    EndDateUtc: parsedListing.SoldDateUtc,
-                    ListingStatus: parsedListing.listingStatus,
-                    PurchaseFormat: parsedListing.purchaseFormat,
-                    Location: parsedListing.Location
-                ));
-            }
-            return results;
+                    Url: listing.Url,
+                    EndDateUtc: listing.SoldDateUtc,
+                    ListingStatus: listing.listingStatus,
+                    PurchaseFormat: listing.purchaseFormat,
+                    Location: listing.Location
+                );
+            });
+
+            return fullListings;
+        }
+
+        record EbayProductDescription(string url, string description);
+
+        private async Task<IEnumerable<EbayProductDescription>> FetchProductDescriptionsAsync(IEnumerable<ExtractedEbayListing> products)
+        {
+            var requestPayloads = products.Select(x => x.descriptionSource);
+            var descriptions = await _fetcher.RunJobAsync(requestPayloads);
+            return await Task.WhenAll(descriptions.Select(async x =>
+            {
+                var html = await _jobRepository.GetFileContentsAsync(x.PartitionKey, x.Url, new CancellationToken());
+                var doc = await LoadDocumentAsync(html);
+                var text = _listingParser.ParseDescription(doc);
+                return new EbayProductDescription(x.Url, text);
+            }));
+        }
+
+        private async Task<ExtractedEbayListing> ParseProductListingAsync(JobItemEntity metadata, string jobId)
+        {
+            var downloadLink = metadata.Url;
+            var html = await _jobRepository.GetFileContentsAsync(jobId, downloadLink, new CancellationToken());
+            var doc = await LoadDocumentAsync(html);
+            return _listingParser.ParseProductListing(doc, downloadLink);
         }
 
         public async Task<IEnumerable<EbayProductSummary>> SearchListings(string query, SearchFilter? filter)
