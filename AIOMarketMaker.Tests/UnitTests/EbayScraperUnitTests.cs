@@ -70,21 +70,12 @@ namespace AIOMarketMaker.Tests.Unit
             var descriptionHtml = "<div class=\"x-item-description-child\">dummy description text</div>";
 
             this._mockFetcher
-                .Setup(x => x.NewJobAsync(It.IsAny<IEnumerable<string>>(), It.IsAny<IEnumerable<object>>(), It.IsAny<CancellationToken>()))
-                .ReturnsAsync(new StartResponse(id));
-
-            this._mockFetcher
-                .Setup(x => x.GetStatusAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
-                .ReturnsAsync(new JobEntity(id, DateTime.UtcNow, JobStatusType.Success, 5, 5, 5, 0));
-
-            this._mockFetcher
-                .Setup(x => x.GetResultsAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
-                .ReturnsAsync(new List<JobItemEntity> { new JobItemEntity(id, JobStatusType.Success, url, DateTime.Now, "www.dummybloburl.com", "") } );
+                .Setup(x => x.RunJobAsync(It.IsAny<IEnumerable<string>>()))
+                .ReturnsAsync(new List<JobItemEntity> { new JobItemEntity(id, JobStatusType.Success, url, DateTime.Now, "www.dummybloburl.com", "") });
 
             // stub the description fetch (matches any URL)
             //Stub_ReturnsAsync(descriptionHtml);
             Stub_ReturnsAsync(html);
-
             var result = await _serviceUnderTest.GetItemsFromListings([id]);
 
             ListingAssertions.AssertValidActiveListing(result.First(), id);

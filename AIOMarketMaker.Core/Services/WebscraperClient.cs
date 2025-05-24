@@ -2,7 +2,8 @@
 using System.Net.Http.Json;
 using System.Text.Json.Serialization;
 using System.Text.Json;
-using ScraperWorker.Services;       // JobEntity, JobItemEntity
+using ScraperWorker.Services;
+using Microsoft.Extensions.Logging;       // JobEntity, JobItemEntity
 
 namespace AIOMarketMaker.Api.Services
 {
@@ -24,15 +25,43 @@ namespace AIOMarketMaker.Api.Services
         Task<IReadOnlyList<JobItemEntity>> GetResultsAsync(
             string jobId,
             CancellationToken ct = default);
+
+        Task<IEnumerable<JobItemEntity>> RunJobAsync(IEnumerable<string> urls);
     }
 
     public class WebscraperClient : IWebscraperClient
     {
         private readonly HttpClient _http;
+        private ILogger<WebscraperClient> _logger;
 
-        public WebscraperClient(HttpClient http)
+        public WebscraperClient(HttpClient http, ILogger<WebscraperClient> logger)
         {
             _http = http ?? throw new ArgumentNullException(nameof(http));
+            _logger = logger;
+        }
+
+        public async Task<IEnumerable<JobItemEntity>> RunJobAsync(IEnumerable<string> urls)
+        {
+            var job = await this.NewJobAsync(urls);
+            var jobId = job.JobId;
+
+            var jobStatus = JobStatusType.Pending;
+            while (jobStatus != JobStatusType.Success && jobStatus != JobStatusType.Failure)
+            {
+                try
+                {
+                    var currentStatus = await this.GetStatusAsync(jobId);
+                    _logger.LogInformation(currentStatus?.ToLogString());
+                    jobStatus = currentStatus != null ? currentStatus.Status : jobStatus;
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Failed to get and set status.");
+                }
+                await Task.Delay(5000);
+            }
+
+            return await this.GetResultsAsync(jobId);
         }
 
         /// <summary>
