@@ -8,6 +8,7 @@ using AngleSharp.Dom;
 using Microsoft.Extensions.Logging;
 using ScraperWorker.Services;
 using System.Data.SqlTypes;
+using System.Reflection;
 
 namespace AIOMarketMaker.Services
 {
@@ -52,7 +53,12 @@ namespace AIOMarketMaker.Services
             var descriptions = await FetchProductDescriptionsAsync(baseListings);
             var fullListings = baseListings.Select(listing =>
             {
-                var description = descriptions.Where(x => x.url == listing.descriptionSource).First().description;
+                string description = string.Empty;
+                if (!string.IsNullOrEmpty(listing.descriptionSource)
+                    && descriptions.TryGetValue(listing.descriptionSource, out var desc))
+                {
+                    description = desc;
+                }
 
                 return new EbayProduct(
                     ListingId: listing.id,
@@ -75,20 +81,33 @@ namespace AIOMarketMaker.Services
             return fullListings;
         }
 
-        record EbayProductDescription(string url, string description);
-
-        private async Task<IEnumerable<EbayProductDescription>> FetchProductDescriptionsAsync(IEnumerable<ExtractedEbayListing> products)
+        private async Task<Dictionary<string, string>> FetchProductDescriptionsAsync(
+            IEnumerable<ExtractedEbayListing> products)
         {
-            var requestPayloads = products.Select(x => x.descriptionSource);
-            var descriptions = await _fetcher.RunJobAsync(requestPayloads);
-            return await Task.WhenAll(descriptions.Select(async x =>
+            var urls = products
+                .Select(x => x.descriptionSource)
+                .Where(u => !string.IsNullOrEmpty(u))   // ← drop any null/empty
+                .Distinct();
+
+            var metas = await _fetcher.RunJobAsync(urls);
+
+            var parsed = await Task.WhenAll(metas.Select(async meta =>
             {
-                var html = await _jobRepository.GetFileContentsAsync(x.PartitionKey, x.Url, new CancellationToken());
+                var html = await _jobRepository.GetFileContentsAsync(
+                    meta.PartitionKey, meta.Url, new CancellationToken());
+
                 var doc = await LoadDocumentAsync(html);
                 var text = _listingParser.ParseDescription(doc);
-                return new EbayProductDescription(x.Url, text);
+
+                return (Url: meta.Url, Text: text);
             }));
+
+            // only use non-null Urls as keys
+            return parsed
+              .Where(p => !string.IsNullOrEmpty(p.Url))
+              .ToDictionary(p => p.Url!, p => p.Text);
         }
+
 
         private async Task<ExtractedEbayListing> ParseProductListingAsync(JobItemEntity metadata, string jobId)
         {
