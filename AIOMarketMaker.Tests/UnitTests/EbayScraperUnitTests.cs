@@ -138,16 +138,11 @@ namespace AIOMarketMaker.Tests.Unit
             this._mockFetcher
                 .Setup(x => x.GetResultsAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync(new List<JobItemEntity> { new JobItemEntity("dummy_id", JobStatusType.Success, url, DateTime.Now, "www.dummybloburl.com", "") });
-
-           
-            
             
             var start = new DateTime(2025, 5, 5).AddDays(-7);
             var end = new DateTime(2025, 5, 5);
 
-            var filter = new SearchFilter(new SearchDateRange(start, end), BuyingFormat.BUY_NOW, Condition.USED);
-
-            var result = await _serviceUnderTest.SearchListings(query, filter);
+            var result = await _serviceUnderTest.SearchSoldListings(query, BuyingFormat.BUY_NOW, Condition.USED, start, end);
 
             Assert.Multiple(() =>
             {
