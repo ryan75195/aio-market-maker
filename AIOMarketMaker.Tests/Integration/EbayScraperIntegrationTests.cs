@@ -1,4 +1,5 @@
 ﻿using AIOMarketMaker.Api.Parsers;
+using AIOMarketMaker.Api.Services;
 using AIOMarketMaker.Models.Ebay;
 using AIOMarketMaker.Services;
 using AIOMarketMaker.Tests.Utils;
@@ -6,6 +7,7 @@ using AngleSharp;
 using AngleSharp.Dom;
 using Microsoft.Extensions.DependencyInjection;
 using Moq;
+using ScraperWorker.Services;
 using System.Reflection;
 using System.Text.RegularExpressions;
 
@@ -50,9 +52,128 @@ namespace AIOMarketMaker.Tests.Unit
         }
 
         [Test]
-        public async Task Should_get_description()
+        [Description("Integration test: SearchSoldListings with real HTML data")]
+        public async Task Should_search_sold_listings_with_real_data()
         {
+            var dataDir = Path.GetFullPath(Path.Combine(TestContext.CurrentContext.TestDirectory, "../../../Data/Search"));
+            var htmlPath = Path.Combine(dataDir, "Sold_With_Small_Number_of_Real_Results.htm");
+            var html = await File.ReadAllTextAsync(htmlPath);
 
+            var mockFetcher = new Mock<IWebscraperClient>();
+            mockFetcher.Setup(x => x.GetPageHtmlAsync(It.IsAny<string>(), It.IsAny<IEnumerable<object>?>(), It.IsAny<TimeSpan?>(), It.IsAny<CancellationToken>()))
+                      .ReturnsAsync(html);
+
+            var services = new ServiceCollection();
+            services.AddLogging();
+            services.AddSingleton<IEbayUrlBuilder, EbayUrlBuilder>();
+            services.AddSingleton<ISearchParser, EbaySearchParser>();
+            services.AddSingleton<IListingParser, EbayListingParser>();
+            services.AddSingleton<IWebscraperClient>(mockFetcher.Object);
+            services.AddSingleton(Mock.Of<IJobRepository>());
+            services.AddSingleton<IEbayScraper, EbayScraper>();
+
+            var provider = services.BuildServiceProvider();
+            var scraper = provider.GetRequiredService<IEbayScraper>();
+
+            var startDate = new DateTime(2023, 1, 1);
+            var endDate = new DateTime(2025, 12, 31);
+
+            var result = await scraper.SearchSoldListings("test query", BuyingFormat.BUY_NOW, Condition.USED, startDate, endDate);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(result, Is.Not.Null, "Should return results");
+                Assert.That(result.All(x => !string.IsNullOrEmpty(x.ListingId)), Is.True, "All items should have listing IDs");
+                Assert.That(result.All(x => !string.IsNullOrEmpty(x.Title)), Is.True, "All items should have titles");
+            });
+
+            await provider.DisposeAsync();
+        }
+
+        [Test]
+        [Description("Integration test: SearchActiveListings with real HTML data")]
+        public async Task Should_search_active_listings_with_real_data()
+        {
+            var dataDir = Path.GetFullPath(Path.Combine(TestContext.CurrentContext.TestDirectory, "../../../Data/Search"));
+            var htmlPath = Path.Combine(dataDir, "SearchResultsContainingPriceRanges.htm");
+            
+            if (!File.Exists(htmlPath))
+            {
+                Assert.Ignore($"Test data file not found: {htmlPath}");
+                return;
+            }
+
+            var html = await File.ReadAllTextAsync(htmlPath);
+
+            var mockFetcher = new Mock<IWebscraperClient>();
+            mockFetcher.Setup(x => x.GetPageHtmlAsync(It.IsAny<string>(), It.IsAny<IEnumerable<object>?>(), It.IsAny<TimeSpan?>(), It.IsAny<CancellationToken>()))
+                      .ReturnsAsync(html);
+
+            var services = new ServiceCollection();
+            services.AddLogging();
+            services.AddSingleton<IEbayUrlBuilder, EbayUrlBuilder>();
+            services.AddSingleton<ISearchParser, EbaySearchParser>();
+            services.AddSingleton<IListingParser, EbayListingParser>();
+            services.AddSingleton<IWebscraperClient>(mockFetcher.Object);
+            services.AddSingleton(Mock.Of<IJobRepository>());
+            services.AddSingleton<IEbayScraper, EbayScraper>();
+
+            var provider = services.BuildServiceProvider();
+            var scraper = provider.GetRequiredService<IEbayScraper>();
+
+            var result = await scraper.SearchActiveListings("test query", BuyingFormat.BUY_NOW, Condition.USED, 50);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(result, Is.Not.Null, "Should return results");
+                Assert.That(result.Count(), Is.LessThanOrEqualTo(50), "Should respect item limit");
+                Assert.That(result.All(x => !string.IsNullOrEmpty(x.ListingId)), Is.True, "All items should have listing IDs");
+                Assert.That(result.All(x => !string.IsNullOrEmpty(x.Title)), Is.True, "All items should have titles");
+            });
+
+            await provider.DisposeAsync();
+        }
+
+        [Test]
+        [Description("Integration test: SearchSoldListings date filtering with real data")]
+        public async Task Should_search_sold_listings_filter_by_date_with_real_data()
+        {
+            var dataDir = Path.GetFullPath(Path.Combine(TestContext.CurrentContext.TestDirectory, "../../../Data/Search"));
+            var htmlPath = Path.Combine(dataDir, "Sold_With_Small_Number_of_Real_Results.htm");
+            var html = await File.ReadAllTextAsync(htmlPath);
+
+            var mockFetcher = new Mock<IWebscraperClient>();
+            mockFetcher.Setup(x => x.GetPageHtmlAsync(It.IsAny<string>(), It.IsAny<IEnumerable<object>?>(), It.IsAny<TimeSpan?>(), It.IsAny<CancellationToken>()))
+                      .ReturnsAsync(html);
+
+            var services = new ServiceCollection();
+            services.AddLogging();
+            services.AddSingleton<IEbayUrlBuilder, EbayUrlBuilder>();
+            services.AddSingleton<ISearchParser, EbaySearchParser>();
+            services.AddSingleton<IListingParser, EbayListingParser>();
+            services.AddSingleton<IWebscraperClient>(mockFetcher.Object);
+            services.AddSingleton(Mock.Of<IJobRepository>());
+            services.AddSingleton<IEbayScraper, EbayScraper>();
+
+            var provider = services.BuildServiceProvider();
+            var scraper = provider.GetRequiredService<IEbayScraper>();
+
+            var startDate = new DateTime(2024, 1, 1);
+            var endDate = new DateTime(2024, 12, 31);
+
+            var result = await scraper.SearchSoldListings("test", BuyingFormat.BUY_NOW, Condition.USED, startDate, endDate);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(result, Is.Not.Null, "Should return results");
+                if (result.Any())
+                {
+                    Assert.That(result.All(x => x.EndDateUtc >= startDate && x.EndDateUtc <= endDate), Is.True,
+                        "All results should be within the specified date range");
+                }
+            });
+
+            await provider.DisposeAsync();
         }
 
         //[Test]

@@ -25,11 +25,11 @@ public class Program
         //var filter = new SearchFilter();
         //var results = await ebayScraper.SearchListings("Playstation 5 Console", null);
 
-        var items = await ebayScraper.GetItemsFromListings(results.Select(x => x.ListingId).ToArray());
-        await LocalStorage.WriteProductsToCsvAsync(items, "./products.csv");
+        //var items = await ebayScraper.GetItemsFromListings(results.Select(x => x.ListingId).ToArray());
+        //await LocalStorage.WriteProductsToCsvAsync(items, "./products.csv");
 
-        Console.WriteLine(JsonConvert.SerializeObject(items));
-        // 4) Tear down and exit
-        await host.StopAsync();
+        //Console.WriteLine(JsonConvert.SerializeObject(items));
+        //// 4) Tear down and exit
+        //await host.StopAsync();
     }
 }

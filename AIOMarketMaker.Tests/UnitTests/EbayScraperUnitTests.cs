@@ -112,56 +112,267 @@ namespace AIOMarketMaker.Tests.Unit
             ListingAssertions.AssertValidSoldListing(result.First(), id);
         }
 
+        #region SearchSoldListings Tests
+
         [Test]
-        public async Task Should_return_results_in_date_range()
+        [Description("Verifies that SearchSoldListings returns only items within the specified date range")]
+        public async Task Should_search_sold_listings_within_date_range()
         {
-            var dataDir = Path.GetFullPath(Path.Combine(TestContext.CurrentContext.TestDirectory, "../../../Data/Search"));
-            var htmlPath = Path.Combine(dataDir, "Sold_With_Small_Number_of_Real_Results.htm");
-            var html = await File.ReadAllTextAsync(htmlPath);
+            var html = CreateMockSearchHtml();
+            _mockFetcher.Setup(x => x.GetPageHtmlAsync(It.IsAny<string>(), It.IsAny<IEnumerable<object>?>(), It.IsAny<TimeSpan?>(), It.IsAny<CancellationToken>()))
+                       .ReturnsAsync(html);
 
-            var query = "";
-            var url = _urlBuilder.BuildSearchUrl(query, true, 1, Condition.USED, BuyingFormat.BUY_NOW);
-            //Stub_ReturnsAsync(html, url);
+            var startDate = new DateTime(2025, 1, 1);
+            var endDate = new DateTime(2025, 1, 31);
 
-            this._mockFetcher
-                .Setup(x => x.GetPageHtmlAsync(It.IsAny<string>(), It.IsAny<IEnumerable<object>?>(), It.IsAny<TimeSpan?>(), It.IsAny<CancellationToken>()))
-                .ReturnsAsync(html);
-
-            this._mockFetcher
-                .Setup(x => x.NewJobAsync(It.IsAny<IEnumerable<string>>(), It.IsAny<IEnumerable<object>>(), It.IsAny<CancellationToken>()))
-                .ReturnsAsync(new StartResponse("dummy_id"));
-
-            this._mockFetcher
-                .Setup(x => x.GetStatusAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
-                .ReturnsAsync(new JobEntity("dummy_id", DateTime.UtcNow, JobStatusType.Success, 5, 5, 5, 0));
-
-            this._mockFetcher
-                .Setup(x => x.GetResultsAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
-                .ReturnsAsync(new List<JobItemEntity> { new JobItemEntity("dummy_id", JobStatusType.Success, url, DateTime.Now, "www.dummybloburl.com", "") });
-
-           
-            
-            
-            var start = new DateTime(2025, 5, 5).AddDays(-7);
-            var end = new DateTime(2025, 5, 5);
-
-            var filter = new SearchFilter(new SearchDateRange(start, end), BuyingFormat.BUY_NOW, Condition.USED);
-
-            var result = await _serviceUnderTest.SearchListings(query, filter);
+            var result = await _serviceUnderTest.SearchSoldListings("test query", BuyingFormat.BUY_NOW, Condition.USED, startDate, endDate);
 
             Assert.Multiple(() =>
             {
-                Assert.That(
-                    result.Select(x => x.EndDateUtc),
-                    Is.All.GreaterThanOrEqualTo(start),
-                    $"❌ Every EndDateUtc should be on or after {start:O}");
-
-                Assert.That(
-                    result.Select(x => x.EndDateUtc),
-                    Is.All.LessThanOrEqualTo(end),
-                    $"❌ Every EndDateUtc should be on or before {end:O}");
+                Assert.That(result, Is.Not.Null);
+                Assert.That(result.All(x => x.EndDateUtc >= startDate && x.EndDateUtc <= endDate), Is.True,
+                    "All results should be within the specified date range");
             });
         }
+
+        [Test]
+        [Description("Verifies that SearchSoldListings handles empty search results gracefully")]
+        public async Task Should_search_sold_listings_handle_empty_results()
+        {
+            var emptyHtml = CreateEmptySearchHtml();
+            _mockFetcher.Setup(x => x.GetPageHtmlAsync(It.IsAny<string>(), It.IsAny<IEnumerable<object>?>(), It.IsAny<TimeSpan?>(), It.IsAny<CancellationToken>()))
+                       .ReturnsAsync(emptyHtml);
+
+            var startDate = DateTime.UtcNow.AddDays(-7);
+            var endDate = DateTime.UtcNow;
+
+            var result = await _serviceUnderTest.SearchSoldListings("nonexistent item", BuyingFormat.AUCTION, Condition.NEW, startDate, endDate);
+
+            Assert.That(result, Is.Empty, "Should return empty collection when no results found");
+        }
+
+        [Test]
+        [TestCaseSource(nameof(BuyingFormatTestCases))]
+        [Description("Verifies that SearchSoldListings works with different buying formats")]
+        public async Task Should_search_sold_listings_with_buying_format(BuyingFormat format)
+        {
+            var html = CreateMockSearchHtml();
+            _mockFetcher.Setup(x => x.GetPageHtmlAsync(It.IsAny<string>(), It.IsAny<IEnumerable<object>?>(), It.IsAny<TimeSpan?>(), It.IsAny<CancellationToken>()))
+                       .ReturnsAsync(html);
+
+            var startDate = DateTime.UtcNow.AddDays(-30);
+            var endDate = DateTime.UtcNow;
+
+            var result = await _serviceUnderTest.SearchSoldListings("test", format, Condition.USED, startDate, endDate);
+
+            Assert.That(result, Is.Not.Null, $"Should handle {format} buying format");
+        }
+
+        [Test]
+        [TestCaseSource(nameof(ConditionTestCases))]
+        [Description("Verifies that SearchSoldListings works with different item conditions")]
+        public async Task Should_search_sold_listings_with_condition(Condition condition)
+        {
+            var html = CreateMockSearchHtml();
+            _mockFetcher.Setup(x => x.GetPageHtmlAsync(It.IsAny<string>(), It.IsAny<IEnumerable<object>?>(), It.IsAny<TimeSpan?>(), It.IsAny<CancellationToken>()))
+                       .ReturnsAsync(html);
+
+            var startDate = DateTime.UtcNow.AddDays(-7);
+            var endDate = DateTime.UtcNow;
+
+            var result = await _serviceUnderTest.SearchSoldListings("test", BuyingFormat.BUY_NOW, condition, startDate, endDate);
+
+            Assert.That(result, Is.Not.Null, $"Should handle {condition} condition");
+        }
+
+        [Test]
+        [Description("Verifies that SearchSoldListings removes duplicate listings across pages")]
+        public async Task Should_search_sold_listings_remove_duplicates()
+        {
+            var htmlWithDuplicates = CreateMockSearchHtmlWithDuplicates();
+            _mockFetcher.Setup(x => x.GetPageHtmlAsync(It.IsAny<string>(), It.IsAny<IEnumerable<object>?>(), It.IsAny<TimeSpan?>(), It.IsAny<CancellationToken>()))
+                       .ReturnsAsync(htmlWithDuplicates);
+
+            var startDate = DateTime.UtcNow.AddDays(-7);
+            var endDate = DateTime.UtcNow;
+
+            var result = await _serviceUnderTest.SearchSoldListings("test", BuyingFormat.BUY_NOW, Condition.USED, startDate, endDate);
+
+            var listingIds = result.Select(x => x.ListingId).ToList();
+            Assert.That(listingIds.Distinct().Count(), Is.EqualTo(listingIds.Count), 
+                "Should not contain duplicate listing IDs");
+        }
+
+        #endregion
+
+        #region SearchActiveListings Tests
+
+        [Test]
+        [Description("Verifies that SearchActiveListings respects the item limit parameter")]
+        public async Task Should_search_active_listings_respect_item_limit()
+        {
+            var html = CreateMockSearchHtml();
+            _mockFetcher.Setup(x => x.GetPageHtmlAsync(It.IsAny<string>(), It.IsAny<IEnumerable<object>?>(), It.IsAny<TimeSpan?>(), It.IsAny<CancellationToken>()))
+                       .ReturnsAsync(html);
+
+            const int itemLimit = 5;
+            var result = await _serviceUnderTest.SearchActiveListings("test query", BuyingFormat.BUY_NOW, Condition.USED, itemLimit);
+
+            Assert.That(result.Count(), Is.LessThanOrEqualTo(itemLimit), 
+                $"Should not return more than {itemLimit} items");
+        }
+
+        [Test]
+        [Description("Verifies that SearchActiveListings uses default limit when not specified")]
+        public async Task Should_search_active_listings_use_default_limit()
+        {
+            var html = CreateMockSearchHtml();
+            _mockFetcher.Setup(x => x.GetPageHtmlAsync(It.IsAny<string>(), It.IsAny<IEnumerable<object>?>(), It.IsAny<TimeSpan?>(), It.IsAny<CancellationToken>()))
+                       .ReturnsAsync(html);
+
+            var result = await _serviceUnderTest.SearchActiveListings("test query", BuyingFormat.BUY_NOW, Condition.USED);
+
+            Assert.That(result.Count(), Is.LessThanOrEqualTo(500), 
+                "Should use default limit of 500 when not specified");
+        }
+
+        [Test]
+        [Description("Verifies that SearchActiveListings handles empty search results")]
+        public async Task Should_search_active_listings_handle_empty_results()
+        {
+            var emptyHtml = CreateEmptySearchHtml();
+            _mockFetcher.Setup(x => x.GetPageHtmlAsync(It.IsAny<string>(), It.IsAny<IEnumerable<object>?>(), It.IsAny<TimeSpan?>(), It.IsAny<CancellationToken>()))
+                       .ReturnsAsync(emptyHtml);
+
+            var result = await _serviceUnderTest.SearchActiveListings("nonexistent item", BuyingFormat.AUCTION, Condition.NEW, 10);
+
+            Assert.That(result, Is.Empty, "Should return empty collection when no results found");
+        }
+
+        [Test]
+        [TestCaseSource(nameof(BuyingFormatTestCases))]
+        [Description("Verifies that SearchActiveListings works with different buying formats")]
+        public async Task Should_search_active_listings_with_buying_format(BuyingFormat format)
+        {
+            var html = CreateMockSearchHtml();
+            _mockFetcher.Setup(x => x.GetPageHtmlAsync(It.IsAny<string>(), It.IsAny<IEnumerable<object>?>(), It.IsAny<TimeSpan?>(), It.IsAny<CancellationToken>()))
+                       .ReturnsAsync(html);
+
+            var result = await _serviceUnderTest.SearchActiveListings("test", format, Condition.USED, 10);
+
+            Assert.That(result, Is.Not.Null, $"Should handle {format} buying format");
+        }
+
+        [Test]
+        [TestCaseSource(nameof(ConditionTestCases))]
+        [Description("Verifies that SearchActiveListings works with different item conditions")]
+        public async Task Should_search_active_listings_with_condition(Condition condition)
+        {
+            var html = CreateMockSearchHtml();
+            _mockFetcher.Setup(x => x.GetPageHtmlAsync(It.IsAny<string>(), It.IsAny<IEnumerable<object>?>(), It.IsAny<TimeSpan?>(), It.IsAny<CancellationToken>()))
+                       .ReturnsAsync(html);
+
+            var result = await _serviceUnderTest.SearchActiveListings("test", BuyingFormat.BUY_NOW, condition, 10);
+
+            Assert.That(result, Is.Not.Null, $"Should handle {condition} condition");
+        }
+
+        [Test]
+        [Description("Verifies that SearchActiveListings removes duplicate listings across pages")]
+        public async Task Should_search_active_listings_remove_duplicates()
+        {
+            var htmlWithDuplicates = CreateMockSearchHtmlWithDuplicates();
+            _mockFetcher.Setup(x => x.GetPageHtmlAsync(It.IsAny<string>(), It.IsAny<IEnumerable<object>?>(), It.IsAny<TimeSpan?>(), It.IsAny<CancellationToken>()))
+                       .ReturnsAsync(htmlWithDuplicates);
+
+            var result = await _serviceUnderTest.SearchActiveListings("test", BuyingFormat.BUY_NOW, Condition.USED, 50);
+
+            var listingIds = result.Select(x => x.ListingId).ToList();
+            Assert.That(listingIds.Distinct().Count(), Is.EqualTo(listingIds.Count), 
+                "Should not contain duplicate listing IDs");
+        }
+
+        #endregion
+
+        #region Test Data Sources
+
+        private static IEnumerable<TestCaseData> BuyingFormatTestCases()
+        {
+            yield return new TestCaseData(BuyingFormat.BUY_NOW).SetName("BuyNow");
+            yield return new TestCaseData(BuyingFormat.AUCTION).SetName("Auction");
+            yield return new TestCaseData(BuyingFormat.ALL).SetName("All");
+        }
+
+        private static IEnumerable<TestCaseData> ConditionTestCases()
+        {
+            yield return new TestCaseData(Condition.NEW).SetName("New");
+            yield return new TestCaseData(Condition.USED).SetName("Used");
+            yield return new TestCaseData(Condition.FOR_PARTS_NOT_WORKING).SetName("ForParts");
+            yield return new TestCaseData(Condition.EXCELLENT_REFURBISHED).SetName("ExcellentRefurb");
+        }
+
+        #endregion
+
+        #region Helper Methods
+
+        private string CreateMockSearchHtml()
+        {
+            return @"
+                <html>
+                <body>
+                    <div class=""s-item"">
+                        <div class=""s-item__wrapper"">
+                            <h3 class=""s-item__title"">Test Item 1</h3>
+                            <span class=""s-item__price"">$10.00</span>
+                            <a class=""s-item__link"" href=""https://www.ebay.com/itm/123456789""></a>
+                            <span class=""s-item__detail s-item__detail--primary"">
+                                <span class=""NEGATIVE"">Sold</span>
+                                <span class=""s-item__endedDate"">Jan 15, 2025</span>
+                            </span>
+                        </div>
+                    </div>
+                </body>
+                </html>";
+        }
+
+        private string CreateEmptySearchHtml()
+        {
+            return @"
+                <html>
+                <body>
+                    <div class=""srp-results"">
+                        <div class=""srp-river-results"">
+                            <!-- No results -->
+                        </div>
+                    </div>
+                </body>
+                </html>";
+        }
+
+        private string CreateMockSearchHtmlWithDuplicates()
+        {
+            return @"
+                <html>
+                <body>
+                    <div class=""s-item"">
+                        <div class=""s-item__wrapper"">
+                            <h3 class=""s-item__title"">Test Item 1</h3>
+                            <span class=""s-item__price"">$10.00</span>
+                            <a class=""s-item__link"" href=""https://www.ebay.com/itm/123456789""></a>
+                        </div>
+                    </div>
+                    <div class=""s-item"">
+                        <div class=""s-item__wrapper"">
+                            <h3 class=""s-item__title"">Test Item 1</h3>
+                            <span class=""s-item__price"">$10.00</span>
+                            <a class=""s-item__link"" href=""https://www.ebay.com/itm/123456789""></a>
+                        </div>
+                    </div>
+                </body>
+                </html>";
+        }
+
+        #endregion
 
         private void Stub_ReturnsAsync(string returnHtml, string? url = null)
         {

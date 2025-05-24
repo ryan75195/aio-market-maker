@@ -1,130 +1,130 @@
-﻿// EbayController.cs
-using System;
-using System.Net;
-using System.Threading;
-using System.Threading.Tasks;
-using System.Web;
-using Microsoft.Azure.Functions.Worker;
-using Microsoft.Azure.Functions.Worker.Http;
-using Microsoft.Extensions.Logging;
-using AIOMarketMaker.Services;
-using System.Text.Json;
-using System.Text.Json.Serialization;
-using System.Reflection;
-using AngleSharp.Dom;
-using AIOMarketMaker.Models.Ebay;
+﻿//// EbayController.cs
+//using System;
+//using System.Net;
+//using System.Threading;
+//using System.Threading.Tasks;
+//using System.Web;
+//using Microsoft.Azure.Functions.Worker;
+//using Microsoft.Azure.Functions.Worker.Http;
+//using Microsoft.Extensions.Logging;
+//using AIOMarketMaker.Services;
+//using System.Text.Json;
+//using System.Text.Json.Serialization;
+//using System.Reflection;
+//using AngleSharp.Dom;
+//using AIOMarketMaker.Models.Ebay;
 
-namespace AIOMarketMaker.Controllers
-{
-    public class EbayController
-    {
-        private readonly IEbayScraper _scraper;
-        private readonly ILogger<EbayController> _logger;
+//namespace AIOMarketMaker.Controllers
+//{
+//    public class EbayController
+//    {
+//        private readonly IEbayScraper _scraper;
+//        private readonly ILogger<EbayController> _logger;
 
-        public EbayController(
-            IEbayScraper scraper,
-            ILogger<EbayController> logger)
-        {
-            _scraper = scraper;
-            _logger = logger;
-        }
+//        public EbayController(
+//            IEbayScraper scraper,
+//            ILogger<EbayController> logger)
+//        {
+//            _scraper = scraper;
+//            _logger = logger;
+//        }
 
-        [Function("Search")]
-        public async Task<HttpResponseData> Search(
-            [HttpTrigger(AuthorizationLevel.Function, "get", Route = "ebay/search")]
-            HttpRequestData req,
-            CancellationToken token)
-        {
-            var inputs = HttpUtility.ParseQueryString(req.Url.Query);
+//        [Function("Search")]
+//        public async Task<HttpResponseData> Search(
+//            [HttpTrigger(AuthorizationLevel.Function, "get", Route = "ebay/search")]
+//            HttpRequestData req,
+//            CancellationToken token)
+//        {
+//            var inputs = HttpUtility.ParseQueryString(req.Url.Query);
 
-            var query = inputs["query"];
-            var buyingFormatString = inputs["buyingFormat"];
-            var conditionString = inputs["condition"];
+//            var query = inputs["query"];
+//            var buyingFormatString = inputs["buyingFormat"];
+//            var conditionString = inputs["condition"];
 
 
-            var condition = (Condition)Enum.Parse(
-                typeof(Condition),
-                conditionString,
-                ignoreCase: true
-            );
+//            var condition = (Condition)Enum.Parse(
+//                typeof(Condition),
+//                conditionString,
+//                ignoreCase: true
+//            );
 
-            var buyingFormat = (BuyingFormat)Enum.Parse(
-                typeof(BuyingFormat),
-                buyingFormatString,
-                ignoreCase: true
-            );
+//            var buyingFormat = (BuyingFormat)Enum.Parse(
+//                typeof(BuyingFormat),
+//                buyingFormatString,
+//                ignoreCase: true
+//            );
 
-            var lowerDateBound = inputs["lowerDateBound"];
-            var upperDateBound = inputs["upperDateBound"];
-            var dateRangeFilter = (lowerDateBound != null && upperDateBound != null) ? 
-                new SearchDateRange(DateTime.Parse(lowerDateBound), DateTime.Parse(upperDateBound)): null;
+//            var lowerDateBound = inputs["lowerDateBound"];
+//            var upperDateBound = inputs["upperDateBound"];
+//            var dateRangeFilter = (lowerDateBound != null && upperDateBound != null) ? 
+//                new SearchDateRange(DateTime.Parse(lowerDateBound), DateTime.Parse(upperDateBound)): null;
 
-            var filter = new SearchFilter(dateRangeFilter, buyingFormat, condition);
+//            var filter = new SearchFilter(dateRangeFilter, buyingFormat, condition);
 
-            var listings = await _scraper.SearchListings(query, filter);
+//            var listings = await _scraper.SearchActiveListings(query, filter);
 
-            // 4) Serialize & return
-            var resp = req.CreateResponse(HttpStatusCode.OK);
-            var options = new JsonSerializerOptions
-            {
-                PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-                DictionaryKeyPolicy = JsonNamingPolicy.CamelCase,
-                DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
-            };
+//            // 4) Serialize & return
+//            var resp = req.CreateResponse(HttpStatusCode.OK);
+//            var options = new JsonSerializerOptions
+//            {
+//                PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+//                DictionaryKeyPolicy = JsonNamingPolicy.CamelCase,
+//                DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
+//            };
 
-            // serialize with camelCase
-            var json = JsonSerializer.Serialize(listings, options);
-            await resp.WriteStringAsync(json);
-            return resp;
-        }
+//            // serialize with camelCase
+//            var json = JsonSerializer.Serialize(listings, options);
+//            await resp.WriteStringAsync(json);
+//            return resp;
+//        }
 
-        [Function("Listing")]
-        public async Task<HttpResponseData> Listing(
-    [HttpTrigger(AuthorizationLevel.Function, "get", Route = "ebay/listing")]
-            HttpRequestData req,
-    CancellationToken token)
-        {
-            var inputs = HttpUtility.ParseQueryString(req.Url.Query);
+//        [Function("Listing")]
+//        public async Task<HttpResponseData> Listing(
+//    [HttpTrigger(AuthorizationLevel.Function, "get", Route = "ebay/listing")]
+//            HttpRequestData req,
+//    CancellationToken token)
+//        {
+//            var inputs = HttpUtility.ParseQueryString(req.Url.Query);
 
-            var listingId = inputs["listingId"];
-            var resp = req.CreateResponse(HttpStatusCode.OK);
-            var listing = await _scraper.GetItemsFromListings([listingId]);
-            var options = new JsonSerializerOptions
-            {
-                PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-                DictionaryKeyPolicy = JsonNamingPolicy.CamelCase,
-                DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
-            };
+//            var listingId = inputs["listingId"];
+//            var resp = req.CreateResponse(HttpStatusCode.OK);
+//            var listing = await _scraper.GetItemsFromListings([listingId]);
+//            var options = new JsonSerializerOptions
+//            {
+//                PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+//                DictionaryKeyPolicy = JsonNamingPolicy.CamelCase,
+//                DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
+//            };
 
-            // serialize with camelCase
-            var json = JsonSerializer.Serialize(listing, options);
-            await resp.WriteStringAsync(json);
+//            // serialize with camelCase
+//            var json = JsonSerializer.Serialize(listing, options);
+//            await resp.WriteStringAsync(json);
 
-            return resp;
-        }
+//            return resp;
+//        }
 
-        [Function("ListingsBatch")]
-        public async Task<HttpResponseData> ListingsBatch([HttpTrigger(AuthorizationLevel.Function, "get", Route = "ebay/listings")] HttpRequestData req)
-        {
-            var idsParam = HttpUtility.ParseQueryString(req.Url.Query)["listingIds"];
-            var ids = idsParam?.Split(',', StringSplitOptions.RemoveEmptyEntries)
-                             .ToArray();
-            if (ids == null || ids.Length == 0)
-                return req.CreateResponse(HttpStatusCode.BadRequest);
+//        [Function("ListingsBatch")]
+//        public async Task<HttpResponseData> ListingsBatch([HttpTrigger(AuthorizationLevel.Function, "get", Route = "ebay/listings")] HttpRequestData req)
+//        {
+//            var idsParam = HttpUtility.ParseQueryString(req.Url.Query)["listingIds"];
+//            var ids = idsParam?.Split(',', StringSplitOptions.RemoveEmptyEntries)
+//                             .ToArray();
+//            if (ids == null || ids.Length == 0)
+//                return req.CreateResponse(HttpStatusCode.BadRequest);
 
-            var fetchResults = await _scraper.GetItemsFromListings(ids);
+//            var fetchResults = await _scraper.GetItemsFromListings(ids);
 
-            var resp = req.CreateResponse(HttpStatusCode.OK);
-            var options = new JsonSerializerOptions
-            {
-                PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-                DictionaryKeyPolicy = JsonNamingPolicy.CamelCase,
-                DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
-            };
+//            var resp = req.CreateResponse(HttpStatusCode.OK);
+//            var options = new JsonSerializerOptions
+//            {
+//                PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+//                DictionaryKeyPolicy = JsonNamingPolicy.CamelCase,
+//                DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
+//            };
 
-            var json = JsonSerializer.Serialize(fetchResults, options);
-            await resp.WriteStringAsync(json);
-            return resp;
-        }
-    }
-}
+//            var json = JsonSerializer.Serialize(fetchResults, options);
+//            await resp.WriteStringAsync(json);
+//            return resp;
+//        }
+//    }
+//}
