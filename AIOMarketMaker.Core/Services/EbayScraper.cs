@@ -1,21 +1,19 @@
 ﻿// Services/EbayScraper.cs
 using AIOMarketMaker.Api.Parsers;
 using AIOMarketMaker.Api.Services;
-using AIOMarketMaker.Models;
 using AIOMarketMaker.Models.Ebay;
 using AngleSharp;
 using AngleSharp.Dom;
 using Microsoft.Extensions.Logging;
 using ScraperWorker.Services;
-using System.Data.SqlTypes;
-using System.Reflection;
 
 namespace AIOMarketMaker.Services
 {
     public interface IEbayScraper
     {
         Task<IEnumerable<EbayProduct>> GetItemsFromListings(string[] itemIds);
-        Task<IEnumerable<EbayProductSummary>> SearchListings(string query, SearchFilter? filter);
+        Task<IEnumerable<EbayProductSummary>> SearchActiveListings(string query, BuyingFormat buyingFormat, Condition condition, int itemLimit = 500);
+        Task<IEnumerable<EbayProductSummary>> SearchSoldListings(string query, BuyingFormat buyingFormat, Condition condition, DateTime startDate, DateTime endDate);
     }
 
     public class EbayScraper : IEbayScraper
@@ -42,6 +40,52 @@ namespace AIOMarketMaker.Services
             _listingParser = listingParser;
             _jobRepository = jobRepository;
             _logger = log;
+        }
+
+        public async Task<IEnumerable<EbayProductSummary>> SearchActiveListings(
+            string query,
+            BuyingFormat buyingFormat,
+            Condition condition,
+            int itemLimit = 500)
+        {
+            var results = new List<EbayProductSummary>();
+            var seenIds = new HashSet<string>();
+
+            for (int page = 1; results.Count < itemLimit; page++)
+            {
+                var items = await GetProductsFromPageAsync(query, page, sold: false, condition, buyingFormat);
+                var newItems = items.Where(i => seenIds.Add(i.ListingId)).ToList();
+                if (!newItems.Any()) break;
+                results.AddRange(newItems);
+            }
+
+            return results.Take(itemLimit);
+        }
+
+        public async Task<IEnumerable<EbayProductSummary>> SearchSoldListings(
+            string query,
+            BuyingFormat buyingFormat,
+            Condition condition,
+            DateTime startDate,
+            DateTime endDate)
+        {
+            var results = new List<EbayProductSummary>();
+            var seenIds = new HashSet<string>();
+
+            for (int page = 1; ; page++)
+            {
+                var pageItems = (await GetProductsFromPageAsync(
+                        query, page, sold: true, condition, buyingFormat))
+                    .Where(p => p.EndDateUtc >= startDate && p.EndDateUtc <= endDate)
+                    .ToList();
+
+                var newItems = pageItems.Where(p => seenIds.Add(p.ListingId)).ToList();
+                if (newItems.Count == 0) break;
+
+                results.AddRange(newItems);
+            }
+
+            return results;
         }
 
         public async Task<IEnumerable<EbayProduct>> GetItemsFromListings(string[] itemIds)
@@ -115,53 +159,6 @@ namespace AIOMarketMaker.Services
             var html = await _jobRepository.GetFileContentsAsync(jobId, downloadLink, new CancellationToken());
             var doc = await LoadDocumentAsync(html);
             return _listingParser.ParseProductListing(doc, downloadLink);
-        }
-
-        public async Task<IEnumerable<EbayProductSummary>> SearchListings(string query, SearchFilter? filter)
-        {
-            var defaultFilter = new SearchFilter(
-                new SearchDateRange(DateTime.Now - new TimeSpan(7, 0, 0, 0), DateTime.Now),
-                BuyingFormat.BUY_NOW,
-                Condition.NEW
-            );
-
-            filter = filter ?? defaultFilter;
-
-            return (filter != null && filter.SearchDateRange != null) ?
-                await GetProductsInDateRange(query, filter) :
-                await GetProductsFromPageAsync(query, 1, filter != null && filter.SearchDateRange != null, filter.Condition, filter.BuyingFormat);
-        }
-
-        // I need tests :( Move me to my own service and write some unit tests. 
-        private async Task<IEnumerable<EbayProductSummary>> GetProductsInDateRange(string query, SearchFilter? filter = null)
-        {
-            var pageOffset = 1;
-            var productList = new List<EbayProductSummary>();
-            var lastPageProducts = new List<EbayProductSummary>();
-            var earliestDate = DateTime.UtcNow;
-
-            while (earliestDate > filter.SearchDateRange.startDate)
-            {
-                var products = await GetProductsFromPageAsync(query, pageOffset, filter.SearchDateRange != null, filter.Condition, filter.BuyingFormat);
-
-                products = products.Where(x => x.EndDateUtc <= filter.SearchDateRange!.endDate && x.EndDateUtc >= filter.SearchDateRange.startDate);
-
-                if (products.Count() == 0 || products.All(p => lastPageProducts.Any(lp => lp.ListingId == p.ListingId)))
-                {
-                    break;
-                }
-
-                var soldDates = products
-                  .Where(p => p.EndDateUtc.HasValue)
-                  .Select(p => p.EndDateUtc.Value);
-
-                earliestDate = soldDates.Min();
-
-                productList.AddRange(products);
-                lastPageProducts = products.ToList();
-                pageOffset++;
-            }
-            return productList;
         }
 
         private async Task<IEnumerable<EbayProductSummary>> GetProductsFromPageAsync(string query, int pageNumber, bool sold, Condition condition, BuyingFormat buyingFormat)
