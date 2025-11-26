@@ -72,7 +72,7 @@ namespace AIOMarketMaker.Api.Services
             IEnumerable<object>? proxies = null,
             CancellationToken ct = default)
         {
-            var req = new StartRequest(urls, null);
+            var req = new StartRequest(urls.ToArray(), null);
             var resp = await _http.PostAsJsonAsync("api/NewJob", req, ct);
             resp.EnsureSuccessStatusCode();
 

@@ -43,7 +43,7 @@ public record StatusResponse(
 );
 
 public record StartRequest(
-       IEnumerable<string> Urls,
+       string[] Urls,
        IEnumerable<ProxyConfig>? Proxies = null
    );
 
