@@ -21,9 +21,11 @@ public class Program
         var ebayScraper = host.Services.GetRequiredService<IEbayScraper>();
 
         //// active ps5 for the last 30 days
-        var results = await ebayScraper.SearchActiveListings("Playstation 5 Console", BuyingFormat.BUY_NOW, Condition.USED, itemLimit: 300);
+        //var results = await ebayScraper.SearchActiveListings("Playstation 5 Console", BuyingFormat.BUY_NOW, Condition.USED, itemLimit: 15);
+        var results = await ebayScraper.SearchSoldListings("Playstation 5 Console", BuyingFormat.BUY_NOW, Condition.USED, DateTime.Now - new TimeSpan(7, 0, 0, 0), DateTime.Now);
 
         var items = await ebayScraper.GetItemsFromListings(results.Select(x => x.ListingId).ToArray());
+
         await LocalStorage.WriteProductsToCsvAsync(items, "./products.csv");
 
         Console.WriteLine(JsonConvert.SerializeObject(items));

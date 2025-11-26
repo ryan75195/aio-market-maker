@@ -17,25 +17,29 @@ namespace AIOMarketMaker.Api.Parsers
     {
         public IEnumerable<IEbayProductSummary> ParseSearchResults(IDocument doc)
         {
-            var items = doc.QuerySelectorAll(
-                "li.s-item[id]:not([id=\"\"])"
-            );
+            // Try new eBay structure first (2024+): li.s-card[data-viewport]
+            var items = doc.QuerySelectorAll("li.s-card[data-viewport]");
+
+            // Fall back to old structure if new one not found
+            if (items.Length == 0)
+            {
+                items = doc.QuerySelectorAll("li.s-item[id]:not([id=\"\"])");
+            }
 
             foreach (var li in items)
             {
                 var id = GetListingId(li);
                 if (string.IsNullOrWhiteSpace(id)) continue;
-                if (isMultiPriceListing(li)) continue;
+                if (IsMultiPriceListing(li)) continue;
 
-                var soldTag = li.QuerySelector(".s-item__title--tagblock, .POSITIVE");
-                var isSold = soldTag != null && soldTag.TextContent.Contains("Sold", StringComparison.OrdinalIgnoreCase);
+                var isSold = IsSoldListing(li);
                 yield return new EbayProductSummary(
                        ListingId: id,
                        Title: ExtractTitle(li),
                        Price: ExtractPrice(li),
                        Currency: ExtractCurrency(li),
                        ShippingCost: ExtractShippingCost(li),
-                       Images: new List<string> { li.QuerySelector(".s-item__image-wrapper img")?.GetAttribute("src") },
+                       Images: new List<string> { ExtractImageUrl(li) },
                        Url: GetListingUrl(li),
                        EndDateUtc: isSold ? ExtractDate(li) : null,
                        BuyingFormat: ExtractBuyingFormat(li),
@@ -46,38 +50,80 @@ namespace AIOMarketMaker.Api.Parsers
 
         public string GetListingUrl(IElement li)
         {
-            return li.QuerySelector(".s-item__link")?.GetAttribute("href").Split("?").First();
+            // New structure: a.s-card__link or any link with /itm/
+            var link = li.QuerySelector("a.s-card__link")?.GetAttribute("href")
+                    ?? li.QuerySelector("a[href*='/itm/']")?.GetAttribute("href")
+                    ?? li.QuerySelector(".s-item__link")?.GetAttribute("href");
+
+            return link?.Split("?").First();
         }
 
         public string? GetListingId(IElement li)
         {
             var url = GetListingUrl(li);
+            if (string.IsNullOrEmpty(url) || !url.Contains("/itm/"))
+                return null;
+
             var id = url.Split("/itm/")[1].Split("?").First().Trim();
             return id;
         }
 
-        private bool isMultiPriceListing(IElement li)
+        private bool IsMultiPriceListing(IElement li)
         {
-            return li.QuerySelector(".s-item__price").TextContent.Contains("to");
+            // New structure: .s-card__price, Old structure: .s-item__price
+            var priceEl = li.QuerySelector(".s-card__price")
+                       ?? li.QuerySelector(".s-item__price");
+            return priceEl?.TextContent?.Contains("to") ?? false;
+        }
+
+        private bool IsSoldListing(IElement li)
+        {
+            // Check for sold indicators in various places
+            var soldTag = li.QuerySelector(".s-item__title--tagblock, .POSITIVE, [class*='sold']");
+            if (soldTag != null && soldTag.TextContent.Contains("Sold", StringComparison.OrdinalIgnoreCase))
+                return true;
+
+            // Also check the entire item text for "Sold" date pattern
+            var fullText = li.TextContent;
+            return fullText.Contains("Sold", StringComparison.OrdinalIgnoreCase);
         }
 
         public string ExtractTitle(IElement li)
         {
-            return li.QuerySelector(".s-item__title [role=\"heading\"]")?.TextContent.Trim();
+            // New structure: .s-card__title, Old structure: .s-item__title [role="heading"]
+            var title = li.QuerySelector(".s-card__title")?.TextContent
+                     ?? li.QuerySelector(".s-item__title [role=\"heading\"]")?.TextContent;
+
+            // Clean up common suffixes like "Opens in a new window or tab"
+            title = title?.Replace("Opens in a new window or tab", "")
+                         .Replace("New listing", "")
+                         .Trim();
+
+            return title;
+        }
+
+        private string ExtractImageUrl(IElement li)
+        {
+            // New structure: img with ebayimg in src, Old structure: .s-item__image-wrapper img
+            return li.QuerySelector("img[src*='ebayimg']")?.GetAttribute("src")
+                ?? li.QuerySelector(".s-item__image-wrapper img")?.GetAttribute("src");
         }
 
         public BuyingFormat ExtractBuyingFormat(IElement li)
         {
-            if (li.QuerySelector(".s-item__bids") != null)
+            // Check for auction indicators
+            if (li.QuerySelector(".s-item__bids, [class*='bid']") != null)
                 return BuyingFormat.AUCTION;
 
+            // Check for Buy It Now indicators
             if (li.QuerySelector(".s-item__dynamic.s-item__formatBestOfferEnabled") != null)
                 return BuyingFormat.BUY_NOW;
 
             if (li.QuerySelector(".s-item__dynamic.s-item__formatBuyItNow") != null)
                 return BuyingFormat.BUY_NOW;
 
-            return BuyingFormat.NULL;
+            // Default to BUY_NOW for new structure (most sold listings are Buy It Now)
+            return BuyingFormat.BUY_NOW;
         }
 
         public static readonly Dictionary<string, Condition> ConditionMap =
@@ -94,10 +140,18 @@ namespace AIOMarketMaker.Api.Parsers
 
         public static Condition ExtractCondition(IElement listItemElement)
         {
+            // New structure: .s-card__subtitle-row, Old structure: .s-item__subtitle
             var subtitleTexts = listItemElement
-                .QuerySelectorAll(".s-item__subtitle")
+                .QuerySelectorAll(".s-card__subtitle-row, .s-item__subtitle")
                 .Select(node => node.TextContent.Trim())
-                .Where(text => !string.IsNullOrEmpty(text));
+                .Where(text => !string.IsNullOrEmpty(text))
+                .ToList();
+
+            // If no subtitle elements found, check the entire item text
+            if (!subtitleTexts.Any())
+            {
+                subtitleTexts = new List<string> { listItemElement.TextContent };
+            }
 
             var matchedPair = ConditionMap
                 .FirstOrDefault(mapping =>
@@ -135,26 +189,38 @@ namespace AIOMarketMaker.Api.Parsers
 
         public static decimal ExtractPrice(IElement li)
         {
+            // New structure: .s-card__price, Old structure: .s-item__price
             var rawText =
-                li.QuerySelector(".s-item__price .POSITIVE")?.TextContent
+                li.QuerySelector(".s-card__price")?.TextContent
+                ?? li.QuerySelector(".s-item__price .POSITIVE")?.TextContent
                 ?? li.QuerySelector(".s-item__price")?.TextContent;
+
+            if (string.IsNullOrWhiteSpace(rawText))
+                return 0m;
 
             var cleaned = new string(rawText
                 .Where(c => char.IsDigit(c) || c == '.' || c == ',')
                 .ToArray());
+
+            if (string.IsNullOrEmpty(cleaned))
+                return 0m;
 
             if (cleaned.Count(c => c == ',') == 1 && !cleaned.Contains('.'))
                 cleaned = cleaned.Replace(',', '.');
 
             cleaned = cleaned.Replace(",", "");
 
-            return decimal.Parse(cleaned);
+            return decimal.TryParse(cleaned, NumberStyles.Number, CultureInfo.InvariantCulture, out var price)
+                ? price
+                : 0m;
         }
 
         public static string ExtractCurrency(IElement li)
         {
+            // New structure: .s-card__price, Old structure: .s-item__price
             var rawText =
-                li.QuerySelector(".s-item__price .POSITIVE")?.TextContent
+                li.QuerySelector(".s-card__price")?.TextContent
+                ?? li.QuerySelector(".s-item__price .POSITIVE")?.TextContent
                 ?? li.QuerySelector(".s-item__price")?.TextContent;
 
             if (string.IsNullOrWhiteSpace(rawText))
@@ -162,7 +228,7 @@ namespace AIOMarketMaker.Api.Parsers
 
             var decoded = HttpUtility.HtmlDecode(rawText).Trim();
 
-            // 3) Pull off everything up to the first digit
+            // Pull off everything up to the first digit
             //    e.g. "£12.50" → "£"
             //         "US $15.99" → "US $"
             var symbolPart = new string(decoded
@@ -175,21 +241,43 @@ namespace AIOMarketMaker.Api.Parsers
 
         public DateTime? ExtractDate(IElement li)
         {
-            var txt = li.QuerySelector(".POSITIVE")?.TextContent
-                         ?.Replace("Sold", "", StringComparison.OrdinalIgnoreCase)
-                         .Trim();
-            if (string.IsNullOrWhiteSpace(txt))
-                return null;
+            // Search entire item text for "Sold" followed by a date
+            // Format is like "Sold  25 Nov 2025" in the new eBay structure
+            var fullText = li.TextContent ?? "";
 
-            // Tell TryParse: assume the text is local, then adjust the result to UTC.
-            var styles = DateTimeStyles.AssumeLocal | DateTimeStyles.AdjustToUniversal;
-            if (DateTime.TryParse(txt,
-                                  CultureInfo.GetCultureInfo("en-GB"),
-                                  styles,
-                                  out var utcDt))
+            // Use regex to find "Sold" followed by a date pattern
+            // Pattern: Sold followed by optional whitespace, then day month year
+            var soldDateMatch = Regex.Match(fullText, @"Sold\s+(\d{1,2}\s+\w{3}\s+\d{4})", RegexOptions.IgnoreCase);
+            if (soldDateMatch.Success)
             {
-                // utcDt.Kind == DateTimeKind.Utc
-                return utcDt;
+                var dateStr = soldDateMatch.Groups[1].Value.Trim();
+
+                var styles = DateTimeStyles.AssumeLocal | DateTimeStyles.AdjustToUniversal;
+                if (DateTime.TryParse(dateStr,
+                                      CultureInfo.GetCultureInfo("en-GB"),
+                                      styles,
+                                      out var utcDt))
+                {
+                    return utcDt;
+                }
+            }
+
+            // Fallback: try old structure with .POSITIVE selector
+            var txt = li.QuerySelector(".POSITIVE")?.TextContent
+                   ?? li.QuerySelector("[class*='sold']")?.TextContent;
+
+            if (!string.IsNullOrWhiteSpace(txt))
+            {
+                txt = txt.Replace("Sold", "", StringComparison.OrdinalIgnoreCase).Trim();
+
+                var styles = DateTimeStyles.AssumeLocal | DateTimeStyles.AdjustToUniversal;
+                if (DateTime.TryParse(txt,
+                                      CultureInfo.GetCultureInfo("en-GB"),
+                                      styles,
+                                      out var utcDt))
+                {
+                    return utcDt;
+                }
             }
 
             return null;
