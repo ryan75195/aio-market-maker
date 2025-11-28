@@ -19,6 +19,7 @@ public class EtlDbContext : DbContext
 
     public DbSet<ScrapeJob> ScrapeJobs { get; set; } = null!;
     public DbSet<Product> Products { get; set; } = null!;
+    public DbSet<ProductStatusHistory> ProductStatusHistory { get; set; } = null!;
 
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
     {
@@ -58,6 +59,24 @@ public class EtlDbContext : DbContext
             entity.HasOne(e => e.ScrapeJob)
                 .WithMany()
                 .HasForeignKey(e => e.ScrapeJobId);
+        });
+
+        modelBuilder.Entity<ProductStatusHistory>(entity =>
+        {
+            entity.ToTable("ProductStatusHistory");
+            entity.HasKey(e => e.Id);
+
+            entity.Property(e => e.ListingStatus).IsRequired().HasMaxLength(20);
+            entity.Property(e => e.Source).HasMaxLength(50);
+            entity.Property(e => e.RecordedUtc).HasDefaultValueSql("datetime('now')");
+
+            entity.HasIndex(e => e.ProductId);
+            entity.HasIndex(e => e.RecordedUtc);
+
+            entity.HasOne(e => e.Product)
+                .WithMany(p => p.StatusHistory)
+                .HasForeignKey(e => e.ProductId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
     }
 }

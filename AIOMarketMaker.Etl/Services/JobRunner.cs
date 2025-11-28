@@ -131,6 +131,22 @@ public class JobRunner : IJobRunner
 
             _logger.LogInformation("Saved {Count} products to database", newProducts.Count);
 
+            // Create initial history records for each product
+            var historyRecords = newProducts.Select(p => new ProductStatusHistory
+            {
+                ProductId = p.Id,
+                ListingStatus = p.ListingStatus ?? "Unknown",
+                Price = p.Price,
+                SoldDateUtc = p.EndDateUtc,
+                RecordedUtc = DateTime.UtcNow,
+                Source = "InitialScrape"
+            }).ToList();
+
+            _dbContext.ProductStatusHistory.AddRange(historyRecords);
+            await _dbContext.SaveChangesAsync(ct);
+
+            _logger.LogInformation("Created {Count} initial history records", historyRecords.Count);
+
             // Update job's last run time
             job.LastRunUtc = DateTime.UtcNow;
             await _dbContext.SaveChangesAsync(ct);
