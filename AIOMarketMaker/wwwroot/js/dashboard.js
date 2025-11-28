@@ -43,42 +43,110 @@ function switchTab(tabName) {
 async function loadDashboardData() {
     try {
         const res = await fetch('/api/metrics');
+        if (!res.ok) {
+            throw new Error('Failed to fetch metrics: ' + res.status);
+        }
         metricsData = await res.json();
+        console.log('Metrics loaded:', metricsData);
         renderDashboardStats();
         renderCharts();
     } catch (e) {
         console.error('Failed to load metrics:', e);
+        document.getElementById('dashboardStats').innerHTML = `
+            <div class="stat-card" style="background: #fee2e2;">
+                <div class="value" style="color: #dc2626; font-size: 1em;">Error loading data</div>
+                <div class="label">${e.message}</div>
+            </div>
+        `;
     }
 }
 
 function renderDashboardStats() {
     const m = metricsData;
+    const s = m.summary;
+    const totalDeals = m.arbitrageByJob.reduce((sum, j) => sum + j.dealsCount, 0);
+
     document.getElementById('dashboardStats').innerHTML = `
         <div class="stat-card">
-            <div class="value">${m.jobPerformance.totalProducts}</div>
-            <div class="label">Total Products</div>
+            <div class="value">${s.totalListingsTracked}</div>
+            <div class="label">Listings Tracked</div>
         </div>
         <div class="stat-card success">
-            <div class="value">${m.salesVolume.totalSold}</div>
-            <div class="label">Sold Items</div>
+            <div class="value">${s.soldListings}</div>
+            <div class="label">Sold (Comps)</div>
         </div>
         <div class="stat-card">
-            <div class="value">${m.salesVolume.totalActive}</div>
+            <div class="value">${s.activeListings}</div>
             <div class="label">Active Listings</div>
         </div>
         <div class="stat-card warning">
-            <div class="value">${m.priceAnalytics.avgPrice.toFixed(2)}</div>
-            <div class="label">Avg Price</div>
+            <div class="value">${s.medianSoldPrice.toFixed(2)}</div>
+            <div class="label">Median Sold Price</div>
         </div>
         <div class="stat-card success">
-            <div class="value">${m.salesVolume.totalRevenue.toFixed(0)}</div>
-            <div class="label">Total Revenue</div>
+            <div class="value">${s.sellThroughRate7d}%</div>
+            <div class="label">Sell-Through (7d)</div>
         </div>
-        <div class="stat-card">
-            <div class="value">${m.jobPerformance.enabledJobs}/${m.jobPerformance.totalJobs}</div>
-            <div class="label">Active Jobs</div>
+        <div class="stat-card" style="background: #fef3c7;">
+            <div class="value" style="color: #d97706;">${totalDeals}</div>
+            <div class="label">Potential Deals</div>
         </div>
     `;
+
+    // Render best deals table
+    renderDealsTable();
+
+    // Render arbitrage by category table
+    renderArbitrageTable();
+}
+
+function renderDealsTable() {
+    const deals = metricsData.bestDeals;
+    const tbody = document.getElementById('dealsBody');
+
+    if (!deals || deals.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 20px;">No flip opportunities found (need active listings priced 20%+ below median sold)</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = deals.map(d => {
+        const title = d.title ? (d.title.length > 40 ? d.title.substring(0, 37) + '...' : d.title) : '(no title)';
+        const profitClass = d.profitPercent >= 50 ? 'style="color: #16a34a; font-weight: bold;"' : '';
+        return `<tr>
+            <td class="title-cell"><a href="${d.url || '#'}" target="_blank" title="${(d.title || '').replace(/"/g, '&quot;')}">${title}</a></td>
+            <td class="price">${d.price?.toFixed(2) || '-'}</td>
+            <td class="price">${d.medianSoldPrice.toFixed(2)}</td>
+            <td class="price" style="color: #16a34a;">+${d.potentialProfit.toFixed(2)}</td>
+            <td ${profitClass}>${d.profitPercent.toFixed(0)}%</td>
+            <td>${d.searchTerm}</td>
+        </tr>`;
+    }).join('');
+}
+
+function renderArbitrageTable() {
+    const arb = metricsData.arbitrageByJob;
+    const tbody = document.getElementById('arbitrageBody');
+
+    if (!arb || arb.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="9" style="text-align: center; padding: 20px;">No data available</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = arb.map(j => {
+        const spreadClass = j.spreadPercent >= 30 ? 'style="color: #16a34a; font-weight: bold;"' : j.spreadPercent >= 15 ? 'style="color: #d97706;"' : '';
+        const dealsClass = j.dealsCount > 0 ? 'style="color: #16a34a; font-weight: bold;"' : '';
+        return `<tr>
+            <td><strong>${j.searchTerm}</strong></td>
+            <td>${j.soldCount}</td>
+            <td>${j.activeCount}</td>
+            <td class="price">${j.avgSoldPrice.toFixed(2)}</td>
+            <td class="price">${j.medianSoldPrice.toFixed(2)}</td>
+            <td class="price">${j.minActivePrice.toFixed(2)}</td>
+            <td class="price" ${spreadClass}>${j.priceSpread.toFixed(2)}</td>
+            <td ${spreadClass}>${j.spreadPercent.toFixed(0)}%</td>
+            <td ${dealsClass}>${j.dealsCount}</td>
+        </tr>`;
+    }).join('');
 }
 
 function renderCharts() {
@@ -88,32 +156,39 @@ function renderCharts() {
     Object.values(charts).forEach(c => c.destroy());
     charts = {};
 
-    // Price Distribution
+    // Price Distribution - Sold vs Active comparison
     charts.price = new Chart(document.getElementById('priceChart'), {
         type: 'bar',
         data: {
-            labels: m.priceAnalytics.priceDistribution.map(d => d.range),
-            datasets: [{
-                label: 'Products',
-                data: m.priceAnalytics.priceDistribution.map(d => d.count),
-                backgroundColor: '#3b82f6'
-            }]
+            labels: m.priceDistribution.map(d => d.range),
+            datasets: [
+                {
+                    label: 'Sold',
+                    data: m.priceDistribution.map(d => d.sold),
+                    backgroundColor: '#16a34a'
+                },
+                {
+                    label: 'Active',
+                    data: m.priceDistribution.map(d => d.active),
+                    backgroundColor: '#3b82f6'
+                }
+            ]
         },
         options: {
             responsive: true,
             maintainAspectRatio: false,
-            plugins: { legend: { display: false } }
+            plugins: { legend: { display: true, position: 'top' } }
         }
     });
 
-    // Sales Over Time
+    // Sales Velocity - Items sold per day
     charts.sales = new Chart(document.getElementById('salesChart'), {
         type: 'line',
         data: {
-            labels: m.salesVolume.soldByDay.map(d => d.date.substring(5)),
+            labels: m.salesByDay.map(d => d.date.substring(5)),
             datasets: [{
                 label: 'Items Sold',
-                data: m.salesVolume.soldByDay.map(d => d.count),
+                data: m.salesByDay.map(d => d.count),
                 borderColor: '#16a34a',
                 backgroundColor: 'rgba(22, 163, 74, 0.1)',
                 fill: true,
@@ -127,39 +202,55 @@ function renderCharts() {
         }
     });
 
-    // Revenue by Job
-    const revenueColors = ['#3b82f6', '#16a34a', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
-    charts.revenue = new Chart(document.getElementById('revenueChart'), {
-        type: 'doughnut',
-        data: {
-            labels: m.salesVolume.soldByJob.map(d => d.searchTerm),
-            datasets: [{
-                data: m.salesVolume.soldByJob.map(d => d.revenue),
-                backgroundColor: revenueColors
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false
-        }
-    });
-
-    // Products per Job
-    charts.jobs = new Chart(document.getElementById('jobsChart'), {
+    // Profit Spread by Category
+    const spreadColors = m.arbitrageByJob.map(j =>
+        j.spreadPercent >= 30 ? '#16a34a' : j.spreadPercent >= 15 ? '#f59e0b' : '#ef4444'
+    );
+    charts.spread = new Chart(document.getElementById('spreadChart'), {
         type: 'bar',
         data: {
-            labels: m.jobPerformance.jobStats.map(d => d.searchTerm.substring(0, 15)),
+            labels: m.arbitrageByJob.map(d => d.searchTerm.substring(0, 15)),
             datasets: [{
-                label: 'Products',
-                data: m.jobPerformance.jobStats.map(d => d.productCount),
-                backgroundColor: '#8b5cf6'
+                label: 'Spread %',
+                data: m.arbitrageByJob.map(d => d.spreadPercent),
+                backgroundColor: spreadColors
             }]
         },
         options: {
             responsive: true,
             maintainAspectRatio: false,
             indexAxis: 'y',
-            plugins: { legend: { display: false } }
+            plugins: { legend: { display: false } },
+            scales: {
+                x: {
+                    beginAtZero: true,
+                    title: { display: true, text: 'Profit Margin %' }
+                }
+            }
+        }
+    });
+
+    // Daily Volume
+    charts.volume = new Chart(document.getElementById('volumeChart'), {
+        type: 'bar',
+        data: {
+            labels: m.salesByDay.map(d => d.date.substring(5)),
+            datasets: [{
+                label: 'Daily Volume',
+                data: m.salesByDay.map(d => d.volume),
+                backgroundColor: '#8b5cf6'
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { display: false } },
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    title: { display: true, text: 'Volume ($)' }
+                }
+            }
         }
     });
 }
@@ -190,7 +281,7 @@ async function loadProducts(page) {
 function renderProductsTable(products) {
     const tbody = document.getElementById('productsBody');
     if (products.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="8" style="text-align: center; padding: 40px;">No products found</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="9" style="text-align: center; padding: 40px;">No products found</td></tr>';
         return;
     }
 
@@ -210,6 +301,7 @@ function renderProductsTable(products) {
             <td>${p.condition || '-'}</td>
             <td>${jobName}</td>
             <td>${endDate}</td>
+            <td><button class="btn btn-primary btn-sm" onclick="viewProduct(${p.id})">View</button></td>
         </tr>`;
     }).join('');
 }
@@ -459,6 +551,308 @@ async function pollAllJobsStatus(instanceId) {
             }
 
             showMessage(`Jobs running... (${status.status}) - ${attempts * 5}s elapsed`, false);
+            setTimeout(poll, 5000);
+        } catch (e) {
+            showMessage('Error polling status: ' + e.message, true);
+        }
+    };
+
+    await poll();
+}
+
+// Edit job functions
+async function editJob(id) {
+    try {
+        const res = await fetch('/api/jobs');
+        const jobs = await res.json();
+        const job = jobs.find(j => j.Id === id);
+
+        if (!job) {
+            showMessage('Job not found', true);
+            return;
+        }
+
+        // Populate the edit form (API returns PascalCase properties)
+        document.getElementById('editJobId').value = job.Id;
+        document.getElementById('editSearchTerm').value = job.SearchTerm || '';
+        document.getElementById('editSearchType').value = job.SearchType || 'SOLD';
+        document.getElementById('editBuyingFormat').value = job.BuyingFormat || 'BUY_NOW';
+        document.getElementById('editCondition').value = job.Condition || 'USED';
+        document.getElementById('editFrequencyMinutes').value = job.FrequencyMinutes || 60;
+        document.getElementById('editLookbackDays').value = job.LookbackDays || '';
+        document.getElementById('editItemLimit').value = job.ItemLimit || '';
+        document.getElementById('editIsEnabled').checked = job.IsEnabled;
+
+        // Show the modal
+        const modal = document.getElementById('editModal');
+        modal.style.display = 'flex';
+        modal.classList.add('show');
+    } catch (e) {
+        showMessage('Error loading job: ' + e.message, true);
+    }
+}
+
+function closeEditModal() {
+    const modal = document.getElementById('editModal');
+    modal.style.display = 'none';
+    modal.classList.remove('show');
+}
+
+async function saveJob() {
+    const id = document.getElementById('editJobId').value;
+    const searchTerm = document.getElementById('editSearchTerm').value.trim();
+
+    if (!searchTerm) {
+        showMessage('Search term is required', true);
+        return;
+    }
+
+    const data = {
+        searchTerm,
+        searchType: document.getElementById('editSearchType').value,
+        buyingFormat: document.getElementById('editBuyingFormat').value,
+        condition: document.getElementById('editCondition').value,
+        frequencyMinutes: parseInt(document.getElementById('editFrequencyMinutes').value) || 60,
+        lookbackDays: parseInt(document.getElementById('editLookbackDays').value) || null,
+        itemLimit: parseInt(document.getElementById('editItemLimit').value) || null,
+        isEnabled: document.getElementById('editIsEnabled').checked
+    };
+
+    try {
+        const res = await fetch('/api/jobs/' + id, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        });
+
+        if (res.ok) {
+            showMessage('Job updated successfully!', false);
+            closeEditModal();
+            setTimeout(() => location.reload(), 1000);
+        } else {
+            const err = await res.json();
+            showMessage(err.error || 'Failed to update job', true);
+        }
+    } catch (e) {
+        showMessage('Error: ' + e.message, true);
+    }
+}
+
+// Close modal when clicking outside
+document.addEventListener('click', (e) => {
+    const editModal = document.getElementById('editModal');
+    const productModal = document.getElementById('productModal');
+    if (e.target === editModal) {
+        closeEditModal();
+    }
+    if (e.target === productModal) {
+        closeProductModal();
+    }
+});
+
+// Close modal on Escape key
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+        closeEditModal();
+        closeProductModal();
+    }
+});
+
+// Product details modal functions
+async function viewProduct(id) {
+    const modal = document.getElementById('productModal');
+    const body = document.getElementById('productModalBody');
+
+    // Show modal with loading state
+    modal.style.display = 'flex';
+    modal.classList.add('show');
+    body.innerHTML = '<div style="text-align: center; padding: 40px;">Loading...</div>';
+
+    try {
+        const res = await fetch('/api/products/' + id + '/details');
+        if (!res.ok) {
+            throw new Error('Failed to load product details');
+        }
+        const data = await res.json();
+        renderProductDetails(data);
+    } catch (e) {
+        body.innerHTML = `<div style="text-align: center; padding: 40px; color: #dc2626;">Error: ${e.message}</div>`;
+    }
+}
+
+function closeProductModal() {
+    const modal = document.getElementById('productModal');
+    modal.style.display = 'none';
+    modal.classList.remove('show');
+}
+
+function renderProductDetails(data) {
+    const p = data.product;
+    const history = data.history || [];
+
+    const formatDate = (dateStr) => {
+        if (!dateStr) return '-';
+        const d = new Date(dateStr);
+        return d.toLocaleString();
+    };
+
+    const formatPrice = (price, currency) => {
+        if (price == null) return '-';
+        return price.toFixed(2) + ' ' + (currency || '');
+    };
+
+    let html = `
+        <div class="product-details">
+            <div class="detail-section">
+                <h4>Listing Information</h4>
+                <div class="detail-row"><span class="detail-label">Listing ID:</span><span class="detail-value"><a href="${p.url || '#'}" target="_blank">${p.listingId}</a></span></div>
+                <div class="detail-row"><span class="detail-label">Title:</span><span class="detail-value">${p.title || '-'}</span></div>
+                <div class="detail-row"><span class="detail-label">Price:</span><span class="detail-value">${formatPrice(p.price, p.currency)}</span></div>
+                <div class="detail-row"><span class="detail-label">Shipping:</span><span class="detail-value">${formatPrice(p.shippingCost, p.currency)}</span></div>
+                <div class="detail-row"><span class="detail-label">Status:</span><span class="detail-value ${p.listingStatus === 'Sold' ? 'status-sold' : 'status-active'}">${p.listingStatus || '-'}</span></div>
+                <div class="detail-row"><span class="detail-label">Condition:</span><span class="detail-value">${p.condition || '-'}</span></div>
+                <div class="detail-row"><span class="detail-label">Format:</span><span class="detail-value">${p.purchaseFormat || '-'}</span></div>
+            </div>
+            <div class="detail-section">
+                <h4>Tracking</h4>
+                <div class="detail-row"><span class="detail-label">Job:</span><span class="detail-value">${p.job ? p.job.searchTerm : '-'}</span></div>
+                <div class="detail-row"><span class="detail-label">Location:</span><span class="detail-value">${p.location || '-'}</span></div>
+                <div class="detail-row"><span class="detail-label">End Date:</span><span class="detail-value">${formatDate(p.endDateUtc)}</span></div>
+                <div class="detail-row"><span class="detail-label">First Seen:</span><span class="detail-value">${formatDate(p.createdUtc)}</span></div>
+                <div class="detail-row"><span class="detail-label">Last Updated:</span><span class="detail-value">${formatDate(p.updatedUtc)}</span></div>
+            </div>
+        </div>
+    `;
+
+    // Add status history section
+    html += `
+        <div class="history-section">
+            <h4>Status History</h4>
+            <table class="history-table">
+                <thead>
+                    <tr>
+                        <th>Status</th>
+                        <th>Price</th>
+                        <th>Sold Date</th>
+                        <th>Recorded</th>
+                        <th>Source</th>
+                    </tr>
+                </thead>
+                <tbody>
+    `;
+
+    if (history.length === 0) {
+        html += '<tr><td colspan="5" style="text-align: center; padding: 20px;">No history records</td></tr>';
+    } else {
+        history.forEach(h => {
+            const statusClass = h.listingStatus === 'Sold' ? 'status-sold' : 'status-active';
+            html += `
+                <tr>
+                    <td class="${statusClass}">${h.listingStatus}</td>
+                    <td class="price">${h.price != null ? h.price.toFixed(2) : '-'}</td>
+                    <td>${formatDate(h.soldDateUtc)}</td>
+                    <td>${formatDate(h.recordedUtc)}</td>
+                    <td>${h.source || '-'}</td>
+                </tr>
+            `;
+        });
+    }
+
+    html += '</tbody></table></div>';
+
+    document.getElementById('productModalBody').innerHTML = html;
+}
+
+// Status refresh functions
+async function refreshAllStatuses() {
+    if (!confirm('Refresh status for all active listings? This will check each listing URL for status changes.')) return;
+
+    showMessage('Starting status refresh...', false);
+
+    try {
+        const res = await fetch('/api/status/refresh', { method: 'POST' });
+        const result = await res.json();
+
+        if (!res.ok) {
+            showMessage('Failed to start status refresh: ' + (result.error || 'Unknown error'), true);
+            return;
+        }
+
+        if (result.message) {
+            showMessage(result.message, false);
+            return;
+        }
+
+        showMessage(`Status refresh started for ${result.activeListings} listings. Instance ID: ${result.instanceId}. Polling...`, false);
+        await pollStatusRefresh(result.instanceId);
+    } catch (e) {
+        showMessage('Error: ' + e.message, true);
+    }
+}
+
+async function refreshJobStatuses(jobId) {
+    if (!confirm('Refresh status for active listings in this job?')) return;
+
+    showMessage('Starting status refresh for job...', false);
+
+    try {
+        const res = await fetch('/api/status/refresh/' + jobId, { method: 'POST' });
+        const result = await res.json();
+
+        if (!res.ok) {
+            showMessage('Failed to start status refresh: ' + (result.error || 'Unknown error'), true);
+            return;
+        }
+
+        if (result.message) {
+            showMessage(result.message, false);
+            return;
+        }
+
+        showMessage(`Status refresh started for ${result.activeListings} listings. Polling...`, false);
+        await pollStatusRefresh(result.instanceId);
+    } catch (e) {
+        showMessage('Error: ' + e.message, true);
+    }
+}
+
+async function pollStatusRefresh(instanceId) {
+    const maxAttempts = 120;
+    let attempts = 0;
+
+    const poll = async () => {
+        try {
+            const res = await fetch('/api/status/refresh/status/' + instanceId);
+            const status = await res.json();
+
+            if (status.status === 'Completed') {
+                const output = status.output ? JSON.parse(status.output) : null;
+                if (output) {
+                    showMessage(`Status refresh complete! Checked ${output.Checked} listings, ${output.Updated} changed.`, false);
+                } else {
+                    showMessage('Status refresh completed successfully!', false);
+                }
+                metricsData = null; // Force refresh
+                setTimeout(() => {
+                    loadProducts(currentPage);
+                    loadDashboardData();
+                }, 1000);
+                return;
+            } else if (status.status === 'Failed') {
+                showMessage('Status refresh failed: ' + (status.output || 'Unknown error'), true);
+                return;
+            } else if (status.status === 'Terminated') {
+                showMessage('Status refresh was terminated', true);
+                return;
+            }
+
+            attempts++;
+            if (attempts >= maxAttempts) {
+                showMessage('Status refresh is still running. Check status at: /api/status/refresh/status/' + instanceId, false);
+                return;
+            }
+
+            showMessage(`Status refresh running... (${status.status}) - ${attempts * 5}s elapsed`, false);
             setTimeout(poll, 5000);
         } catch (e) {
             showMessage('Error polling status: ' + e.message, true);
