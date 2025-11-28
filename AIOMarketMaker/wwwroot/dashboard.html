@@ -3,13 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>eBay ETL Dashboard</title>
+    <title>eBay Arbitrage Analytics</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <link rel="stylesheet" href="/api/static/css/dashboard.css">
 </head>
 <body>
     <div class="container">
-        <h1>eBay ETL Dashboard</h1>
+        <h1>eBay Arbitrage Analytics</h1>
 
         <div id="message" class="message"></div>
 
@@ -26,22 +26,61 @@
                 <div class="stat-card"><div class="value">-</div><div class="label">Loading...</div></div>
             </div>
 
+            <!-- Best Deals Section -->
+            <h2>Top Flip Opportunities</h2>
+            <table id="dealsTable" style="margin-bottom: 20px;">
+                <thead>
+                    <tr>
+                        <th>Item</th>
+                        <th>Current Price</th>
+                        <th>Median Sold</th>
+                        <th>Potential Profit</th>
+                        <th>ROI %</th>
+                        <th>Category</th>
+                    </tr>
+                </thead>
+                <tbody id="dealsBody">
+                    <tr><td colspan="6" style="text-align: center; padding: 20px;">Loading...</td></tr>
+                </tbody>
+            </table>
+
+            <!-- Arbitrage by Category Table -->
+            <h2>Market Analysis by Category</h2>
+            <table id="arbitrageTable" style="margin-bottom: 20px;">
+                <thead>
+                    <tr>
+                        <th>Search Term</th>
+                        <th>Sold</th>
+                        <th>Active</th>
+                        <th>Avg Sold</th>
+                        <th>Median Sold</th>
+                        <th>Min Active</th>
+                        <th>Spread</th>
+                        <th>Spread %</th>
+                        <th>Deals</th>
+                    </tr>
+                </thead>
+                <tbody id="arbitrageBody">
+                    <tr><td colspan="9" style="text-align: center; padding: 20px;">Loading...</td></tr>
+                </tbody>
+            </table>
+
             <div class="charts-grid">
                 <div class="chart-card">
-                    <h3>Price Distribution</h3>
+                    <h3>Sold vs Active Price Distribution</h3>
                     <div class="chart-container"><canvas id="priceChart"></canvas></div>
                 </div>
                 <div class="chart-card">
-                    <h3>Sales Over Time (Last 30 Days)</h3>
+                    <h3>Sales Velocity (Last 30 Days)</h3>
                     <div class="chart-container"><canvas id="salesChart"></canvas></div>
                 </div>
                 <div class="chart-card">
-                    <h3>Revenue by Search Term</h3>
-                    <div class="chart-container"><canvas id="revenueChart"></canvas></div>
+                    <h3>Profit Spread by Category</h3>
+                    <div class="chart-container"><canvas id="spreadChart"></canvas></div>
                 </div>
                 <div class="chart-card">
-                    <h3>Products per Job</h3>
-                    <div class="chart-container"><canvas id="jobsChart"></canvas></div>
+                    <h3>Daily Volume</h3>
+                    <div class="chart-container"><canvas id="volumeChart"></canvas></div>
                 </div>
             </div>
         </div>
@@ -52,6 +91,7 @@
                 Scrape Jobs
                 <button class="btn btn-primary" onclick="toggleAddForm()">+ Add Job</button>
                 <button class="btn btn-success" onclick="runAllJobs()" style="margin-left: 10px;">Run All Enabled</button>
+                <button class="btn btn-info" onclick="refreshAllStatuses()" style="margin-left: 10px;">Refresh All Statuses</button>
             </h2>
 
             <div id="addJobForm" class="add-job-form">
@@ -154,10 +194,11 @@
                         <th>Condition</th>
                         <th>Job</th>
                         <th>End Date</th>
+                        <th>Actions</th>
                     </tr>
                 </thead>
                 <tbody id="productsBody">
-                    <tr><td colspan="8" style="text-align: center; padding: 40px;">Loading products...</td></tr>
+                    <tr><td colspan="9" style="text-align: center; padding: 40px;">Loading products...</td></tr>
                 </tbody>
             </table>
 
@@ -168,6 +209,91 @@
     <!-- Data element for passing server data to JavaScript -->
     <div id="jobsData" data-jobs="{{JOBS_JSON}}" style="display: none;"></div>
 
-    <script src="/api/static/js/dashboard.js"></script>
+    <!-- Edit Job Modal (outside container for proper overlay) -->
+    <div id="editModal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Edit Job</h3>
+                <button class="modal-close" onclick="closeEditModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="editJobId">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Search Term *</label>
+                        <input type="text" id="editSearchTerm" placeholder="e.g. iPhone 15 Pro" style="width: 250px;">
+                    </div>
+                    <div class="form-group">
+                        <label>Search Type</label>
+                        <select id="editSearchType">
+                            <option value="SOLD">Sold Listings</option>
+                            <option value="ACTIVE">Active Listings</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Buying Format</label>
+                        <select id="editBuyingFormat">
+                            <option value="BUY_NOW">Buy It Now</option>
+                            <option value="AUCTION">Auction</option>
+                            <option value="ALL">All</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Condition</label>
+                        <select id="editCondition">
+                            <option value="USED">Used</option>
+                            <option value="NEW">New</option>
+                            <option value="ALL">All</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Frequency (minutes)</label>
+                        <input type="number" id="editFrequencyMinutes" value="60" style="width: 100px;">
+                    </div>
+                    <div class="form-group">
+                        <label>Lookback Days</label>
+                        <input type="number" id="editLookbackDays" style="width: 100px;">
+                    </div>
+                    <div class="form-group">
+                        <label>Item Limit</label>
+                        <input type="number" id="editItemLimit" style="width: 100px;">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>
+                            <input type="checkbox" id="editIsEnabled"> Enabled
+                        </label>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeEditModal()">Cancel</button>
+                <button class="btn btn-primary" onclick="saveJob()">Save Changes</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Product Details Modal -->
+    <div id="productModal" class="modal" style="display: none;">
+        <div class="modal-content modal-large">
+            <div class="modal-header">
+                <h3>Product Details</h3>
+                <button class="modal-close" onclick="closeProductModal()">&times;</button>
+            </div>
+            <div class="modal-body" id="productModalBody">
+                <div style="text-align: center; padding: 40px;">Loading...</div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeProductModal()">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/api/static/js/dashboard.js?v=3"></script>
 </body>
 </html>
