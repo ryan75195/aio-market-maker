@@ -150,7 +150,14 @@ namespace AIOMarketMaker.Services
             var urls = products
                 .Select(x => x.descriptionSource)
                 .Where(u => !string.IsNullOrEmpty(u))   // ← drop any null/empty
-                .Distinct();
+                .Distinct()
+                .ToList();
+
+            // Return empty dictionary if no description URLs to fetch
+            if (urls.Count == 0)
+            {
+                return new Dictionary<string, string>();
+            }
 
             var metas = await _fetcher.RunJobAsync(urls);
 

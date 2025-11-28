@@ -3,13 +3,16 @@ using System.IO;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.EntityFrameworkCore;
 using Serilog;
-using AIOMarketMaker.Services;      // your AddEbayScraperPipeline(...)
+using AIOMarketMaker.Services;
 using ScraperWorker.Services;
 using AIOMarketMaker.Api.Services;
 using AIOMarketMaker.Api.Parsers;
+using AIOMarketMaker.Etl.Data;
+using AIOMarketMaker.Etl.Data.Migrations;
 using Azure.Data.Tables;
-using Azure.Storage.Blobs;      // your BackgroundService or orchestrator
+using Azure.Storage.Blobs;
 
 namespace AIOMarketMaker.Etl
 {
@@ -39,15 +42,27 @@ namespace AIOMarketMaker.Etl
                 .ConfigureServices((hostingCtx, services) =>
                 {
                     var configuration = hostingCtx.Configuration;
-                    var connectionString = configuration.GetValue<string>("StorageConnectionString");
+                    var storageConnectionString = configuration.GetValue<string>("StorageConnectionString");
 
-                    // Register the TableServiceClient  
+                    // SQLite database connection
+                    var dbPath = configuration.GetValue<string>("DatabasePath") ?? "etl.db";
+                    var sqliteConnectionString = $"Data Source={dbPath}";
+
+                    // Run migrations on startup
+                    var migrationRunner = new MigrationRunner(sqliteConnectionString, null);
+                    migrationRunner.ApplyMigrations();
+
+                    // Register DbContext
+                    services.AddDbContext<EtlDbContext>(options =>
+                        options.UseSqlite(sqliteConnectionString));
+
+                    // Register the TableServiceClient
                     services.AddSingleton(sp =>
-                        new TableServiceClient(connectionString)
+                        new TableServiceClient(storageConnectionString)
                     );
 
                     services.AddSingleton(sp =>
-                        new BlobServiceClient(connectionString)
+                        new BlobServiceClient(storageConnectionString)
                     );
 
                     services.AddSingleton<IEbayUrlBuilder, EbayUrlBuilder>();
