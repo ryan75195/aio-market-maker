@@ -29,18 +29,25 @@ public class EtlTimerTrigger
     /// <summary>
     /// Timer-triggered function that checks for jobs due to run and starts orchestrations.
     /// Default schedule: every 15 minutes. Configure via EtlSchedule app setting.
+    /// DISABLED: Auto-run is currently disabled. Use dashboard to run jobs manually.
     /// </summary>
     [Function("EtlScheduledRun")]
     public async Task Run(
         [TimerTrigger("%EtlSchedule%")] TimerInfo timerInfo,
         [DurableClient] DurableTaskClient client)
     {
+        // DISABLED: Auto-run functionality is disabled. Use dashboard to run jobs manually.
+        _logger.LogInformation("ETL scheduled run triggered but auto-run is DISABLED. Use dashboard to run jobs manually.");
+        return;
+
+        #pragma warning disable CS0162 // Unreachable code detected
         _logger.LogInformation("ETL scheduled run triggered at {Time}", DateTime.UtcNow);
 
         if (timerInfo.IsPastDue)
         {
             _logger.LogWarning("Timer is running late!");
         }
+        #pragma warning restore CS0162
 
         // Find jobs that are enabled and due to run
         var now = DateTime.UtcNow;
