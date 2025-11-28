@@ -39,6 +39,7 @@ public class Product
     public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
     public DateTime? UpdatedUtc { get; set; }
 
-    // Navigation property
+    // Navigation properties
     public ScrapeJob? ScrapeJob { get; set; }
+    public ICollection<ProductStatusHistory> StatusHistory { get; set; } = new List<ProductStatusHistory>();
 }
