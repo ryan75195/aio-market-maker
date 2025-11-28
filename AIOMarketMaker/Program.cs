@@ -22,5 +22,8 @@ builder.Services.AddEbayScraperPipeline(builder.Configuration);
 // Job runner for ETL operations
 builder.Services.AddScoped<IJobRunner, JobRunner>();
 
+// Status refresh runner for checking listing status changes
+builder.Services.AddScoped<IStatusRefreshRunner, StatusRefreshRunner>();
+
 var host = builder.Build();
 host.Run();
