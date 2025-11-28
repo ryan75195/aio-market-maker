@@ -188,6 +188,79 @@ namespace AIOMarketMaker.Controllers
             return response;
         }
 
+        [Function("UpdateJob")]
+        public async Task<HttpResponseData> UpdateJob(
+            [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "jobs/{id:int}")]
+            HttpRequestData req,
+            int id)
+        {
+            var job = await _dbContext.ScrapeJobs.FindAsync(id);
+            if (job == null)
+            {
+                var notFound = req.CreateResponse(HttpStatusCode.NotFound);
+                await notFound.WriteAsJsonAsync(new { error = $"Job {id} not found" });
+                return notFound;
+            }
+
+            var body = await req.ReadAsStringAsync();
+            if (string.IsNullOrEmpty(body))
+            {
+                var badRequest = req.CreateResponse(HttpStatusCode.BadRequest);
+                await badRequest.WriteAsJsonAsync(new { error = "Request body is required" });
+                return badRequest;
+            }
+
+            CreateJobRequest? request;
+            try
+            {
+                request = JsonSerializer.Deserialize<CreateJobRequest>(body, new JsonSerializerOptions
+                {
+                    PropertyNameCaseInsensitive = true
+                });
+            }
+            catch
+            {
+                var badRequest = req.CreateResponse(HttpStatusCode.BadRequest);
+                await badRequest.WriteAsJsonAsync(new { error = "Invalid JSON" });
+                return badRequest;
+            }
+
+            if (request == null || string.IsNullOrEmpty(request.SearchTerm))
+            {
+                var badRequest = req.CreateResponse(HttpStatusCode.BadRequest);
+                await badRequest.WriteAsJsonAsync(new { error = "SearchTerm is required" });
+                return badRequest;
+            }
+
+            job.SearchTerm = request.SearchTerm;
+            job.BuyingFormat = request.BuyingFormat ?? job.BuyingFormat;
+            job.Condition = request.Condition ?? job.Condition;
+            job.SearchType = request.SearchType ?? job.SearchType;
+            job.FrequencyMinutes = request.FrequencyMinutes;
+            job.LookbackDays = request.LookbackDays;
+            job.ItemLimit = request.ItemLimit;
+            job.IsEnabled = request.IsEnabled;
+
+            await _dbContext.SaveChangesAsync();
+
+            var response = req.CreateResponse(HttpStatusCode.OK);
+            await response.WriteAsJsonAsync(new
+            {
+                job.Id,
+                job.SearchTerm,
+                job.BuyingFormat,
+                job.Condition,
+                job.SearchType,
+                job.FrequencyMinutes,
+                job.LookbackDays,
+                job.ItemLimit,
+                job.IsEnabled,
+                job.LastRunUtc,
+                job.CreatedUtc
+            });
+            return response;
+        }
+
         #endregion
 
         #region Products API
@@ -241,6 +314,74 @@ namespace AIOMarketMaker.Controllers
             return response;
         }
 
+        /// <summary>
+        /// Get full product details including status history
+        /// GET /api/products/{id}/details
+        /// </summary>
+        [Function("GetProductDetails")]
+        public async Task<HttpResponseData> GetProductDetails(
+            [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "products/{id:int}/details")]
+            HttpRequestData req,
+            int id)
+        {
+            var product = await _dbContext.Products
+                .Include(p => p.StatusHistory)
+                .Include(p => p.ScrapeJob)
+                .FirstOrDefaultAsync(p => p.Id == id);
+
+            if (product == null)
+            {
+                var notFound = req.CreateResponse(HttpStatusCode.NotFound);
+                await notFound.WriteAsJsonAsync(new { error = $"Product {id} not found" });
+                return notFound;
+            }
+
+            var history = product.StatusHistory
+                .OrderByDescending(h => h.RecordedUtc)
+                .Select(h => new
+                {
+                    h.Id,
+                    h.ListingStatus,
+                    h.Price,
+                    h.SoldDateUtc,
+                    h.RecordedUtc,
+                    h.Source
+                })
+                .ToList();
+
+            var response = req.CreateResponse(HttpStatusCode.OK);
+            await response.WriteAsJsonAsync(new
+            {
+                product = new
+                {
+                    product.Id,
+                    product.ListingId,
+                    product.Title,
+                    product.Price,
+                    product.Currency,
+                    product.ShippingCost,
+                    product.Condition,
+                    product.ListingStatus,
+                    product.PurchaseFormat,
+                    product.Description,
+                    product.ItemSpecifics,
+                    product.Images,
+                    product.Location,
+                    product.Url,
+                    product.EndDateUtc,
+                    product.CreatedUtc,
+                    product.UpdatedUtc,
+                    job = product.ScrapeJob != null ? new
+                    {
+                        product.ScrapeJob.Id,
+                        product.ScrapeJob.SearchTerm
+                    } : null
+                },
+                history
+            });
+            return response;
+        }
+
         #endregion
 
         #region Metrics API
@@ -253,13 +394,63 @@ namespace AIOMarketMaker.Controllers
             var products = await _dbContext.Products.ToListAsync();
             var jobs = await _dbContext.ScrapeJobs.ToListAsync();
 
-            // Price Analytics
-            var productsWithPrice = products.Where(p => p.Price.HasValue).ToList();
-            var minPrice = productsWithPrice.Any() ? productsWithPrice.Min(p => p.Price!.Value) : 0;
-            var maxPrice = productsWithPrice.Any() ? productsWithPrice.Max(p => p.Price!.Value) : 0;
-            var avgPrice = productsWithPrice.Any() ? productsWithPrice.Average(p => (double)p.Price!.Value) : 0;
+            // Separate sold and active listings
+            var soldProducts = products.Where(p => p.ListingStatus == "Sold" && p.Price.HasValue).ToList();
+            var activeProducts = products.Where(p => p.ListingStatus != "Sold" && p.Price.HasValue).ToList();
 
-            // Price distribution buckets
+            // Calculate arbitrage metrics per search term/job
+            var arbitrageByJob = jobs.Select(j =>
+            {
+                var jobSold = soldProducts.Where(p => p.ScrapeJobId == j.Id).ToList();
+                var jobActive = activeProducts.Where(p => p.ScrapeJobId == j.Id).ToList();
+
+                var avgSoldPrice = jobSold.Any() ? jobSold.Average(p => (double)p.Price!.Value) : 0;
+                var minSoldPrice = jobSold.Any() ? (double)jobSold.Min(p => p.Price!.Value) : 0;
+                var maxSoldPrice = jobSold.Any() ? (double)jobSold.Max(p => p.Price!.Value) : 0;
+                var medianSoldPrice = jobSold.Any() ? GetMedian(jobSold.Select(p => (double)p.Price!.Value).ToList()) : 0;
+
+                var avgActivePrice = jobActive.Any() ? jobActive.Average(p => (double)p.Price!.Value) : 0;
+                var minActivePrice = jobActive.Any() ? (double)jobActive.Min(p => p.Price!.Value) : 0;
+
+                // Deals: active listings priced below median sold price (potential flip opportunities)
+                var dealsCount = jobActive.Count(p => (double)p.Price!.Value < medianSoldPrice * 0.8);
+
+                // Price spread: difference between avg sold and min active (profit potential)
+                var priceSpread = avgSoldPrice - minActivePrice;
+                var spreadPercent = minActivePrice > 0 ? (priceSpread / minActivePrice) * 100 : 0;
+
+                return new
+                {
+                    jobId = j.Id,
+                    searchTerm = j.SearchTerm,
+                    soldCount = jobSold.Count,
+                    activeCount = jobActive.Count,
+                    avgSoldPrice = Math.Round(avgSoldPrice, 2),
+                    medianSoldPrice = Math.Round(medianSoldPrice, 2),
+                    minSoldPrice = Math.Round(minSoldPrice, 2),
+                    maxSoldPrice = Math.Round(maxSoldPrice, 2),
+                    avgActivePrice = Math.Round(avgActivePrice, 2),
+                    minActivePrice = Math.Round(minActivePrice, 2),
+                    priceSpread = Math.Round(priceSpread, 2),
+                    spreadPercent = Math.Round(spreadPercent, 1),
+                    dealsCount
+                };
+            }).Where(x => x.soldCount > 0 || x.activeCount > 0).ToList();
+
+            // Overall market stats
+            var totalSoldValue = soldProducts.Sum(p => p.Price ?? 0);
+            var avgSoldPrice = soldProducts.Any() ? soldProducts.Average(p => (double)p.Price!.Value) : 0;
+            var medianSoldPrice = soldProducts.Any() ? GetMedian(soldProducts.Select(p => (double)p.Price!.Value).ToList()) : 0;
+
+            // Sell-through rate (last 7 days)
+            var sevenDaysAgo = DateTime.UtcNow.AddDays(-7);
+            var recentSold = soldProducts.Where(p => p.EndDateUtc.HasValue && p.EndDateUtc >= sevenDaysAgo).Count();
+            var recentActive = activeProducts.Count;
+            var sellThroughRate = recentActive + recentSold > 0
+                ? Math.Round((double)recentSold / (recentActive + recentSold) * 100, 1)
+                : 0;
+
+            // Price distribution for sold items (what prices actually sell)
             var priceRanges = new[] { 0, 25, 50, 100, 200, 500, 1000 };
             var priceDistribution = new List<object>();
             for (int i = 0; i < priceRanges.Length; i++)
@@ -267,82 +458,84 @@ namespace AIOMarketMaker.Controllers
                 var min = priceRanges[i];
                 var max = i < priceRanges.Length - 1 ? priceRanges[i + 1] : int.MaxValue;
                 var label = max == int.MaxValue ? $"{min}+" : $"{min}-{max}";
-                var count = productsWithPrice.Count(p => p.Price >= min && p.Price < max);
-                priceDistribution.Add(new { range = label, count });
+                var soldCount = soldProducts.Count(p => p.Price >= min && p.Price < max);
+                var activeCount = activeProducts.Count(p => p.Price >= min && p.Price < max);
+                priceDistribution.Add(new { range = label, sold = soldCount, active = activeCount });
             }
 
-            // Sales Volume
-            var soldProducts = products.Where(p => p.ListingStatus == "Sold").ToList();
-            var activeProducts = products.Where(p => p.ListingStatus != "Sold").ToList();
-
-            // Sold by day (last 30 days)
+            // Sales velocity by day (last 30 days)
             var thirtyDaysAgo = DateTime.UtcNow.AddDays(-30);
-            var soldByDay = soldProducts
+            var salesByDay = soldProducts
                 .Where(p => p.EndDateUtc.HasValue && p.EndDateUtc >= thirtyDaysAgo)
                 .GroupBy(p => p.EndDateUtc!.Value.Date)
                 .Select(g => new
                 {
                     date = g.Key.ToString("yyyy-MM-dd"),
                     count = g.Count(),
-                    revenue = g.Sum(p => p.Price ?? 0)
+                    avgPrice = Math.Round(g.Average(p => (double)(p.Price ?? 0)), 2),
+                    volume = Math.Round(g.Sum(p => p.Price ?? 0), 2)
                 })
                 .OrderBy(x => x.date)
                 .ToList();
 
-            // Sales by job
-            var soldByJob = jobs.Select(j => new
-            {
-                jobId = j.Id,
-                searchTerm = j.SearchTerm,
-                count = soldProducts.Count(p => p.ScrapeJobId == j.Id),
-                revenue = soldProducts.Where(p => p.ScrapeJobId == j.Id).Sum(p => p.Price ?? 0)
-            }).Where(x => x.count > 0).ToList();
-
-            // Job Performance
-            var jobStats = jobs.Select(j =>
-            {
-                var jobProducts = products.Where(p => p.ScrapeJobId == j.Id).ToList();
-                var jobProductsWithPrice = jobProducts.Where(p => p.Price.HasValue).ToList();
-                return new
+            // Best deals (active listings with highest potential margin)
+            var bestDeals = activeProducts
+                .Select(p =>
                 {
-                    jobId = j.Id,
-                    searchTerm = j.SearchTerm,
-                    productCount = jobProducts.Count,
-                    lastRun = j.LastRunUtc?.ToString("yyyy-MM-dd HH:mm"),
-                    avgPrice = jobProductsWithPrice.Any() ? Math.Round(jobProductsWithPrice.Average(p => (double)p.Price!.Value), 2) : 0,
-                    isEnabled = j.IsEnabled
-                };
-            }).ToList();
+                    var job = jobs.FirstOrDefault(j => j.Id == p.ScrapeJobId);
+                    var jobSold = soldProducts.Where(x => x.ScrapeJobId == p.ScrapeJobId).ToList();
+                    var medianPrice = jobSold.Any() ? GetMedian(jobSold.Select(x => (double)x.Price!.Value).ToList()) : 0;
+                    var potentialProfit = medianPrice - (double)(p.Price ?? 0);
+                    var profitPercent = p.Price > 0 ? (potentialProfit / (double)p.Price.Value) * 100 : 0;
+                    return new
+                    {
+                        listingId = p.ListingId,
+                        title = p.Title,
+                        price = p.Price,
+                        medianSoldPrice = Math.Round(medianPrice, 2),
+                        potentialProfit = Math.Round(potentialProfit, 2),
+                        profitPercent = Math.Round(profitPercent, 1),
+                        url = p.Url,
+                        searchTerm = job?.SearchTerm ?? "Unknown"
+                    };
+                })
+                .Where(x => x.potentialProfit > 0 && x.profitPercent > 20)
+                .OrderByDescending(x => x.profitPercent)
+                .Take(10)
+                .ToList();
 
             var metrics = new
             {
-                priceAnalytics = new
+                summary = new
                 {
-                    minPrice = Math.Round(minPrice, 2),
-                    maxPrice = Math.Round(maxPrice, 2),
-                    avgPrice = Math.Round(avgPrice, 2),
-                    priceDistribution
+                    totalListingsTracked = products.Count,
+                    soldListings = soldProducts.Count,
+                    activeListings = activeProducts.Count,
+                    totalMarketValue = Math.Round(totalSoldValue, 2),
+                    avgSoldPrice = Math.Round(avgSoldPrice, 2),
+                    medianSoldPrice = Math.Round(medianSoldPrice, 2),
+                    sellThroughRate7d = sellThroughRate,
+                    activeJobs = jobs.Count(j => j.IsEnabled)
                 },
-                salesVolume = new
-                {
-                    totalSold = soldProducts.Count,
-                    totalActive = activeProducts.Count,
-                    totalRevenue = Math.Round(soldProducts.Sum(p => p.Price ?? 0), 2),
-                    soldByDay,
-                    soldByJob
-                },
-                jobPerformance = new
-                {
-                    totalJobs = jobs.Count,
-                    enabledJobs = jobs.Count(j => j.IsEnabled),
-                    totalProducts = products.Count,
-                    jobStats
-                }
+                arbitrageByJob,
+                priceDistribution,
+                salesByDay,
+                bestDeals
             };
 
             var response = req.CreateResponse(HttpStatusCode.OK);
             await response.WriteAsJsonAsync(metrics);
             return response;
+        }
+
+        private static double GetMedian(List<double> values)
+        {
+            if (!values.Any()) return 0;
+            var sorted = values.OrderBy(x => x).ToList();
+            int mid = sorted.Count / 2;
+            return sorted.Count % 2 == 0
+                ? (sorted[mid - 1] + sorted[mid]) / 2
+                : sorted[mid];
         }
 
         #endregion
@@ -379,7 +572,7 @@ namespace AIOMarketMaker.Controllers
 
             var response = req.CreateResponse(HttpStatusCode.OK);
             response.Headers.Add("Content-Type", contentType);
-            response.Headers.Add("Cache-Control", "public, max-age=3600");
+            response.Headers.Add("Cache-Control", "no-cache, no-store, must-revalidate");
             await response.Body.WriteAsync(content);
             return response;
         }
@@ -468,6 +661,8 @@ namespace AIOMarketMaker.Controllers
                     </div>
                     <div class=""job-actions"">
                         <button class=""btn btn-primary"" onclick=""runJob({job.Id})"">Run Now</button>
+                        <button class=""btn btn-info"" onclick=""refreshJobStatuses({job.Id})"">Refresh Status</button>
+                        <button class=""btn btn-secondary"" onclick=""editJob({job.Id})"">Edit</button>
                         <button class=""btn {toggleBtnClass}"" onclick=""toggleJob({job.Id})"">{toggleBtnText}</button>
                         <button class=""btn btn-danger"" onclick=""deleteJob({job.Id})"">Delete</button>
                     </div>
@@ -489,7 +684,9 @@ namespace AIOMarketMaker.Controllers
         private string GenerateJobsJson(List<ScrapeJob> jobs)
         {
             var jobDict = jobs.ToDictionary(j => j.Id.ToString(), j => j.SearchTerm);
-            return JsonSerializer.Serialize(jobDict);
+            var json = JsonSerializer.Serialize(jobDict);
+            // HTML-encode for safe embedding in data attribute
+            return System.Web.HttpUtility.HtmlEncode(json);
         }
 
         #endregion
