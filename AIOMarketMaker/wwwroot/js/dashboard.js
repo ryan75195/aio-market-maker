@@ -268,11 +268,23 @@ async function loadProducts(page) {
     const search = document.getElementById('filterSearch').value;
     const pageSize = document.getElementById('pageSize').value;
 
+    // Variant filters
+    const edition = document.getElementById('filterEdition')?.value;
+    const storageCapacity = document.getElementById('filterStorage')?.value;
+    const color = document.getElementById('filterColor')?.value;
+    const model = document.getElementById('filterModel')?.value;
+
     const params = new URLSearchParams({ page, pageSize });
     if (productName) params.append('productName', productName);
     if (category) params.append('category', category);
     if (status) params.append('status', status);
     if (search) params.append('search', search);
+
+    // Add variant filters
+    if (edition) params.append('edition', edition);
+    if (storageCapacity) params.append('storageCapacity', storageCapacity);
+    if (color) params.append('color', color);
+    if (model) params.append('model', model);
 
     try {
         const res = await fetch('/api/products?' + params);
@@ -324,7 +336,83 @@ async function loadProductNames(category = null) {
 async function onCategoryChange() {
     const category = document.getElementById('filterCategory').value;
     await loadProductNames(category || null);
+    // Also hide variant filters when category changes (since product name is cleared)
+    hideVariantFilters();
     loadProducts(1);
+}
+
+// Called when product name filter changes - load variants and show variant filters
+async function onProductNameChange() {
+    const productName = document.getElementById('filterProductName').value;
+    if (productName) {
+        await loadVariants(productName);
+        showVariantFilters();
+    } else {
+        hideVariantFilters();
+    }
+    loadProducts(1);
+}
+
+// Load variant options for a specific product name
+async function loadVariants(productName) {
+    try {
+        const res = await fetch(`/api/products/variants?productName=${encodeURIComponent(productName)}`);
+        if (!res.ok) {
+            console.error('Failed to fetch variants');
+            return;
+        }
+
+        const data = await res.json();
+
+        populateVariantDropdown('filterEdition', data.editions, 'All Editions');
+        populateVariantDropdown('filterStorage', data.storageCapacities, 'All Storage');
+        populateVariantDropdown('filterColor', data.colors, 'All Colors');
+        populateVariantDropdown('filterModel', data.models, 'All Models');
+    } catch (e) {
+        console.error('Error loading variants:', e);
+    }
+}
+
+// Populate a variant dropdown with options
+function populateVariantDropdown(selectId, items, allLabel) {
+    const select = document.getElementById(selectId);
+    if (!select) return;
+
+    select.innerHTML = `<option value="">${allLabel}</option>`;
+
+    if (!items || items.length === 0) {
+        select.disabled = true;
+        return;
+    }
+
+    select.disabled = false;
+    items.forEach(item => {
+        const option = document.createElement('option');
+        option.value = item.value;
+        option.textContent = `${item.value} (${item.count})`;
+        select.appendChild(option);
+    });
+}
+
+// Show variant filters section
+function showVariantFilters() {
+    const section = document.getElementById('variantFilters');
+    if (section) section.style.display = 'flex';
+}
+
+// Hide variant filters section and clear selections
+function hideVariantFilters() {
+    const section = document.getElementById('variantFilters');
+    if (section) section.style.display = 'none';
+
+    // Clear all variant filter selections
+    ['filterEdition', 'filterStorage', 'filterColor', 'filterModel'].forEach(id => {
+        const select = document.getElementById(id);
+        if (select) {
+            select.value = '';
+            select.disabled = true;
+        }
+    });
 }
 
 // Populate product name dropdown from metrics (initial load)

@@ -156,7 +156,7 @@
             <div class="filter-bar">
                 <div class="form-group">
                     <label>Product Name</label>
-                    <select id="filterProductName" onchange="loadProducts(1)">
+                    <select id="filterProductName" onchange="onProductNameChange()">
                         <option value="">All Products</option>
                     </select>
                 </div>
@@ -192,6 +192,34 @@
                         <option value="25">25</option>
                         <option value="50" selected>50</option>
                         <option value="100">100</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Variant Filters (shown when a product name is selected) -->
+            <div id="variantFilters" class="variant-filters" style="display: none;">
+                <div class="form-group">
+                    <label>Edition</label>
+                    <select id="filterEdition" onchange="loadProducts(1)">
+                        <option value="">All Editions</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Storage</label>
+                    <select id="filterStorage" onchange="loadProducts(1)">
+                        <option value="">All Storage</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Color</label>
+                    <select id="filterColor" onchange="loadProducts(1)">
+                        <option value="">All Colors</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Model</label>
+                    <select id="filterModel" onchange="loadProducts(1)">
+                        <option value="">All Models</option>
                     </select>
                 </div>
             </div>
@@ -307,6 +335,6 @@
         </div>
     </div>
 
-    <script src="/api/static/js/dashboard.js?v=4"></script>
+    <script src="/api/static/js/dashboard.js?v=5"></script>
 </body>
 </html>

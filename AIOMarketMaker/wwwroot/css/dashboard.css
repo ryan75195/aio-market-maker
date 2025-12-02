@@ -78,6 +78,10 @@ a:hover { text-decoration: underline; }
 /* Filter bar */
 .filter-bar { display: flex; gap: 15px; margin-bottom: 20px; flex-wrap: wrap; align-items: flex-end; background: white; padding: 15px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
 
+/* Variant filters (hierarchical drill-down) */
+.variant-filters { display: flex; gap: 15px; margin-bottom: 20px; flex-wrap: wrap; align-items: flex-end; background: #f0f9ff; padding: 15px; border-radius: 8px; border: 1px solid #bae6fd; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+.variant-filters .form-group label { color: #0369a1; font-weight: 500; }
+
 /* Pagination */
 .pagination { display: flex; justify-content: center; gap: 8px; margin-top: 20px; align-items: center; }
 .page-btn { padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; background: white; cursor: pointer; }
