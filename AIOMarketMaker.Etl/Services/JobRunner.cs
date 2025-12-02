@@ -1,6 +1,7 @@
 using AIOMarketMaker.Etl.Data;
 using AIOMarketMaker.Etl.Data.Models;
 using AIOMarketMaker.Etl.Services.EntityResolution;
+using AIOMarketMaker.Etl.Services.VectorSearch;
 using AIOMarketMaker.Models.Ebay;
 using AIOMarketMaker.Services;
 using Microsoft.EntityFrameworkCore;
@@ -29,17 +30,20 @@ public class JobRunner : IJobRunner
     private readonly EtlDbContext _dbContext;
     private readonly IEbayScraper _ebayScraper;
     private readonly IEntityResolutionService _entityResolutionService;
+    private readonly IProductNameIndexer _productNameIndexer;
     private readonly ILogger<JobRunner> _logger;
 
     public JobRunner(
         EtlDbContext dbContext,
         IEbayScraper ebayScraper,
         IEntityResolutionService entityResolutionService,
+        IProductNameIndexer productNameIndexer,
         ILogger<JobRunner> logger)
     {
         _dbContext = dbContext;
         _ebayScraper = ebayScraper;
         _entityResolutionService = entityResolutionService;
+        _productNameIndexer = productNameIndexer;
         _logger = logger;
     }
 
@@ -168,6 +172,17 @@ public class JobRunner : IJobRunner
             await _dbContext.SaveChangesAsync(ct);
 
             _logger.LogInformation("Saved {Count} normalized products to database", normalizedProducts.Count);
+
+            // Index new product names in Pinecone for future similarity search
+            try
+            {
+                await _productNameIndexer.IndexNewProductNamesAsync(normalizedProducts, ct);
+            }
+            catch (Exception ex)
+            {
+                // Log but don't fail the job - Pinecone indexing is an enhancement
+                _logger.LogWarning(ex, "Failed to index product names in Pinecone: {Message}", ex.Message);
+            }
 
             // Update job's last run time
             job.LastRunUtc = DateTime.UtcNow;

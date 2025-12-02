@@ -1,5 +1,6 @@
 using AIOMarketMaker.Etl.Configuration;
 using AIOMarketMaker.Etl.Services.EntityResolution;
+using AIOMarketMaker.Etl.Services.VectorSearch;
 using AIOMarketMaker.Models.Ebay;
 using Microsoft.Extensions.Logging;
 using NUnit.Framework;
@@ -50,7 +51,8 @@ public class OpenAiEntityResolutionIntegrationTests
         });
         _logger = loggerFactory.CreateLogger<OpenAiEntityResolutionService>();
 
-        _service = new OpenAiEntityResolutionService(_client, _settings, _promptBuilder, _logger);
+        var noOpIndexer = new NoOpProductNameIndexer();
+        _service = new OpenAiEntityResolutionService(_client, _settings, _promptBuilder, noOpIndexer, _logger);
     }
 
     private static EbayProduct CreateProduct(

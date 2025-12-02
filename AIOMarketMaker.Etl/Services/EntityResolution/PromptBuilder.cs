@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.Json;
+using AIOMarketMaker.Etl.Services.VectorSearch;
 using AIOMarketMaker.Models.Ebay;
 
 namespace AIOMarketMaker.Etl.Services.EntityResolution;
@@ -15,15 +16,21 @@ public class PromptBuilder
         ## Attribute Extraction Guidelines
 
         ### productName (CRITICAL for consistency)
-        - Use the official manufacturer marketing name, never abbreviations or slang
-        - Use proper capitalization and spacing as the manufacturer uses
-        - Be consistent: the same product should always have the exact same productName
+        - Use the BASE PRODUCT LINE name only, NOT including variants or editions
+        - Examples:
+          - "PlayStation 5" (NOT "PlayStation 5 Pro" or "PS5 Digital Edition")
+          - "iPhone 15" (NOT "iPhone 15 Pro Max")
+          - "Nintendo Switch" (NOT "Nintendo Switch OLED")
+          - "DualSense Controller" (NOT "DualSense Edge")
+        - Put variant info (Pro, Digital, OLED, Edge, etc.) in the 'edition' field instead
+        - Use official marketing capitalization and spacing
+        - Be consistent: all variants of the same product line share the SAME productName
         - For accessories, name the accessory itself, not what it's compatible with
 
-        ### edition
-        - Captures the product variant, revision, or special edition
+        ### edition (CAPTURES ALL VARIANTS)
+        - Captures the specific product variant, revision, model tier, or special edition
+        - Examples: "Pro", "Digital Edition", "OLED Model", "Slim", "Edge", "Max", "Plus"
         - Use the official edition name from the manufacturer
-        - Common patterns: standard vs premium tiers, limited editions, hardware revisions
         - If multiple editions exist (e.g., storage + color variant), prefer the functional variant
 
         ### storageCapacity
@@ -58,6 +65,11 @@ public class PromptBuilder
         """;
 
     public string BuildUserPrompt(IReadOnlyList<EbayProduct> products)
+        => BuildUserPrompt(products, null);
+
+    public string BuildUserPrompt(
+        IReadOnlyList<EbayProduct> products,
+        IReadOnlyDictionary<string, IReadOnlyList<SimilarProductName>>? similarNames)
     {
         var sb = new StringBuilder();
 
@@ -80,6 +92,32 @@ public class PromptBuilder
         sb.AppendLine(SerializeProducts(products));
         sb.AppendLine("```");
         sb.AppendLine();
+
+        // Add similar product names section if available
+        if (similarNames != null && similarNames.Count > 0)
+        {
+            sb.AppendLine("## Existing Product Names (Use for Consistency)");
+            sb.AppendLine();
+            sb.AppendLine("For the following listings, similar products already exist in our database.");
+            sb.AppendLine("**STRONGLY prefer using an existing ProductName if the listing is the same product.**");
+            sb.AppendLine();
+
+            foreach (var product in products.Where(p => p.ListingId != null && similarNames.ContainsKey(p.ListingId)))
+            {
+                var matches = similarNames[product.ListingId!];
+                sb.AppendLine($"Listing \"{product.ListingId}\" (title: \"{TruncateString(product.Title, 60)}\"):");
+                foreach (var match in matches.Take(3))
+                {
+                    var info = new List<string>();
+                    if (!string.IsNullOrEmpty(match.Category)) info.Add($"category: {match.Category}");
+                    if (!string.IsNullOrEmpty(match.Brand)) info.Add($"brand: {match.Brand}");
+                    info.Add($"score: {match.Score:F2}");
+                    sb.AppendLine($"  - \"{match.ProductName}\" ({string.Join(", ", info)})");
+                }
+                sb.AppendLine();
+            }
+        }
+
         sb.AppendLine("## Required Response Format");
         sb.AppendLine();
         sb.AppendLine("Respond with a JSON object containing a 'results' array with one object per product:");
@@ -94,10 +132,10 @@ public class PromptBuilder
                   "productName": "PlayStation 5",
                   "attributes": {
                     "brand": "Sony",
-                    "model": "PlayStation 5",
-                    "storageCapacity": "825GB",
+                    "model": "CFI-2000",
+                    "storageCapacity": "1TB",
                     "color": "White",
-                    "edition": "Disc Edition",
+                    "edition": "Pro",
                     "variantType": null
                   },
                   "bundledItems": null
@@ -110,7 +148,7 @@ public class PromptBuilder
         sb.AppendLine($"Classify all {products.Count} products. Be thorough and accurate.");
         sb.AppendLine("For bundles, list bundledItems as an array of item descriptions.");
         sb.AppendLine("Set attributes to null if not determinable from the listing.");
-        sb.AppendLine("productName should be the canonical product name (e.g., 'PlayStation 5', 'DualSense Controller', 'iPhone 15 Pro').");
+        sb.AppendLine("IMPORTANT: productName should be the BASE product line (e.g., 'PlayStation 5' for all PS5 variants). Put 'Pro', 'Digital Edition', etc. in the edition field.");
 
         return sb.ToString();
     }

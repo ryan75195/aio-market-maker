@@ -77,7 +77,11 @@ public class Program
             var openAiSettings = configuration.GetSection("OpenAi").Get<OpenAiSettings>()
                 ?? throw new InvalidOperationException("OpenAi configuration section is required");
 
-            await ProcessExistingListings.RunAsync(connectionString, openAiSettings);
+            var pineconeSettings = configuration.GetSection("Pinecone").Get<PineconeSettings>();
+            var embeddingSettings = configuration.GetSection("Embedding").Get<EmbeddingSettings>()
+                ?? new EmbeddingSettings();
+
+            await ProcessExistingListings.RunAsync(connectionString, openAiSettings, pineconeSettings, embeddingSettings);
             await host.StopAsync();
             return;
         }

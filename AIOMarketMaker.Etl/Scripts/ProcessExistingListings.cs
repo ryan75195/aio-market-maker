@@ -5,6 +5,7 @@ using AIOMarketMaker.Etl.Configuration;
 using AIOMarketMaker.Etl.Data;
 using AIOMarketMaker.Etl.Data.Models;
 using AIOMarketMaker.Etl.Services.EntityResolution;
+using AIOMarketMaker.Etl.Services.VectorSearch;
 using AIOMarketMaker.Models.Ebay;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -15,7 +16,11 @@ namespace AIOMarketMaker.Etl.Scripts;
 
 public static class ProcessExistingListings
 {
-    public static async Task RunAsync(string connectionString, OpenAiSettings openAiSettings)
+    public static async Task RunAsync(
+        string connectionString,
+        OpenAiSettings openAiSettings,
+        PineconeSettings? pineconeSettings,
+        EmbeddingSettings embeddingSettings)
     {
         // Set up logging
         using var loggerFactory = LoggerFactory.Create(builder =>
@@ -24,6 +29,7 @@ public static class ProcessExistingListings
             builder.SetMinimumLevel(LogLevel.Information);
         });
         var logger = loggerFactory.CreateLogger<OpenAiEntityResolutionService>();
+        var indexerLogger = loggerFactory.CreateLogger<ProductNameIndexer>();
 
         // Set up database
         var options = new DbContextOptionsBuilder<EtlDbContext>()
@@ -35,7 +41,23 @@ public static class ProcessExistingListings
         // Set up OpenAI service
         var client = new OpenAIClient(openAiSettings.ApiKey);
         var promptBuilder = new PromptBuilder();
-        var entityResolutionService = new OpenAiEntityResolutionService(client, openAiSettings, promptBuilder, logger);
+
+        // Set up Pinecone indexer (real or no-op based on config)
+        IProductNameIndexer productNameIndexer;
+        if (pineconeSettings != null && !string.IsNullOrEmpty(pineconeSettings.ApiKey))
+        {
+            var embeddingService = new OpenAiEmbeddingService(client, embeddingSettings, loggerFactory.CreateLogger<OpenAiEmbeddingService>());
+            var pineconeService = new PineconeService(pineconeSettings, loggerFactory.CreateLogger<PineconeService>());
+            productNameIndexer = new ProductNameIndexer(embeddingService, pineconeService, pineconeSettings, indexerLogger);
+            Console.WriteLine("Pinecone indexing enabled");
+        }
+        else
+        {
+            productNameIndexer = new NoOpProductNameIndexer();
+            Console.WriteLine("Pinecone indexing disabled (no config)");
+        }
+
+        var entityResolutionService = new OpenAiEntityResolutionService(client, openAiSettings, promptBuilder, productNameIndexer, logger);
 
         Console.WriteLine("=== Processing Existing Listings ===");
         Console.WriteLine();
@@ -95,6 +117,17 @@ public static class ProcessExistingListings
 
                 processedCount += products.Count;
                 Console.WriteLine($"  Saved {products.Count} products");
+
+                // Index product names in Pinecone
+                try
+                {
+                    await productNameIndexer.IndexNewProductNamesAsync(products);
+                    Console.WriteLine($"  Indexed {products.Count} product names in Pinecone");
+                }
+                catch (Exception indexEx)
+                {
+                    Console.WriteLine($"  WARNING: Failed to index in Pinecone: {indexEx.Message}");
+                }
 
                 foreach (var p in products)
                 {
