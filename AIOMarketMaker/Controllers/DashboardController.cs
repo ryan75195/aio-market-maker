@@ -295,17 +295,17 @@ namespace AIOMarketMaker.Controllers
                 .Take(pageSize)
                 .Select(x => new
                 {
-                    x.Id,
-                    x.ListingId,
-                    x.Title,
-                    x.Price,
-                    x.Currency,
-                    x.ListingStatus,
-                    x.Condition,
-                    x.Url,
-                    x.EndDateUtc,
-                    x.CreatedUtc,
-                    x.ScrapeJobId
+                    id = x.Id,
+                    listingId = x.ListingId,
+                    title = x.Title,
+                    price = x.Price,
+                    currency = x.Currency,
+                    listingStatus = x.ListingStatus,
+                    condition = x.Condition,
+                    url = x.Url,
+                    endDateUtc = x.EndDateUtc,
+                    createdUtc = x.CreatedUtc,
+                    scrapeJobId = x.ScrapeJobId
                 })
                 .ToListAsync();
 
@@ -340,12 +340,12 @@ namespace AIOMarketMaker.Controllers
                 .OrderByDescending(h => h.RecordedUtc)
                 .Select(h => new
                 {
-                    h.Id,
-                    h.ListingStatus,
-                    h.Price,
-                    h.SoldDateUtc,
-                    h.RecordedUtc,
-                    h.Source
+                    id = h.Id,
+                    listingStatus = h.ListingStatus,
+                    price = h.Price,
+                    soldDateUtc = h.SoldDateUtc,
+                    recordedUtc = h.RecordedUtc,
+                    source = h.Source
                 })
                 .ToList();
 
@@ -354,27 +354,27 @@ namespace AIOMarketMaker.Controllers
             {
                 product = new
                 {
-                    product.Id,
-                    product.ListingId,
-                    product.Title,
-                    product.Price,
-                    product.Currency,
-                    product.ShippingCost,
-                    product.Condition,
-                    product.ListingStatus,
-                    product.PurchaseFormat,
-                    product.Description,
-                    product.ItemSpecifics,
-                    product.Images,
-                    product.Location,
-                    product.Url,
-                    product.EndDateUtc,
-                    product.CreatedUtc,
-                    product.UpdatedUtc,
+                    id = product.Id,
+                    listingId = product.ListingId,
+                    title = product.Title,
+                    price = product.Price,
+                    currency = product.Currency,
+                    shippingCost = product.ShippingCost,
+                    condition = product.Condition,
+                    listingStatus = product.ListingStatus,
+                    purchaseFormat = product.PurchaseFormat,
+                    description = product.Description,
+                    itemSpecifics = product.ItemSpecifics,
+                    images = product.Images,
+                    location = product.Location,
+                    url = product.Url,
+                    endDateUtc = product.EndDateUtc,
+                    createdUtc = product.CreatedUtc,
+                    updatedUtc = product.UpdatedUtc,
                     job = product.ScrapeJob != null ? new
                     {
-                        product.ScrapeJob.Id,
-                        product.ScrapeJob.SearchTerm
+                        id = product.ScrapeJob.Id,
+                        searchTerm = product.ScrapeJob.SearchTerm
                     } : null
                 },
                 history
