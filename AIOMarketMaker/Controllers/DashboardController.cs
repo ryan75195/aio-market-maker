@@ -156,13 +156,14 @@ namespace AIOMarketMaker.Controllers
                 return notFound;
             }
 
-            var productCount = await _dbContext.Products.Where(p => p.ScrapeJobId == id).CountAsync();
-            _dbContext.Products.RemoveRange(_dbContext.Products.Where(p => p.ScrapeJobId == id));
+            var listingCount = await _dbContext.Listings.Where(l => l.ScrapeJobId == id).CountAsync();
+            // Products are cascade deleted via FK to Listings
+            _dbContext.Listings.RemoveRange(_dbContext.Listings.Where(l => l.ScrapeJobId == id));
             _dbContext.ScrapeJobs.Remove(job);
             await _dbContext.SaveChangesAsync();
 
             var response = req.CreateResponse(HttpStatusCode.OK);
-            await response.WriteAsJsonAsync(new { message = $"Job {id} deleted along with {productCount} products" });
+            await response.WriteAsJsonAsync(new { message = $"Job {id} deleted along with {listingCount} listings" });
             return response;
         }
 
@@ -263,11 +264,11 @@ namespace AIOMarketMaker.Controllers
 
         #endregion
 
-        #region Products API
+        #region Listings API
 
-        [Function("GetProducts")]
-        public async Task<HttpResponseData> GetProducts(
-            [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "products")]
+        [Function("GetListings")]
+        public async Task<HttpResponseData> GetListings(
+            [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "listings")]
             HttpRequestData req)
         {
             var query = System.Web.HttpUtility.ParseQueryString(req.Url.Query);
@@ -277,19 +278,19 @@ namespace AIOMarketMaker.Controllers
             var jobId = int.TryParse(query["jobId"], out var jid) ? jid : (int?)null;
             var search = query["search"];
 
-            var productsQuery = _dbContext.Products.AsQueryable();
+            var listingsQuery = _dbContext.Listings.AsQueryable();
 
             if (!string.IsNullOrEmpty(status))
-                productsQuery = productsQuery.Where(x => x.ListingStatus == status);
+                listingsQuery = listingsQuery.Where(x => x.ListingStatus == status);
 
             if (jobId.HasValue)
-                productsQuery = productsQuery.Where(x => x.ScrapeJobId == jobId.Value);
+                listingsQuery = listingsQuery.Where(x => x.ScrapeJobId == jobId.Value);
 
             if (!string.IsNullOrEmpty(search))
-                productsQuery = productsQuery.Where(x => x.Title != null && x.Title.Contains(search));
+                listingsQuery = listingsQuery.Where(x => x.Title != null && x.Title.Contains(search));
 
-            var total = await productsQuery.CountAsync();
-            var products = await productsQuery
+            var total = await listingsQuery.CountAsync();
+            var listings = await listingsQuery
                 .OrderByDescending(x => x.Id)
                 .Skip((page - 1) * pageSize)
                 .Take(pageSize)
@@ -310,33 +311,34 @@ namespace AIOMarketMaker.Controllers
                 .ToListAsync();
 
             var response = req.CreateResponse(HttpStatusCode.OK);
-            await response.WriteAsJsonAsync(new { total, page, pageSize, products });
+            await response.WriteAsJsonAsync(new { total, page, pageSize, listings });
             return response;
         }
 
         /// <summary>
-        /// Get full product details including status history
-        /// GET /api/products/{id}/details
+        /// Get full listing details including status history and normalized product data
+        /// GET /api/listings/{id}/details
         /// </summary>
-        [Function("GetProductDetails")]
-        public async Task<HttpResponseData> GetProductDetails(
-            [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "products/{id:int}/details")]
+        [Function("GetListingDetails")]
+        public async Task<HttpResponseData> GetListingDetails(
+            [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "listings/{id:int}/details")]
             HttpRequestData req,
             int id)
         {
-            var product = await _dbContext.Products
-                .Include(p => p.StatusHistory)
-                .Include(p => p.ScrapeJob)
-                .FirstOrDefaultAsync(p => p.Id == id);
+            var listing = await _dbContext.Listings
+                .Include(l => l.StatusHistory)
+                .Include(l => l.ScrapeJob)
+                .Include(l => l.Product)
+                .FirstOrDefaultAsync(l => l.Id == id);
 
-            if (product == null)
+            if (listing == null)
             {
                 var notFound = req.CreateResponse(HttpStatusCode.NotFound);
-                await notFound.WriteAsJsonAsync(new { error = $"Product {id} not found" });
+                await notFound.WriteAsJsonAsync(new { error = $"Listing {id} not found" });
                 return notFound;
             }
 
-            var history = product.StatusHistory
+            var history = listing.StatusHistory
                 .OrderByDescending(h => h.RecordedUtc)
                 .Select(h => new
                 {
@@ -352,33 +354,170 @@ namespace AIOMarketMaker.Controllers
             var response = req.CreateResponse(HttpStatusCode.OK);
             await response.WriteAsJsonAsync(new
             {
-                product = new
+                listing = new
                 {
-                    id = product.Id,
-                    listingId = product.ListingId,
-                    title = product.Title,
-                    price = product.Price,
-                    currency = product.Currency,
-                    shippingCost = product.ShippingCost,
-                    condition = product.Condition,
-                    listingStatus = product.ListingStatus,
-                    purchaseFormat = product.PurchaseFormat,
-                    description = product.Description,
-                    itemSpecifics = product.ItemSpecifics,
-                    images = product.Images,
-                    location = product.Location,
-                    url = product.Url,
-                    endDateUtc = product.EndDateUtc,
-                    createdUtc = product.CreatedUtc,
-                    updatedUtc = product.UpdatedUtc,
-                    job = product.ScrapeJob != null ? new
+                    id = listing.Id,
+                    listingId = listing.ListingId,
+                    title = listing.Title,
+                    price = listing.Price,
+                    currency = listing.Currency,
+                    shippingCost = listing.ShippingCost,
+                    condition = listing.Condition,
+                    listingStatus = listing.ListingStatus,
+                    purchaseFormat = listing.PurchaseFormat,
+                    description = listing.Description,
+                    itemSpecifics = listing.ItemSpecifics,
+                    images = listing.Images,
+                    location = listing.Location,
+                    url = listing.Url,
+                    endDateUtc = listing.EndDateUtc,
+                    createdUtc = listing.CreatedUtc,
+                    updatedUtc = listing.UpdatedUtc,
+                    job = listing.ScrapeJob != null ? new
                     {
-                        id = product.ScrapeJob.Id,
-                        searchTerm = product.ScrapeJob.SearchTerm
+                        id = listing.ScrapeJob.Id,
+                        searchTerm = listing.ScrapeJob.SearchTerm
                     } : null
                 },
+                product = listing.Product != null ? new
+                {
+                    id = listing.Product.Id,
+                    category = listing.Product.Category,
+                    categoryConfidence = listing.Product.CategoryConfidence,
+                    brand = listing.Product.Brand,
+                    model = listing.Product.Model,
+                    storageCapacity = listing.Product.StorageCapacity,
+                    color = listing.Product.Color,
+                    edition = listing.Product.Edition,
+                    variantType = listing.Product.VariantType,
+                    bundledItems = listing.Product.BundledItems,
+                    listedDateUtc = listing.Product.ListedDateUtc,
+                    soldDateUtc = listing.Product.SoldDateUtc,
+                    resolvedUtc = listing.Product.ResolvedUtc
+                } : null,
                 history
             });
+            return response;
+        }
+
+        /// <summary>
+        /// Get normalized/classified products with filtering
+        /// GET /api/products?category=base_product&brand=Sony&page=1&pageSize=50
+        /// </summary>
+        [Function("GetProducts")]
+        public async Task<HttpResponseData> GetProducts(
+            [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "products")]
+            HttpRequestData req)
+        {
+            var query = System.Web.HttpUtility.ParseQueryString(req.Url.Query);
+            var page = int.TryParse(query["page"], out var p) ? p : 1;
+            var pageSize = int.TryParse(query["pageSize"], out var ps) ? ps : 50;
+            var category = query["category"];
+            var brand = query["brand"];
+            var model = query["model"];
+            var productName = query["productName"];
+            var status = query["status"];
+            var search = query["search"];
+
+            var productsQuery = _dbContext.Products.AsQueryable();
+
+            if (!string.IsNullOrEmpty(category))
+                productsQuery = productsQuery.Where(p => p.Category == category);
+
+            if (!string.IsNullOrEmpty(brand))
+                productsQuery = productsQuery.Where(p => p.Brand == brand);
+
+            if (!string.IsNullOrEmpty(model))
+                productsQuery = productsQuery.Where(p => p.Model != null && p.Model.Contains(model));
+
+            if (!string.IsNullOrEmpty(productName))
+                productsQuery = productsQuery.Where(p => p.ProductName != null && p.ProductName.Contains(productName));
+
+            if (!string.IsNullOrEmpty(status))
+                productsQuery = productsQuery.Where(p => p.ListingStatus == status);
+
+            if (!string.IsNullOrEmpty(search))
+                productsQuery = productsQuery.Where(p => p.Title != null && p.Title.Contains(search));
+
+            var total = await productsQuery.CountAsync();
+            var products = await productsQuery
+                .OrderByDescending(p => p.Id)
+                .Skip((page - 1) * pageSize)
+                .Take(pageSize)
+                .Select(p => new
+                {
+                    // Core identification
+                    id = p.Id,
+                    ebayListingId = p.EbayListingId,
+                    productName = p.ProductName,
+                    title = p.Title,
+                    url = p.Url,
+                    // Pricing
+                    price = p.Price,
+                    currency = p.Currency,
+                    shippingCost = p.ShippingCost,
+                    // Classification
+                    category = p.Category,
+                    categoryConfidence = p.CategoryConfidence,
+                    condition = p.Condition,
+                    listingStatus = p.ListingStatus,
+                    purchaseFormat = p.PurchaseFormat,
+                    // Product attributes
+                    brand = p.Brand,
+                    model = p.Model,
+                    storageCapacity = p.StorageCapacity,
+                    color = p.Color,
+                    edition = p.Edition,
+                    variantType = p.VariantType,
+                    bundledItems = p.BundledItems,
+                    // Location
+                    location = p.Location,
+                    // Dates
+                    listedDateUtc = p.ListedDateUtc,
+                    soldDateUtc = p.SoldDateUtc,
+                    endDateUtc = p.EndDateUtc,
+                    resolvedUtc = p.ResolvedUtc
+                })
+                .ToListAsync();
+
+            var response = req.CreateResponse(HttpStatusCode.OK);
+            await response.WriteAsJsonAsync(new { total, page, pageSize, products });
+            return response;
+        }
+
+        /// <summary>
+        /// Get distinct product names with counts, optionally filtered by category
+        /// GET /api/products/names?category=base_product
+        /// </summary>
+        [Function("GetProductNames")]
+        public async Task<HttpResponseData> GetProductNames(
+            [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "products/names")]
+            HttpRequestData req)
+        {
+            var query = System.Web.HttpUtility.ParseQueryString(req.Url.Query);
+            var category = query["category"];
+
+            var productsQuery = _dbContext.Products.AsQueryable();
+
+            if (!string.IsNullOrEmpty(category))
+                productsQuery = productsQuery.Where(p => p.Category == category);
+
+            var productNames = await productsQuery
+                .Where(p => p.ProductName != null)
+                .GroupBy(p => p.ProductName)
+                .Select(g => new
+                {
+                    productName = g.Key,
+                    count = g.Count(),
+                    soldCount = g.Count(p => p.ListingStatus == "Sold"),
+                    activeCount = g.Count(p => p.ListingStatus != "Sold"),
+                    avgPrice = g.Where(p => p.Price.HasValue).Average(p => (double?)p.Price) ?? 0
+                })
+                .OrderByDescending(x => x.count)
+                .ToListAsync();
+
+            var response = req.CreateResponse(HttpStatusCode.OK);
+            await response.WriteAsJsonAsync(productNames);
             return response;
         }
 
@@ -391,29 +530,98 @@ namespace AIOMarketMaker.Controllers
             [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "metrics")]
             HttpRequestData req)
         {
+            // Load denormalized products (no joins needed)
             var products = await _dbContext.Products.ToListAsync();
             var jobs = await _dbContext.ScrapeJobs.ToListAsync();
 
-            // Separate sold and active listings
+            // Separate sold and active products
             var soldProducts = products.Where(p => p.ListingStatus == "Sold" && p.Price.HasValue).ToList();
             var activeProducts = products.Where(p => p.ListingStatus != "Sold" && p.Price.HasValue).ToList();
 
-            // Calculate arbitrage metrics per search term/job
+            // Category breakdown
+            var categoryBreakdown = products
+                .GroupBy(p => p.Category)
+                .Select(g => new
+                {
+                    category = g.Key,
+                    count = g.Count(),
+                    soldCount = g.Count(p => p.ListingStatus == "Sold"),
+                    activeCount = g.Count(p => p.ListingStatus != "Sold"),
+                    avgPrice = Math.Round(g.Where(p => p.Price.HasValue).Average(p => (double)p.Price!.Value), 2),
+                    avgSoldPrice = g.Any(p => p.ListingStatus == "Sold" && p.Price.HasValue)
+                        ? Math.Round(g.Where(p => p.ListingStatus == "Sold" && p.Price.HasValue).Average(p => (double)p.Price!.Value), 2)
+                        : 0
+                })
+                .OrderByDescending(x => x.count)
+                .ToList();
+
+            // Brand breakdown
+            var brandBreakdown = products
+                .Where(p => !string.IsNullOrEmpty(p.Brand))
+                .GroupBy(p => p.Brand)
+                .Select(g => new
+                {
+                    brand = g.Key,
+                    count = g.Count(),
+                    soldCount = g.Count(p => p.ListingStatus == "Sold"),
+                    avgPrice = Math.Round(g.Where(p => p.Price.HasValue).Average(p => (double)p.Price!.Value), 2),
+                    models = g.Where(p => !string.IsNullOrEmpty(p.Model))
+                        .GroupBy(p => p.Model)
+                        .Select(m => new { model = m.Key, count = m.Count() })
+                        .OrderByDescending(m => m.count)
+                        .Take(5)
+                        .ToList()
+                })
+                .OrderByDescending(x => x.count)
+                .Take(10)
+                .ToList();
+
+            // Product name breakdown
+            var productNameBreakdown = products
+                .Where(p => !string.IsNullOrEmpty(p.ProductName))
+                .GroupBy(p => p.ProductName)
+                .Select(g => new
+                {
+                    productName = g.Key,
+                    count = g.Count(),
+                    soldCount = g.Count(p => p.ListingStatus == "Sold"),
+                    activeCount = g.Count(p => p.ListingStatus != "Sold"),
+                    avgPrice = Math.Round(g.Where(p => p.Price.HasValue).Average(p => (double)p.Price!.Value), 2),
+                    avgSoldPrice = g.Any(p => p.ListingStatus == "Sold" && p.Price.HasValue)
+                        ? Math.Round(g.Where(p => p.ListingStatus == "Sold" && p.Price.HasValue).Average(p => (double)p.Price!.Value), 2)
+                        : 0
+                })
+                .OrderByDescending(x => x.count)
+                .Take(20)
+                .ToList();
+
+            // Calculate arbitrage metrics per search term/job (with category filtering)
             var arbitrageByJob = jobs.Select(j =>
             {
-                var jobSold = soldProducts.Where(p => p.ScrapeJobId == j.Id).ToList();
-                var jobActive = activeProducts.Where(p => p.ScrapeJobId == j.Id).ToList();
+                // Get products for this job via Listing FK
+                var jobProducts = products.Where(p =>
+                {
+                    var listing = _dbContext.Listings.Find(p.ListingId);
+                    return listing?.ScrapeJobId == j.Id;
+                }).ToList();
 
-                var avgSoldPrice = jobSold.Any() ? jobSold.Average(p => (double)p.Price!.Value) : 0;
-                var minSoldPrice = jobSold.Any() ? (double)jobSold.Min(p => p.Price!.Value) : 0;
-                var maxSoldPrice = jobSold.Any() ? (double)jobSold.Max(p => p.Price!.Value) : 0;
-                var medianSoldPrice = jobSold.Any() ? GetMedian(jobSold.Select(p => (double)p.Price!.Value).ToList()) : 0;
+                var jobSold = jobProducts.Where(p => p.ListingStatus == "Sold" && p.Price.HasValue).ToList();
+                var jobActive = jobProducts.Where(p => p.ListingStatus != "Sold" && p.Price.HasValue).ToList();
 
-                var avgActivePrice = jobActive.Any() ? jobActive.Average(p => (double)p.Price!.Value) : 0;
-                var minActivePrice = jobActive.Any() ? (double)jobActive.Min(p => p.Price!.Value) : 0;
+                // Filter to base_product category only for more accurate pricing
+                var baseProductSold = jobSold.Where(p => p.Category == "base_product").ToList();
+                var baseProductActive = jobActive.Where(p => p.Category == "base_product").ToList();
 
-                // Deals: active listings priced below median sold price (potential flip opportunities)
-                var dealsCount = jobActive.Count(p => (double)p.Price!.Value < medianSoldPrice * 0.8);
+                var avgSoldPrice = baseProductSold.Any() ? baseProductSold.Average(p => (double)p.Price!.Value) : 0;
+                var minSoldPrice = baseProductSold.Any() ? (double)baseProductSold.Min(p => p.Price!.Value) : 0;
+                var maxSoldPrice = baseProductSold.Any() ? (double)baseProductSold.Max(p => p.Price!.Value) : 0;
+                var medianSoldPrice = baseProductSold.Any() ? GetMedian(baseProductSold.Select(p => (double)p.Price!.Value).ToList()) : 0;
+
+                var avgActivePrice = baseProductActive.Any() ? baseProductActive.Average(p => (double)p.Price!.Value) : 0;
+                var minActivePrice = baseProductActive.Any() ? (double)baseProductActive.Min(p => p.Price!.Value) : 0;
+
+                // Deals: active base products priced below median sold price
+                var dealsCount = baseProductActive.Count(p => (double)p.Price!.Value < medianSoldPrice * 0.8);
 
                 // Price spread: difference between avg sold and min active (profit potential)
                 var priceSpread = avgSoldPrice - minActivePrice;
@@ -423,8 +631,10 @@ namespace AIOMarketMaker.Controllers
                 {
                     jobId = j.Id,
                     searchTerm = j.SearchTerm,
-                    soldCount = jobSold.Count,
-                    activeCount = jobActive.Count,
+                    totalCount = jobSold.Count + jobActive.Count,
+                    baseProductCount = baseProductSold.Count + baseProductActive.Count,
+                    soldCount = baseProductSold.Count,
+                    activeCount = baseProductActive.Count,
                     avgSoldPrice = Math.Round(avgSoldPrice, 2),
                     medianSoldPrice = Math.Round(medianSoldPrice, 2),
                     minSoldPrice = Math.Round(minSoldPrice, 2),
@@ -435,7 +645,7 @@ namespace AIOMarketMaker.Controllers
                     spreadPercent = Math.Round(spreadPercent, 1),
                     dealsCount
                 };
-            }).Where(x => x.soldCount > 0 || x.activeCount > 0).ToList();
+            }).Where(x => x.totalCount > 0).ToList();
 
             // Overall market stats
             var totalSoldValue = soldProducts.Sum(p => p.Price ?? 0);
@@ -478,25 +688,28 @@ namespace AIOMarketMaker.Controllers
                 .OrderBy(x => x.date)
                 .ToList();
 
-            // Best deals (active listings with highest potential margin)
+            // Best deals (active base_product with highest potential margin)
             var bestDeals = activeProducts
+                .Where(p => p.Category == "base_product")
                 .Select(p =>
                 {
-                    var job = jobs.FirstOrDefault(j => j.Id == p.ScrapeJobId);
-                    var jobSold = soldProducts.Where(x => x.ScrapeJobId == p.ScrapeJobId).ToList();
-                    var medianPrice = jobSold.Any() ? GetMedian(jobSold.Select(x => (double)x.Price!.Value).ToList()) : 0;
+                    var sameCategorySold = soldProducts.Where(x => x.Category == "base_product").ToList();
+                    var medianPrice = sameCategorySold.Any() ? GetMedian(sameCategorySold.Select(x => (double)x.Price!.Value).ToList()) : 0;
                     var potentialProfit = medianPrice - (double)(p.Price ?? 0);
                     var profitPercent = p.Price > 0 ? (potentialProfit / (double)p.Price.Value) * 100 : 0;
                     return new
                     {
-                        listingId = p.ListingId,
+                        ebayListingId = p.EbayListingId,
+                        productName = p.ProductName,
                         title = p.Title,
                         price = p.Price,
+                        brand = p.Brand,
+                        model = p.Model,
+                        category = p.Category,
                         medianSoldPrice = Math.Round(medianPrice, 2),
                         potentialProfit = Math.Round(potentialProfit, 2),
                         profitPercent = Math.Round(profitPercent, 1),
-                        url = p.Url,
-                        searchTerm = job?.SearchTerm ?? "Unknown"
+                        url = p.Url
                     };
                 })
                 .Where(x => x.potentialProfit > 0 && x.profitPercent > 20)
@@ -508,15 +721,18 @@ namespace AIOMarketMaker.Controllers
             {
                 summary = new
                 {
-                    totalListingsTracked = products.Count,
-                    soldListings = soldProducts.Count,
-                    activeListings = activeProducts.Count,
+                    totalProducts = products.Count,
+                    soldProducts = soldProducts.Count,
+                    activeProducts = activeProducts.Count,
                     totalMarketValue = Math.Round(totalSoldValue, 2),
                     avgSoldPrice = Math.Round(avgSoldPrice, 2),
                     medianSoldPrice = Math.Round(medianSoldPrice, 2),
                     sellThroughRate7d = sellThroughRate,
                     activeJobs = jobs.Count(j => j.IsEnabled)
                 },
+                categoryBreakdown,
+                brandBreakdown,
+                productNameBreakdown,
                 arbitrageByJob,
                 priceDistribution,
                 salesByDay,

@@ -155,18 +155,31 @@
 
             <div class="filter-bar">
                 <div class="form-group">
+                    <label>Product Name</label>
+                    <select id="filterProductName" onchange="loadProducts(1)">
+                        <option value="">All Products</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Category</label>
+                    <select id="filterCategory" onchange="onCategoryChange()">
+                        <option value="">All Categories</option>
+                        <option value="base_product">Base Product</option>
+                        <option value="bundle">Bundle</option>
+                        <option value="accessory">Accessory</option>
+                        <option value="consumable">Consumable</option>
+                        <option value="replacement_part">Replacement Part</option>
+                        <option value="packaging_only">Packaging Only</option>
+                        <option value="media">Media</option>
+                        <option value="other">Other</option>
+                    </select>
+                </div>
+                <div class="form-group">
                     <label>Status</label>
                     <select id="filterStatus" onchange="loadProducts(1)">
                         <option value="">All</option>
                         <option value="Sold">Sold</option>
                         <option value="Active">Active</option>
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label>Job</label>
-                    <select id="filterJob" onchange="loadProducts(1)">
-                        <option value="">All Jobs</option>
-                        {{JOB_OPTIONS}}
                     </select>
                 </div>
                 <div class="form-group">
@@ -187,12 +200,12 @@
                 <thead>
                     <tr>
                         <th>ID</th>
-                        <th>Listing ID</th>
-                        <th>Title</th>
+                        <th>eBay ID</th>
+                        <th>Product Name</th>
                         <th>Price</th>
                         <th>Status</th>
                         <th>Condition</th>
-                        <th>Job</th>
+                        <th>Category</th>
                         <th>End Date</th>
                         <th>Actions</th>
                     </tr>
@@ -294,6 +307,6 @@
         </div>
     </div>
 
-    <script src="/api/static/js/dashboard.js?v=3"></script>
+    <script src="/api/static/js/dashboard.js?v=4"></script>
 </body>
 </html>
