@@ -11,6 +11,43 @@ public class PromptBuilder
 {
     private const int MaxDescriptionLength = 500;
 
+    private const string AttributeGuidelines = """
+        ## Attribute Extraction Guidelines
+
+        ### productName (CRITICAL for consistency)
+        - Use the official manufacturer marketing name, never abbreviations or slang
+        - Use proper capitalization and spacing as the manufacturer uses
+        - Be consistent: the same product should always have the exact same productName
+        - For accessories, name the accessory itself, not what it's compatible with
+
+        ### edition
+        - Captures the product variant, revision, or special edition
+        - Use the official edition name from the manufacturer
+        - Common patterns: standard vs premium tiers, limited editions, hardware revisions
+        - If multiple editions exist (e.g., storage + color variant), prefer the functional variant
+
+        ### storageCapacity
+        - Normalize to compact format: use GB or TB without spaces (e.g., '256GB', '1TB')
+        - Only populate for products where storage is a key differentiator
+
+        ### color
+        - Use the official marketing color name from the manufacturer
+        - For special editions with unique colorways, include the edition context
+
+        ### model
+        - The specific model number or SKU if visible in title or itemSpecifics
+        - Look in itemSpecifics fields: 'Model', 'MPN', 'Part Number'
+        - Useful for distinguishing hardware revisions within the same product line
+
+        ### variantType
+        - Use for variants not captured by other fields
+        - Examples: regional variants, carrier-specific versions, bundle configurations
+
+        IMPORTANT:
+        - Extract from BOTH title AND itemSpecifics - do not leave null if info exists
+        - Consistency is critical: identical products must have identical attribute values
+        """;
+
     public string SystemPrompt => """
         You are a product classification expert. Your task is to analyze product listings and:
         1. Classify each product into an absolute category (what the item IS, not whether it matches a search)
@@ -34,6 +71,8 @@ public class PromptBuilder
         sb.AppendLine("- packaging_only: Empty box, case, or packaging without the actual product");
         sb.AppendLine("- media: Software, games, movies, music, books");
         sb.AppendLine("- other: Doesn't fit other categories");
+        sb.AppendLine();
+        sb.AppendLine(AttributeGuidelines);
         sb.AppendLine();
         sb.AppendLine("## Products to Classify");
         sb.AppendLine();

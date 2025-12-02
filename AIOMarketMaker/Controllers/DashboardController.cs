@@ -418,6 +418,10 @@ namespace AIOMarketMaker.Controllers
             var productName = query["productName"];
             var status = query["status"];
             var search = query["search"];
+            // Variant filters
+            var edition = query["edition"];
+            var storageCapacity = query["storageCapacity"];
+            var color = query["color"];
 
             var productsQuery = _dbContext.Products.AsQueryable();
 
@@ -431,13 +435,23 @@ namespace AIOMarketMaker.Controllers
                 productsQuery = productsQuery.Where(p => p.Model != null && p.Model.Contains(model));
 
             if (!string.IsNullOrEmpty(productName))
-                productsQuery = productsQuery.Where(p => p.ProductName != null && p.ProductName.Contains(productName));
+                productsQuery = productsQuery.Where(p => p.ProductName == productName);
 
             if (!string.IsNullOrEmpty(status))
                 productsQuery = productsQuery.Where(p => p.ListingStatus == status);
 
             if (!string.IsNullOrEmpty(search))
                 productsQuery = productsQuery.Where(p => p.Title != null && p.Title.Contains(search));
+
+            // Variant filters
+            if (!string.IsNullOrEmpty(edition))
+                productsQuery = productsQuery.Where(p => p.Edition == edition);
+
+            if (!string.IsNullOrEmpty(storageCapacity))
+                productsQuery = productsQuery.Where(p => p.StorageCapacity == storageCapacity);
+
+            if (!string.IsNullOrEmpty(color))
+                productsQuery = productsQuery.Where(p => p.Color == color);
 
             var total = await productsQuery.CountAsync();
             var products = await productsQuery
@@ -518,6 +532,91 @@ namespace AIOMarketMaker.Controllers
 
             var response = req.CreateResponse(HttpStatusCode.OK);
             await response.WriteAsJsonAsync(productNames);
+            return response;
+        }
+
+        /// <summary>
+        /// Get variant breakdown for a specific product name
+        /// GET /api/products/variants?productName=PlayStation%205
+        /// </summary>
+        [Function("GetProductVariants")]
+        public async Task<HttpResponseData> GetProductVariants(
+            [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "products/variants")]
+            HttpRequestData req)
+        {
+            var query = System.Web.HttpUtility.ParseQueryString(req.Url.Query);
+            var productName = query["productName"];
+
+            if (string.IsNullOrEmpty(productName))
+            {
+                var badRequest = req.CreateResponse(HttpStatusCode.BadRequest);
+                await badRequest.WriteAsJsonAsync(new { error = "productName query parameter is required" });
+                return badRequest;
+            }
+
+            var products = await _dbContext.Products
+                .Where(p => p.ProductName == productName)
+                .ToListAsync();
+
+            var variants = new
+            {
+                productName,
+                totalCount = products.Count,
+                soldCount = products.Count(p => p.ListingStatus == "Sold"),
+                activeCount = products.Count(p => p.ListingStatus != "Sold"),
+                avgPrice = products.Where(p => p.Price.HasValue).Average(p => (double?)p.Price) ?? 0,
+                editions = products
+                    .Where(p => !string.IsNullOrEmpty(p.Edition))
+                    .GroupBy(p => p.Edition)
+                    .Select(g => new
+                    {
+                        value = g.Key,
+                        count = g.Count(),
+                        soldCount = g.Count(p => p.ListingStatus == "Sold"),
+                        avgPrice = g.Where(p => p.Price.HasValue).Average(p => (double?)p.Price) ?? 0
+                    })
+                    .OrderByDescending(x => x.count)
+                    .ToList(),
+                storageCapacities = products
+                    .Where(p => !string.IsNullOrEmpty(p.StorageCapacity))
+                    .GroupBy(p => p.StorageCapacity)
+                    .Select(g => new
+                    {
+                        value = g.Key,
+                        count = g.Count(),
+                        soldCount = g.Count(p => p.ListingStatus == "Sold"),
+                        avgPrice = g.Where(p => p.Price.HasValue).Average(p => (double?)p.Price) ?? 0
+                    })
+                    .OrderByDescending(x => x.count)
+                    .ToList(),
+                colors = products
+                    .Where(p => !string.IsNullOrEmpty(p.Color))
+                    .GroupBy(p => p.Color)
+                    .Select(g => new
+                    {
+                        value = g.Key,
+                        count = g.Count(),
+                        soldCount = g.Count(p => p.ListingStatus == "Sold"),
+                        avgPrice = g.Where(p => p.Price.HasValue).Average(p => (double?)p.Price) ?? 0
+                    })
+                    .OrderByDescending(x => x.count)
+                    .ToList(),
+                models = products
+                    .Where(p => !string.IsNullOrEmpty(p.Model))
+                    .GroupBy(p => p.Model)
+                    .Select(g => new
+                    {
+                        value = g.Key,
+                        count = g.Count(),
+                        soldCount = g.Count(p => p.ListingStatus == "Sold"),
+                        avgPrice = g.Where(p => p.Price.HasValue).Average(p => (double?)p.Price) ?? 0
+                    })
+                    .OrderByDescending(x => x.count)
+                    .ToList()
+            };
+
+            var response = req.CreateResponse(HttpStatusCode.OK);
+            await response.WriteAsJsonAsync(variants);
             return response;
         }
 
