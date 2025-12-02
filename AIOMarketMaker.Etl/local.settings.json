@@ -1,4 +1,11 @@
 {
-    "StorageConnectionString": "DefaultEndpointsProtocol=https;AccountName=webscraperstorageacc;AccountKey=zio92liWbgYZN9oS/L65JV2RZp21eXanu19X1G+ioDO7UI0qAMj5wAICuaSPwOcwnM+fk4Y3pvgs+AStZmZOHg==;EndpointSuffix=core.windows.net",
-    "DatabasePath": "E:\\Dev\\source\\repos\\AIOMarketMaker\\AIOMarketMaker.Etl\\etl.db"
+  "StorageConnectionString": "DefaultEndpointsProtocol=https;AccountName=webscraperstorageacc;AccountKey=zio92liWbgYZN9oS/L65JV2RZp21eXanu19X1G+ioDO7UI0qAMj5wAICuaSPwOcwnM+fk4Y3pvgs+AStZmZOHg==;EndpointSuffix=core.windows.net",
+  "DatabasePath": "E:\\Dev\\source\\repos\\AIOMarketMaker\\AIOMarketMaker.Etl\\etl.db",
+  "OpenAi": {
+    "ApiKey": "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",
+    "Model": "gpt-4o-mini",
+    "BatchSize": 10,
+    "MaxRetries": 3,
+    "TimeoutSeconds": 60
+  }
 }

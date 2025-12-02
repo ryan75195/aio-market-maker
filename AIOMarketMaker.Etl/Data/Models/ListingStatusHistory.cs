@@ -1,17 +1,17 @@
 namespace AIOMarketMaker.Etl.Data.Models;
 
 /// <summary>
-/// Tracks the history of listing status changes for a product.
+/// Tracks the history of listing status changes.
 /// Each time a status change is detected, a new record is added.
 /// </summary>
-public class ProductStatusHistory
+public class ListingStatusHistory
 {
     public int Id { get; set; }
 
     /// <summary>
-    /// Foreign key to the Product this history record belongs to
+    /// Foreign key to the Listing this history record belongs to
     /// </summary>
-    public int ProductId { get; set; }
+    public int ListingId { get; set; }
 
     /// <summary>
     /// The listing status at this point in time (Active, Sold, Ended)
@@ -39,5 +39,5 @@ public class ProductStatusHistory
     public string? Source { get; set; }
 
     // Navigation property
-    public Product Product { get; set; } = null!;
+    public Listing Listing { get; set; } = null!;
 }
