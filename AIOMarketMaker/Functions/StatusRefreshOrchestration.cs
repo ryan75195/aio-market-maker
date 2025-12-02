@@ -41,8 +41,8 @@ public class StatusRefreshOrchestration
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "status/refresh")] HttpRequestData req,
         [DurableClient] DurableTaskClient client)
     {
-        var activeCount = await _dbContext.Products
-            .CountAsync(p => p.ListingStatus == "Active");
+        var activeCount = await _dbContext.Listings
+            .CountAsync(l => l.ListingStatus == "Active");
 
         if (activeCount == 0)
         {
@@ -86,8 +86,8 @@ public class StatusRefreshOrchestration
             return notFound;
         }
 
-        var activeCount = await _dbContext.Products
-            .CountAsync(p => p.ScrapeJobId == jobId && p.ListingStatus == "Active");
+        var activeCount = await _dbContext.Listings
+            .CountAsync(l => l.ScrapeJobId == jobId && l.ListingStatus == "Active");
 
         if (activeCount == 0)
         {

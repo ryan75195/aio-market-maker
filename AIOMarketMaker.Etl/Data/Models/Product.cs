@@ -1,45 +1,51 @@
 namespace AIOMarketMaker.Etl.Data.Models;
 
+/// <summary>
+/// Denormalized product data combining LLM classification with listing details.
+/// </summary>
 public class Product
 {
     public int Id { get; set; }
 
-    /// <summary>
-    /// eBay listing ID (e.g., "123456789012")
-    /// </summary>
-    public required string ListingId { get; set; }
-
-    /// <summary>
-    /// Foreign key to the ScrapeJob that found this product
-    /// </summary>
-    public int ScrapeJobId { get; set; }
-
+    // === Core Identification ===
+    public string? EbayListingId { get; set; }
+    public string? ProductName { get; set; }
     public string? Title { get; set; }
+    public string? Url { get; set; }
+
+    // === Pricing ===
     public decimal? Price { get; set; }
     public string? Currency { get; set; }
     public decimal? ShippingCost { get; set; }
-    public string? Url { get; set; }
+
+    // === Classification ===
+    public required string Category { get; set; }
+    public decimal? CategoryConfidence { get; set; }
     public string? Condition { get; set; }
     public string? ListingStatus { get; set; }
     public string? PurchaseFormat { get; set; }
-    public string? Description { get; set; }
 
-    /// <summary>
-    /// JSON serialized item specifics
-    /// </summary>
-    public string? ItemSpecifics { get; set; }
+    // === Product Attributes (LLM-normalized) ===
+    public string? Brand { get; set; }
+    public string? Model { get; set; }
+    public string? StorageCapacity { get; set; }
+    public string? Color { get; set; }
+    public string? Edition { get; set; }
+    public string? VariantType { get; set; }
+    public string? BundledItems { get; set; }
 
-    /// <summary>
-    /// JSON serialized array of image URLs
-    /// </summary>
-    public string? Images { get; set; }
-
+    // === Location ===
     public string? Location { get; set; }
-    public DateTime? EndDateUtc { get; set; }
-    public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
-    public DateTime? UpdatedUtc { get; set; }
 
-    // Navigation properties
-    public ScrapeJob? ScrapeJob { get; set; }
-    public ICollection<ProductStatusHistory> StatusHistory { get; set; } = new List<ProductStatusHistory>();
+    // === Dates ===
+    public DateTime? ListedDateUtc { get; set; }
+    public DateTime? SoldDateUtc { get; set; }
+    public DateTime? EndDateUtc { get; set; }
+    public DateTime ResolvedUtc { get; set; } = DateTime.UtcNow;
+
+    // === Foreign Keys ===
+    public int ListingId { get; set; }
+
+    // === Navigation ===
+    public Listing Listing { get; set; } = null!;
 }

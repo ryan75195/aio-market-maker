@@ -1,4 +1,4 @@
-﻿// HostHelper.cs
+// HostHelper.cs
 using System.IO;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -11,8 +11,12 @@ using AIOMarketMaker.Api.Services;
 using AIOMarketMaker.Api.Parsers;
 using AIOMarketMaker.Etl.Data;
 using AIOMarketMaker.Etl.Data.Migrations;
+using AIOMarketMaker.Etl.Configuration;
+using AIOMarketMaker.Etl.Services;
+using AIOMarketMaker.Etl.Services.EntityResolution;
 using Azure.Data.Tables;
 using Azure.Storage.Blobs;
+using OpenAI;
 
 namespace AIOMarketMaker.Etl
 {
@@ -76,6 +80,19 @@ namespace AIOMarketMaker.Etl
                     services.AddHttpClient<IWebscraperClient, WebscraperClient>(client => {
                         client.BaseAddress = new Uri("http://localhost:7126");
                     });
+
+                    // OpenAI Entity Resolution (required - throws if not configured)
+                    var openAiSettings = configuration.GetSection("OpenAi").Get<OpenAiSettings>()
+                        ?? throw new InvalidOperationException("OpenAi configuration section is required in settings");
+
+                    if (string.IsNullOrEmpty(openAiSettings.ApiKey))
+                        throw new InvalidOperationException("OpenAi:ApiKey is required");
+
+                    services.AddSingleton(openAiSettings);
+                    services.AddSingleton(new OpenAIClient(openAiSettings.ApiKey));
+                    services.AddSingleton<PromptBuilder>();
+                    services.AddSingleton<IEntityResolutionService, OpenAiEntityResolutionService>();
+                    services.AddScoped<IJobRunner, JobRunner>();
                 })
                 .Build();
         }

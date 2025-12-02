@@ -1,5 +1,6 @@
 using AIOMarketMaker.Etl.Data;
 using AIOMarketMaker.Etl.Data.Models;
+using AIOMarketMaker.Etl.Services.EntityResolution;
 using AIOMarketMaker.Models.Ebay;
 using AIOMarketMaker.Services;
 using Microsoft.EntityFrameworkCore;
@@ -27,15 +28,18 @@ public class JobRunner : IJobRunner
 {
     private readonly EtlDbContext _dbContext;
     private readonly IEbayScraper _ebayScraper;
+    private readonly IEntityResolutionService _entityResolutionService;
     private readonly ILogger<JobRunner> _logger;
 
     public JobRunner(
         EtlDbContext dbContext,
         IEbayScraper ebayScraper,
+        IEntityResolutionService entityResolutionService,
         ILogger<JobRunner> logger)
     {
         _dbContext = dbContext;
         _ebayScraper = ebayScraper;
+        _entityResolutionService = entityResolutionService;
         _logger = logger;
     }
 
@@ -89,9 +93,9 @@ public class JobRunner : IJobRunner
             _logger.LogInformation("Found {Count} listings from search", summaries.Count);
 
             // Filter out listings we already have in the database
-            var existingListingIds = (await _dbContext.Products
-                .Where(p => p.ScrapeJobId == job.Id)
-                .Select(p => p.ListingId)
+            var existingListingIds = (await _dbContext.Listings
+                .Where(l => l.ScrapeJobId == job.Id)
+                .Select(l => l.ListingId)
                 .ToListAsync(ct))
                 .ToHashSet();
 
@@ -116,42 +120,65 @@ public class JobRunner : IJobRunner
 
             // Fetch full listing details
             var items = await _ebayScraper.GetItemsFromListings(newListingIds);
-            var products = items.ToList();
+            var ebayProducts = items.ToList();
 
-            _logger.LogInformation("Fetched {Count} full listings", products.Count);
+            _logger.LogInformation("Fetched {Count} full listings", ebayProducts.Count);
 
-            // Convert to database entities and save
-            var newProducts = products
+            // Convert to Listing entities (raw data) and save
+            var newListings = ebayProducts
                 .Where(p => p.ListingId != null)
-                .Select(p => MapToProduct(p, job.Id))
+                .Select(p => MapToListing(p, job.Id))
                 .ToList();
 
-            _dbContext.Products.AddRange(newProducts);
+            _dbContext.Listings.AddRange(newListings);
             await _dbContext.SaveChangesAsync(ct);
 
-            _logger.LogInformation("Saved {Count} products to database", newProducts.Count);
+            _logger.LogInformation("Saved {Count} raw listings to database", newListings.Count);
 
-            // Create initial history records for each product
-            var historyRecords = newProducts.Select(p => new ProductStatusHistory
+            // Create initial history records for each listing
+            var historyRecords = newListings.Select(l => new ListingStatusHistory
             {
-                ProductId = p.Id,
-                ListingStatus = p.ListingStatus ?? "Unknown",
-                Price = p.Price,
-                SoldDateUtc = p.EndDateUtc,
+                ListingId = l.Id,
+                ListingStatus = l.ListingStatus ?? "Unknown",
+                Price = l.Price,
+                SoldDateUtc = l.EndDateUtc,
                 RecordedUtc = DateTime.UtcNow,
                 Source = "InitialScrape"
             }).ToList();
 
-            _dbContext.ProductStatusHistory.AddRange(historyRecords);
+            _dbContext.ListingStatusHistory.AddRange(historyRecords);
             await _dbContext.SaveChangesAsync(ct);
 
             _logger.LogInformation("Created {Count} initial history records", historyRecords.Count);
+
+            // Entity resolution - classify and normalize products (throws on failure)
+            _logger.LogInformation("Starting entity resolution for {Count} products", ebayProducts.Count);
+            var resolutionResults = await _entityResolutionService.ResolveAsync(ebayProducts, ct);
+
+            // Build lookup from eBay ListingId to database Listing
+            var listingLookup = newListings.ToDictionary(l => l.ListingId, l => l);
+
+            // Map resolution results to Product entities
+            var normalizedProducts = resolutionResults
+                .Where(r => listingLookup.ContainsKey(r.ListingId))
+                .Select(r => MapToProduct(r, listingLookup[r.ListingId]))
+                .ToList();
+
+            _dbContext.Products.AddRange(normalizedProducts);
+            await _dbContext.SaveChangesAsync(ct);
+
+            _logger.LogInformation("Saved {Count} normalized products to database", normalizedProducts.Count);
 
             // Update job's last run time
             job.LastRunUtc = DateTime.UtcNow;
             await _dbContext.SaveChangesAsync(ct);
 
-            return new JobRunResult(job.Id, true, summaries.Count, newListingIds.Length, newProducts.Count, null);
+            return new JobRunResult(job.Id, true, summaries.Count, newListingIds.Length, normalizedProducts.Count, null);
+        }
+        catch (EntityResolutionException ex)
+        {
+            _logger.LogError(ex, "Entity resolution failed for job {JobId}: {Message}", job.Id, ex.Message);
+            throw; // Re-throw - no fallback
         }
         catch (Exception ex)
         {
@@ -160,9 +187,9 @@ public class JobRunner : IJobRunner
         }
     }
 
-    private static Product MapToProduct(EbayProduct ebayProduct, int scrapeJobId)
+    private static Listing MapToListing(EbayProduct ebayProduct, int scrapeJobId)
     {
-        return new Product
+        return new Listing
         {
             ListingId = ebayProduct.ListingId!,
             ScrapeJobId = scrapeJobId,
@@ -180,6 +207,57 @@ public class JobRunner : IJobRunner
             Location = ebayProduct.Location,
             EndDateUtc = ebayProduct.EndDateUtc,
             CreatedUtc = DateTime.UtcNow
+        };
+    }
+
+    private static Product MapToProduct(EntityResolutionResult resolution, Listing listing)
+    {
+        // Determine dates based on listing status
+        DateTime? listedDateUtc = null;
+        DateTime? soldDateUtc = null;
+
+        if (listing.ListingStatus == "Sold")
+        {
+            // For sold items, use EndDateUtc as the sold date
+            soldDateUtc = listing.EndDateUtc;
+        }
+        else
+        {
+            // For active/buy listings, use CreatedUtc (when we first scraped it)
+            // since eBay doesn't expose the original listing date
+            listedDateUtc = listing.CreatedUtc;
+        }
+
+        return new Product
+        {
+            ListingId = listing.Id,
+            Category = resolution.Category,
+            CategoryConfidence = resolution.CategoryConfidence,
+            ProductName = resolution.ProductName,
+            Brand = resolution.Attributes.Brand,
+            Model = resolution.Attributes.Model,
+            StorageCapacity = resolution.Attributes.StorageCapacity,
+            Color = resolution.Attributes.Color,
+            Edition = resolution.Attributes.Edition,
+            VariantType = resolution.Attributes.VariantType,
+            BundledItems = resolution.BundledItems != null
+                ? JsonConvert.SerializeObject(resolution.BundledItems)
+                : null,
+            // Denormalized from Listing
+            EbayListingId = listing.ListingId,
+            Title = listing.Title,
+            Price = listing.Price,
+            Currency = listing.Currency,
+            ShippingCost = listing.ShippingCost,
+            Url = listing.Url,
+            Condition = listing.Condition,
+            ListingStatus = listing.ListingStatus,
+            PurchaseFormat = listing.PurchaseFormat,
+            Location = listing.Location,
+            EndDateUtc = listing.EndDateUtc,
+            ListedDateUtc = listedDateUtc,
+            SoldDateUtc = soldDateUtc,
+            ResolvedUtc = DateTime.UtcNow
         };
     }
 }

@@ -1,9 +1,12 @@
 ﻿using AIOMarketMaker.Etl;
+using AIOMarketMaker.Etl.Configuration;
 using AIOMarketMaker.Etl.Data;
 using AIOMarketMaker.Etl.Data.Models;
+using AIOMarketMaker.Etl.Scripts;
 using AIOMarketMaker.Models.Ebay;
 using AIOMarketMaker.Services;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Newtonsoft.Json;
 
@@ -27,6 +30,54 @@ public class Program
         if (args.Contains("--inspect"))
         {
             await InspectDatabase(dbContext);
+            await host.StopAsync();
+            return;
+        }
+
+        // Handle --reset flag (delete all listings and products)
+        if (args.Contains("--reset"))
+        {
+            Console.WriteLine("[ETL] Resetting database - deleting all listings and products...");
+
+            var productCount = await dbContext.Products.CountAsync();
+            var listingCount = await dbContext.Listings.CountAsync();
+            var historyCount = await dbContext.ListingStatusHistory.CountAsync();
+
+            dbContext.Products.RemoveRange(dbContext.Products);
+            dbContext.ListingStatusHistory.RemoveRange(dbContext.ListingStatusHistory);
+            dbContext.Listings.RemoveRange(dbContext.Listings);
+            await dbContext.SaveChangesAsync();
+
+            Console.WriteLine($"[ETL] Deleted {productCount} products, {listingCount} listings, {historyCount} history records");
+            await host.StopAsync();
+            return;
+        }
+
+        // Handle --clear-products flag (delete only products, keep listings)
+        if (args.Contains("--clear-products"))
+        {
+            Console.WriteLine("[ETL] Clearing products table...");
+
+            var productCount = await dbContext.Products.CountAsync();
+            dbContext.Products.RemoveRange(dbContext.Products);
+            await dbContext.SaveChangesAsync();
+
+            Console.WriteLine($"[ETL] Deleted {productCount} products");
+            await host.StopAsync();
+            return;
+        }
+
+        // Handle --process-existing flag (run entity resolution on existing listings without products)
+        if (args.Contains("--process-existing"))
+        {
+            var configuration = scope.ServiceProvider.GetRequiredService<IConfiguration>();
+            var dbPath = configuration["DatabasePath"] ?? "etl.db";
+            var connectionString = $"Data Source={dbPath}";
+
+            var openAiSettings = configuration.GetSection("OpenAi").Get<OpenAiSettings>()
+                ?? throw new InvalidOperationException("OpenAi configuration section is required");
+
+            await ProcessExistingListings.RunAsync(connectionString, openAiSettings);
             await host.StopAsync();
             return;
         }
@@ -78,9 +129,9 @@ public class Program
                 Console.WriteLine($"[ETL] Found {summaries.Count} listings from search");
 
                 // Filter out listings we already have in the database
-                var existingListingIds = (await dbContext.Products
-                    .Where(p => p.ScrapeJobId == job.Id)
-                    .Select(p => p.ListingId)
+                var existingListingIds = (await dbContext.Listings
+                    .Where(l => l.ScrapeJobId == job.Id)
+                    .Select(l => l.ListingId)
                     .ToListAsync())
                     .ToHashSet();
 
@@ -104,15 +155,15 @@ public class Program
                 Console.WriteLine($"[ETL] Fetched {products.Count} full listings");
 
                 // Convert to database entities and save
-                var newProducts = products
+                var newListings = products
                     .Where(p => p.ListingId != null)
-                    .Select(p => MapToProduct(p, job.Id))
+                    .Select(p => MapToListing(p, job.Id))
                     .ToList();
 
-                dbContext.Products.AddRange(newProducts);
+                dbContext.Listings.AddRange(newListings);
                 await dbContext.SaveChangesAsync();
 
-                Console.WriteLine($"[ETL] Saved {newProducts.Count} products to database");
+                Console.WriteLine($"[ETL] Saved {newListings.Count} listings to database");
 
                 // Update job's last run time
                 job.LastRunUtc = DateTime.UtcNow;
@@ -125,15 +176,15 @@ public class Program
         }
 
         // Summary
-        var totalProducts = await dbContext.Products.CountAsync();
-        Console.WriteLine($"[ETL] Complete. Total products in database: {totalProducts}");
+        var totalListings = await dbContext.Listings.CountAsync();
+        Console.WriteLine($"[ETL] Complete. Total listings in database: {totalListings}");
 
         await host.StopAsync();
     }
 
-    private static Product MapToProduct(EbayProduct ebayProduct, int scrapeJobId)
+    private static Listing MapToListing(EbayProduct ebayProduct, int scrapeJobId)
     {
-        return new Product
+        return new Listing
         {
             ListingId = ebayProduct.ListingId!,
             ScrapeJobId = scrapeJobId,
@@ -169,29 +220,29 @@ public class Program
 
         Console.WriteLine();
 
-        // Products
-        var productCount = await dbContext.Products.CountAsync();
-        Console.WriteLine($"Products ({productCount}):");
+        // Listings (raw scraped data)
+        var listingCount = await dbContext.Listings.CountAsync();
+        Console.WriteLine($"Listings ({listingCount}):");
 
-        if (productCount > 0)
+        if (listingCount > 0)
         {
-            var recentProducts = await dbContext.Products
-                .OrderByDescending(p => p.Id)
+            var recentListings = await dbContext.Listings
+                .OrderByDescending(l => l.Id)
                 .Take(10)
                 .ToListAsync();
 
-            Console.WriteLine("  Recent products:");
-            foreach (var p in recentProducts)
+            Console.WriteLine("  Recent listings:");
+            foreach (var l in recentListings)
             {
-                var title = p.Title ?? "(no title)";
+                var title = l.Title ?? "(no title)";
                 if (title.Length > 50) title = title.Substring(0, 47) + "...";
-                Console.WriteLine($"    [{p.Id}] {p.ListingId} | {p.Price:F2} {p.Currency} | {p.ListingStatus} | {title}");
+                Console.WriteLine($"    [{l.Id}] {l.ListingId} | {l.Price:F2} {l.Currency} | {l.ListingStatus} | {title}");
             }
 
             // Stats by status
             Console.WriteLine("\n  By Status:");
-            var statusGroups = await dbContext.Products
-                .GroupBy(p => p.ListingStatus)
+            var statusGroups = await dbContext.Listings
+                .GroupBy(l => l.ListingStatus)
                 .Select(g => new { Status = g.Key, Count = g.Count() })
                 .ToListAsync();
             foreach (var g in statusGroups)
@@ -200,20 +251,54 @@ public class Program
             }
 
             // Price stats
-            var priceStats = await dbContext.Products
-                .Where(p => p.Price.HasValue)
+            var priceStats = await dbContext.Listings
+                .Where(l => l.Price.HasValue)
                 .GroupBy(_ => 1)
                 .Select(g => new
                 {
-                    Min = g.Min(p => p.Price),
-                    Max = g.Max(p => p.Price),
-                    Avg = g.Average(p => p.Price)
+                    Min = g.Min(l => l.Price),
+                    Max = g.Max(l => l.Price),
+                    Avg = g.Average(l => l.Price)
                 })
                 .FirstOrDefaultAsync();
 
             if (priceStats != null)
             {
                 Console.WriteLine($"\n  Price Stats: Min={priceStats.Min:F2}, Max={priceStats.Max:F2}, Avg={priceStats.Avg:F2}");
+            }
+        }
+
+        Console.WriteLine();
+
+        // Products (normalized/classified data)
+        var productCount = await dbContext.Products.CountAsync();
+        Console.WriteLine($"Products (normalized) ({productCount}):");
+
+        if (productCount > 0)
+        {
+            // Stats by category
+            Console.WriteLine("  By Category:");
+            var categoryGroups = await dbContext.Products
+                .GroupBy(p => p.Category)
+                .Select(g => new { Category = g.Key, Count = g.Count() })
+                .ToListAsync();
+            foreach (var g in categoryGroups)
+            {
+                Console.WriteLine($"    {g.Category}: {g.Count}");
+            }
+
+            // Stats by brand
+            Console.WriteLine("\n  By Brand (top 10):");
+            var brandGroups = await dbContext.Products
+                .Where(p => p.Brand != null)
+                .GroupBy(p => p.Brand)
+                .Select(g => new { Brand = g.Key, Count = g.Count() })
+                .OrderByDescending(g => g.Count)
+                .Take(10)
+                .ToListAsync();
+            foreach (var g in brandGroups)
+            {
+                Console.WriteLine($"    {g.Brand}: {g.Count}");
             }
         }
     }

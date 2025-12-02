@@ -17,13 +17,13 @@ public record StatusRefreshResult(
 );
 
 public record StatusChangeInfo(
-    int ProductId,
-    string ListingId,
+    int ListingId,
+    string EbayListingId,
     string OldStatus,
     string NewStatus
 );
 
-public record ProductToCheck(
+public record ListingToCheck(
     int Id,
     string ListingId,
     string? Url,
@@ -42,7 +42,7 @@ public class StatusRefreshRunner : IStatusRefreshRunner
     private readonly IListingParser _listingParser;
     private readonly IJobRepository _jobRepository;
     private readonly ILogger<StatusRefreshRunner> _logger;
-    private readonly IBrowsingContext _browsingContext = BrowsingContext.New(Configuration.Default);
+    private readonly IBrowsingContext _browsingContext = BrowsingContext.New(AngleSharp.Configuration.Default);
 
     public StatusRefreshRunner(
         EtlDbContext dbContext,
@@ -63,40 +63,40 @@ public class StatusRefreshRunner : IStatusRefreshRunner
         _logger.LogInformation("Starting status refresh for {Scope}",
             jobId.HasValue ? $"job {jobId}" : "all active listings");
 
-        // 1. Get all products with "Active" status
-        var query = _dbContext.Products
-            .Where(p => p.ListingStatus == "Active");
+        // 1. Get all listings with "Active" status
+        var query = _dbContext.Listings
+            .Where(l => l.ListingStatus == "Active");
 
         if (jobId.HasValue)
         {
-            query = query.Where(p => p.ScrapeJobId == jobId.Value);
+            query = query.Where(l => l.ScrapeJobId == jobId.Value);
         }
 
-        var productsToCheck = await query
-            .Select(p => new ProductToCheck(p.Id, p.ListingId, p.Url, p.ListingStatus))
+        var listingsToCheck = await query
+            .Select(l => new ListingToCheck(l.Id, l.ListingId, l.Url, l.ListingStatus))
             .ToListAsync(ct);
 
-        if (productsToCheck.Count == 0)
+        if (listingsToCheck.Count == 0)
         {
             _logger.LogInformation("No active listings to check");
             return new StatusRefreshResult(0, 0);
         }
 
-        _logger.LogInformation("Found {Count} active listings to check", productsToCheck.Count);
+        _logger.LogInformation("Found {Count} active listings to check", listingsToCheck.Count);
 
         // 2. Filter to only those with valid URLs
-        var productsWithUrls = productsToCheck
-            .Where(p => !string.IsNullOrEmpty(p.Url))
+        var listingsWithUrls = listingsToCheck
+            .Where(l => !string.IsNullOrEmpty(l.Url))
             .ToList();
 
-        if (productsWithUrls.Count == 0)
+        if (listingsWithUrls.Count == 0)
         {
-            _logger.LogWarning("No products have URLs to check");
-            return new StatusRefreshResult(productsToCheck.Count, 0);
+            _logger.LogWarning("No listings have URLs to check");
+            return new StatusRefreshResult(listingsToCheck.Count, 0);
         }
 
         // 3. Batch fetch HTML via WebscraperClient
-        var urls = productsWithUrls.Select(p => p.Url!).ToList();
+        var urls = listingsWithUrls.Select(l => l.Url!).ToList();
         _logger.LogInformation("Fetching {Count} listing pages...", urls.Count);
 
         var jobResults = await _webscraperClient.RunJobAsync(urls);
@@ -120,43 +120,43 @@ public class StatusRefreshRunner : IStatusRefreshRunner
         int updated = 0;
         var changes = new List<StatusChangeInfo>();
 
-        foreach (var product in productsWithUrls)
+        foreach (var listing in listingsWithUrls)
         {
-            if (!urlToHtml.TryGetValue(product.Url!, out var html))
+            if (!urlToHtml.TryGetValue(listing.Url!, out var html))
             {
-                _logger.LogWarning("No HTML found for product {ProductId} ({Url})", product.Id, product.Url);
+                _logger.LogWarning("No HTML found for listing {ListingId} ({Url})", listing.Id, listing.Url);
                 continue;
             }
 
             try
             {
                 var doc = await LoadDocumentAsync(html);
-                var parsed = _listingParser.ParseProductListing(doc, product.Url!);
+                var parsed = _listingParser.ParseProductListing(doc, listing.Url!);
                 var newStatus = parsed.listingStatus?.ToString() ?? "Unknown";
 
-                if (newStatus != product.CurrentStatus)
+                if (newStatus != listing.CurrentStatus)
                 {
                     _logger.LogInformation(
                         "Status change detected for {ListingId}: {OldStatus} -> {NewStatus}",
-                        product.ListingId, product.CurrentStatus, newStatus);
+                        listing.ListingId, listing.CurrentStatus, newStatus);
 
-                    // Update the product's current status
-                    var dbProduct = await _dbContext.Products.FindAsync(new object[] { product.Id }, ct);
-                    if (dbProduct != null)
+                    // Update the listing's current status
+                    var dbListing = await _dbContext.Listings.FindAsync(new object[] { listing.Id }, ct);
+                    if (dbListing != null)
                     {
-                        dbProduct.ListingStatus = newStatus;
-                        dbProduct.UpdatedUtc = DateTime.UtcNow;
+                        dbListing.ListingStatus = newStatus;
+                        dbListing.UpdatedUtc = DateTime.UtcNow;
 
                         // Update EndDateUtc if it was parsed (for sold items)
                         if (parsed.SoldDateUtc.HasValue)
                         {
-                            dbProduct.EndDateUtc = parsed.SoldDateUtc;
+                            dbListing.EndDateUtc = parsed.SoldDateUtc;
                         }
 
                         // Add history record
-                        _dbContext.ProductStatusHistory.Add(new ProductStatusHistory
+                        _dbContext.ListingStatusHistory.Add(new ListingStatusHistory
                         {
-                            ProductId = product.Id,
+                            ListingId = listing.Id,
                             ListingStatus = newStatus,
                             Price = parsed.price,
                             SoldDateUtc = parsed.SoldDateUtc,
@@ -165,9 +165,9 @@ public class StatusRefreshRunner : IStatusRefreshRunner
                         });
 
                         changes.Add(new StatusChangeInfo(
-                            product.Id,
-                            product.ListingId,
-                            product.CurrentStatus ?? "Unknown",
+                            listing.Id,
+                            listing.ListingId,
+                            listing.CurrentStatus ?? "Unknown",
                             newStatus));
 
                         updated++;
@@ -176,16 +176,16 @@ public class StatusRefreshRunner : IStatusRefreshRunner
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error parsing product {ProductId} ({Url})", product.Id, product.Url);
+                _logger.LogError(ex, "Error parsing listing {ListingId} ({Url})", listing.Id, listing.Url);
             }
         }
 
         await _dbContext.SaveChangesAsync(ct);
 
         _logger.LogInformation("Status refresh complete: checked {Checked}, updated {Updated}",
-            productsToCheck.Count, updated);
+            listingsToCheck.Count, updated);
 
-        return new StatusRefreshResult(productsToCheck.Count, updated, changes);
+        return new StatusRefreshResult(listingsToCheck.Count, updated, changes);
     }
 
     private async Task<IDocument> LoadDocumentAsync(string html)
