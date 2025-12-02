@@ -64,20 +64,20 @@ async function loadDashboardData() {
 function renderDashboardStats() {
     const m = metricsData;
     const s = m.summary;
-    const totalDeals = m.arbitrageByJob.reduce((sum, j) => sum + j.dealsCount, 0);
+    const totalDeals = m.arbitrageByJob ? m.arbitrageByJob.reduce((sum, j) => sum + j.dealsCount, 0) : 0;
 
     document.getElementById('dashboardStats').innerHTML = `
         <div class="stat-card">
-            <div class="value">${s.totalListingsTracked}</div>
-            <div class="label">Listings Tracked</div>
+            <div class="value">${s.totalProducts}</div>
+            <div class="label">Products Tracked</div>
         </div>
         <div class="stat-card success">
-            <div class="value">${s.soldListings}</div>
+            <div class="value">${s.soldProducts}</div>
             <div class="label">Sold (Comps)</div>
         </div>
         <div class="stat-card">
-            <div class="value">${s.activeListings}</div>
-            <div class="label">Active Listings</div>
+            <div class="value">${s.activeProducts}</div>
+            <div class="label">Active Products</div>
         </div>
         <div class="stat-card warning">
             <div class="value">${s.medianSoldPrice.toFixed(2)}</div>
@@ -98,6 +98,9 @@ function renderDashboardStats() {
 
     // Render arbitrage by category table
     renderArbitrageTable();
+
+    // Populate product name filter dropdown
+    populateProductNameFilter();
 }
 
 function renderDealsTable() {
@@ -105,12 +108,13 @@ function renderDealsTable() {
     const tbody = document.getElementById('dealsBody');
 
     if (!deals || deals.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 20px;">No flip opportunities found (need active listings priced 20%+ below median sold)</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 20px;">No flip opportunities found (need active products priced 20%+ below median sold)</td></tr>';
         return;
     }
 
     tbody.innerHTML = deals.map(d => {
-        const title = d.title ? (d.title.length > 40 ? d.title.substring(0, 37) + '...' : d.title) : '(no title)';
+        const displayName = d.productName || d.title || '(no title)';
+        const title = displayName.length > 40 ? displayName.substring(0, 37) + '...' : displayName;
         const profitClass = d.profitPercent >= 50 ? 'style="color: #16a34a; font-weight: bold;"' : '';
         return `<tr>
             <td class="title-cell"><a href="${d.url || '#'}" target="_blank" title="${(d.title || '').replace(/"/g, '&quot;')}">${title}</a></td>
@@ -118,7 +122,7 @@ function renderDealsTable() {
             <td class="price">${d.medianSoldPrice.toFixed(2)}</td>
             <td class="price" style="color: #16a34a;">+${d.potentialProfit.toFixed(2)}</td>
             <td ${profitClass}>${d.profitPercent.toFixed(0)}%</td>
-            <td>${d.searchTerm}</td>
+            <td>${d.category || '-'}</td>
         </tr>`;
     }).join('');
 }
@@ -258,14 +262,16 @@ function renderCharts() {
 // Products tab
 async function loadProducts(page) {
     currentPage = page;
+    const productName = document.getElementById('filterProductName').value;
+    const category = document.getElementById('filterCategory').value;
     const status = document.getElementById('filterStatus').value;
-    const jobId = document.getElementById('filterJob').value;
     const search = document.getElementById('filterSearch').value;
     const pageSize = document.getElementById('pageSize').value;
 
     const params = new URLSearchParams({ page, pageSize });
+    if (productName) params.append('productName', productName);
+    if (category) params.append('category', category);
     if (status) params.append('status', status);
-    if (jobId) params.append('jobId', jobId);
     if (search) params.append('search', search);
 
     try {
@@ -278,6 +284,73 @@ async function loadProducts(page) {
     }
 }
 
+// Load product names based on category filter
+async function loadProductNames(category = null) {
+    try {
+        const params = new URLSearchParams();
+        if (category) params.append('category', category);
+
+        const res = await fetch('/api/products/names?' + params);
+        if (!res.ok) {
+            console.error('Failed to fetch product names');
+            return;
+        }
+
+        const productNames = await res.json();
+        const select = document.getElementById('filterProductName');
+        const currentValue = select.value;
+
+        // Clear existing options except the first "All Products"
+        select.innerHTML = '<option value="">All Products</option>';
+
+        // Add product names with counts
+        productNames.forEach(p => {
+            const option = document.createElement('option');
+            option.value = p.productName;
+            option.textContent = `${p.productName} (${p.count})`;
+            select.appendChild(option);
+        });
+
+        // Restore previous selection if it still exists in the filtered list
+        if (currentValue && productNames.some(p => p.productName === currentValue)) {
+            select.value = currentValue;
+        }
+    } catch (e) {
+        console.error('Error loading product names:', e);
+    }
+}
+
+// Called when category filter changes - update product names and reload products
+async function onCategoryChange() {
+    const category = document.getElementById('filterCategory').value;
+    await loadProductNames(category || null);
+    loadProducts(1);
+}
+
+// Populate product name dropdown from metrics (initial load)
+function populateProductNameFilter() {
+    if (!metricsData || !metricsData.productNameBreakdown) return;
+
+    const select = document.getElementById('filterProductName');
+    const currentValue = select.value;
+
+    // Clear existing options except the first "All Products"
+    select.innerHTML = '<option value="">All Products</option>';
+
+    // Add product names sorted by count
+    metricsData.productNameBreakdown.forEach(p => {
+        const option = document.createElement('option');
+        option.value = p.productName;
+        option.textContent = `${p.productName} (${p.count})`;
+        select.appendChild(option);
+    });
+
+    // Restore previous selection if it still exists
+    if (currentValue) {
+        select.value = currentValue;
+    }
+}
+
 function renderProductsTable(products) {
     const tbody = document.getElementById('productsBody');
     if (products.length === 0) {
@@ -287,19 +360,19 @@ function renderProductsTable(products) {
 
     tbody.innerHTML = products.map(p => {
         const statusClass = p.listingStatus === 'Sold' ? 'status-sold' : 'status-active';
-        const title = p.title ? (p.title.length > 50 ? p.title.substring(0, 47) + '...' : p.title) : '(no title)';
+        const displayName = p.productName || p.title || '(no title)';
+        const title = displayName.length > 50 ? displayName.substring(0, 47) + '...' : displayName;
         const price = p.price ? p.price.toFixed(2) + ' ' + (p.currency || '') : '-';
         const endDate = p.endDateUtc ? p.endDateUtc.substring(0, 10) : '-';
-        const jobName = jobsLookup[p.scrapeJobId] || p.scrapeJobId;
 
         return `<tr>
             <td>${p.id}</td>
-            <td><a href="${p.url || '#'}" target="_blank">${p.listingId}</a></td>
+            <td><a href="${p.url || '#'}" target="_blank">${p.ebayListingId || '-'}</a></td>
             <td class="title-cell" title="${(p.title || '').replace(/"/g, '&quot;')}">${title}</td>
             <td class="price">${price}</td>
             <td class="${statusClass}">${p.listingStatus || '-'}</td>
             <td>${p.condition || '-'}</td>
-            <td>${jobName}</td>
+            <td>${p.category || '-'}</td>
             <td>${endDate}</td>
             <td><button class="btn btn-primary btn-sm" onclick="viewProduct(${p.id})">View</button></td>
         </tr>`;
