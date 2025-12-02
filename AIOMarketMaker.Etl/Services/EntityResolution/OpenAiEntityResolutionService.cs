@@ -1,5 +1,7 @@
+using System.Collections.Concurrent;
 using System.Text.Json;
 using AIOMarketMaker.Etl.Configuration;
+using AIOMarketMaker.Etl.Services.VectorSearch;
 using AIOMarketMaker.Models.Ebay;
 using Microsoft.Extensions.Logging;
 using OpenAI;
@@ -16,18 +18,23 @@ public class OpenAiEntityResolutionService : IEntityResolutionService
     private readonly OpenAIClient _client;
     private readonly OpenAiSettings _settings;
     private readonly PromptBuilder _promptBuilder;
+    private readonly IProductNameIndexer _productNameIndexer;
     private readonly ILogger<OpenAiEntityResolutionService> _logger;
+    private readonly SemaphoreSlim _semaphore;
 
     public OpenAiEntityResolutionService(
         OpenAIClient client,
         OpenAiSettings settings,
         PromptBuilder promptBuilder,
+        IProductNameIndexer productNameIndexer,
         ILogger<OpenAiEntityResolutionService> logger)
     {
         _client = client;
         _settings = settings;
         _promptBuilder = promptBuilder;
+        _productNameIndexer = productNameIndexer;
         _logger = logger;
+        _semaphore = new SemaphoreSlim(settings.MaxConcurrency);
     }
 
     public async Task<IReadOnlyList<EntityResolutionResult>> ResolveAsync(
@@ -37,16 +44,27 @@ public class OpenAiEntityResolutionService : IEntityResolutionService
         if (products.Count == 0)
             return [];
 
+        var batches = products.Chunk(_settings.BatchSize).ToList();
+        var batchResults = new ConcurrentDictionary<int, List<EntityResolutionResult>>();
+
+        _logger.LogInformation(
+            "Processing {Count} products in {Batches} batches (max {Concurrency} parallel)",
+            products.Count, batches.Count, _settings.MaxConcurrency);
+
+        // Process batches in parallel with concurrency limit
+        var tasks = batches.Select((batch, index) =>
+            ProcessBatchWithSemaphoreAsync(batch.ToList(), index, batchResults, ct)).ToList();
+
+        await Task.WhenAll(tasks);
+
+        // Flatten results in order
         var results = new List<EntityResolutionResult>();
-
-        // Process in batches
-        foreach (var batch in products.Chunk(_settings.BatchSize))
+        for (int i = 0; i < batches.Count; i++)
         {
-            var batchList = batch.ToList();
-            _logger.LogInformation("Processing batch of {Count} products", batchList.Count);
-
-            var batchResults = await ProcessBatchAsync(batchList, ct);
-            results.AddRange(batchResults);
+            if (batchResults.TryGetValue(i, out var batch))
+            {
+                results.AddRange(batch);
+            }
         }
 
         // Validate we got results for all products
@@ -65,11 +83,44 @@ public class OpenAiEntityResolutionService : IEntityResolutionService
         return results;
     }
 
+    private async Task ProcessBatchWithSemaphoreAsync(
+        IReadOnlyList<EbayProduct> batch,
+        int batchIndex,
+        ConcurrentDictionary<int, List<EntityResolutionResult>> results,
+        CancellationToken ct)
+    {
+        await _semaphore.WaitAsync(ct);
+        try
+        {
+            _logger.LogInformation("Processing batch {Index} of {Count} products", batchIndex + 1, batch.Count);
+            var batchResults = await ProcessBatchAsync(batch, ct);
+            results[batchIndex] = batchResults;
+        }
+        finally
+        {
+            _semaphore.Release();
+        }
+    }
+
     private async Task<List<EntityResolutionResult>> ProcessBatchAsync(
         IReadOnlyList<EbayProduct> batch,
         CancellationToken ct)
     {
-        var userPrompt = _promptBuilder.BuildUserPrompt(batch);
+        // Find similar product names from Pinecone to provide context
+        var listings = batch
+            .Where(p => p.ListingId != null && !string.IsNullOrEmpty(p.Title))
+            .Select(p => (p.ListingId!, p.Title!))
+            .ToList();
+
+        var similarNames = await _productNameIndexer.FindSimilarProductNamesAsync(listings, ct);
+
+        if (similarNames.Count > 0)
+        {
+            _logger.LogInformation("Found similar product names for {Count}/{Total} listings",
+                similarNames.Count, batch.Count);
+        }
+
+        var userPrompt = _promptBuilder.BuildUserPrompt(batch, similarNames);
 
         Exception? lastException = null;
 

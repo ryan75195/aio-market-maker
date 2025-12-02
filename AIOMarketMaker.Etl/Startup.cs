@@ -14,6 +14,7 @@ using AIOMarketMaker.Etl.Data.Migrations;
 using AIOMarketMaker.Etl.Configuration;
 using AIOMarketMaker.Etl.Services;
 using AIOMarketMaker.Etl.Services.EntityResolution;
+using AIOMarketMaker.Etl.Services.VectorSearch;
 using Azure.Data.Tables;
 using Azure.Storage.Blobs;
 using OpenAI;
@@ -56,6 +57,16 @@ namespace AIOMarketMaker.Etl
                     var migrationRunner = new MigrationRunner(sqliteConnectionString, null);
                     migrationRunner.ApplyMigrations();
 
+                    // Enable WAL mode for concurrent access from multiple processes
+                    using (var connection = new Microsoft.Data.Sqlite.SqliteConnection(sqliteConnectionString))
+                    {
+                        connection.Open();
+                        using var cmd = connection.CreateCommand();
+                        cmd.CommandText = "PRAGMA journal_mode=WAL;";
+                        var result = cmd.ExecuteScalar();
+                        Log.Information("SQLite journal mode set to: {Mode}", result);
+                    }
+
                     // Register DbContext
                     services.AddDbContext<EtlDbContext>(options =>
                         options.UseSqlite(sqliteConnectionString));
@@ -91,6 +102,30 @@ namespace AIOMarketMaker.Etl
                     services.AddSingleton(openAiSettings);
                     services.AddSingleton(new OpenAIClient(openAiSettings.ApiKey));
                     services.AddSingleton<PromptBuilder>();
+
+                    // Pinecone vector search (optional - uses no-op if not configured)
+                    var pineconeSettings = configuration.GetSection("Pinecone").Get<PineconeSettings>();
+                    var embeddingSettings = configuration.GetSection("Embedding").Get<EmbeddingSettings>()
+                        ?? new EmbeddingSettings();
+
+                    services.AddSingleton(embeddingSettings);
+
+                    if (pineconeSettings != null && !string.IsNullOrEmpty(pineconeSettings.ApiKey))
+                    {
+                        services.AddSingleton(pineconeSettings);
+                        services.AddSingleton<IEmbeddingService, OpenAiEmbeddingService>();
+                        services.AddSingleton<IPineconeService, PineconeService>();
+                        services.AddSingleton<IProductNameIndexer, ProductNameIndexer>();
+                        Log.Information("Pinecone vector search enabled");
+                    }
+                    else
+                    {
+                        services.AddSingleton<IEmbeddingService, NoOpEmbeddingService>();
+                        services.AddSingleton<IPineconeService, NoOpPineconeService>();
+                        services.AddSingleton<IProductNameIndexer, NoOpProductNameIndexer>();
+                        Log.Warning("Pinecone not configured - vector search disabled");
+                    }
+
                     services.AddSingleton<IEntityResolutionService, OpenAiEntityResolutionService>();
                     services.AddScoped<IJobRunner, JobRunner>();
                 })

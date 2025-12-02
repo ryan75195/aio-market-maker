@@ -4,8 +4,22 @@
   "OpenAi": {
     "ApiKey": "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",
     "Model": "gpt-4o-mini",
-    "BatchSize": 10,
+    "BatchSize": 25,
     "MaxRetries": 3,
-    "TimeoutSeconds": 60
+    "TimeoutSeconds": 120,
+    "MaxConcurrency": 1
+  },
+  "Embedding": {
+    "Model": "text-embedding-3-small",
+    "MaxBatchSize": 100,
+    "Dimensions": 1536,
+    "MaxConcurrency": 5
+  },
+  "Pinecone": {
+    "ApiKey": "pcsk_6MaG8A_MFDo28wskHvPRyYyj2DLpdbXVQUnWkoMgpM9MXQFBTYKFF6wZ2NFtdde6V5k3Yb",
+    "IndexName": "arbitrage-products",
+    "TopK": 5,
+    "SimilarityThreshold": 0.8,
+    "MaxSearchConcurrency": 25
   }
 }

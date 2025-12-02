@@ -149,6 +149,7 @@ Focus on parser logic (`EbaySearchParser`, `EbayListingParser`) with AngleSharp 
 - Parsers return `null` or default values for missing data rather than throwing
 - `try/catch` blocks are used sparingly (e.g., shipping price parsing)
 - The `WebscraperClient.RunJobAsync()` polls every 5 seconds until job completes
+- **Fail Fast for External Services**: Do NOT swallow errors from external services like Pinecone, OpenAI, etc. Let exceptions propagate so issues are caught early rather than silently degrading functionality. If a service is optional, configure it to not be used at all rather than catching and ignoring errors at runtime.
 
 ### Anti-Patterns to Avoid
 - Don't parse prices with culture-specific decimal separators without normalization
