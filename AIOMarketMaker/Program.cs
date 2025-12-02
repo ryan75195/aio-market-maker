@@ -1,6 +1,7 @@
 ﻿// Program.cs
 using AIOMarketMaker.Services;
 using AIOMarketMaker.Etl.Data;
+using AIOMarketMaker.Etl.Data.Migrations;
 using AIOMarketMaker.Etl.Services;
 using Microsoft.Azure.Functions.Worker.Builder;
 using Microsoft.EntityFrameworkCore;
@@ -13,6 +14,11 @@ builder.ConfigureFunctionsWebApplication();
 // Database connection
 var dbPath = builder.Configuration["DatabasePath"] ?? "etl.db";
 var connectionString = $"Data Source={dbPath}";
+
+// Run database migrations on startup
+var migrationRunner = new MigrationRunner(connectionString, null);
+migrationRunner.ApplyMigrations();
+
 builder.Services.AddDbContext<EtlDbContext>(options =>
     options.UseSqlite(connectionString));
 
