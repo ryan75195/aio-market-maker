@@ -1,4 +1,5 @@
 ﻿// Program.cs
+using System.Text.Json;
 using AIOMarketMaker.Services;
 using AIOMarketMaker.Etl.Configuration;
 using AIOMarketMaker.Etl.Data;
@@ -6,6 +7,7 @@ using AIOMarketMaker.Etl.Data.Migrations;
 using AIOMarketMaker.Etl.Services;
 using AIOMarketMaker.Etl.Services.EntityResolution;
 using AIOMarketMaker.Etl.Services.VectorSearch;
+using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Builder;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
@@ -17,6 +19,12 @@ using Serilog;
 
 var builder = FunctionsApplication.CreateBuilder(args);
 builder.ConfigureFunctionsWebApplication();
+
+// Configure JSON serialization to use camelCase (matches frontend expectations)
+builder.Services.ConfigureHttpJsonOptions(options =>
+{
+    options.SerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
+});
 
 // Database connection
 var dbPath = builder.Configuration["DatabasePath"] ?? "etl.db";
@@ -83,6 +91,12 @@ builder.Services.AddScoped<IJobRunner, JobRunner>();
 
 // Status refresh runner for checking listing status changes
 builder.Services.AddScoped<IStatusRefreshRunner, StatusRefreshRunner>();
+
+// Dashboard services
+builder.Services.AddScoped<IMetricsService, MetricsService>();
+builder.Services.AddScoped<IProductService, ProductService>();
+builder.Services.AddScoped<IListingService, ListingService>();
+builder.Services.AddScoped<IJobService, JobService>();
 
 var host = builder.Build();
 host.Run();
