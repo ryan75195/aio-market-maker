@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:platform.openai.com)",
+      "WebSearch",
+      "WebFetch(domain:community.openai.com)",
+      "Bash(sqlite3:*)",
+      "Bash(dotnet run:*)",
+      "Bash(powershell -Command \"Add-Type -Path ''C:\\Users\\Ryank\\.nuget\\packages\\microsoft.data.sqlite.core\\9.0.2\\lib\\net8.0\\Microsoft.Data.Sqlite.dll''; [Microsoft.Data.Sqlite.SqliteConnection]::new(''Data Source=AIOMarketMaker.Etl/etl.db'')\")",
+      "Bash(where:*)",
+      "Bash(dir \"C:\\Program Files\\DB Browser for SQLite\\*.exe\")"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

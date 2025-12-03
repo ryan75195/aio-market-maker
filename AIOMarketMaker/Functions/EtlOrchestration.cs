@@ -245,7 +245,7 @@ public class EtlOrchestration
         [ActivityTrigger] int jobId)
     {
         _logger.LogInformation("Activity: Running job {JobId}", jobId);
-        return await _jobRunner.RunJobAsync(jobId);
+        return await _jobRunner.RunJob(jobId);
     }
 
     #endregion
