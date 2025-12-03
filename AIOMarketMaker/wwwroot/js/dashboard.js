@@ -108,21 +108,22 @@ function renderDealsTable() {
     const tbody = document.getElementById('dealsBody');
 
     if (!deals || deals.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 20px;">No flip opportunities found (need active products priced 20%+ below median sold)</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; padding: 20px;">No flip opportunities found (need active products with sold comparables priced 20%+ higher)</td></tr>';
         return;
     }
 
     tbody.innerHTML = deals.map(d => {
         const displayName = d.productName || d.title || '(no title)';
-        const title = displayName.length > 40 ? displayName.substring(0, 37) + '...' : displayName;
+        const title = displayName.length > 30 ? displayName.substring(0, 27) + '...' : displayName;
         const profitClass = d.profitPercent >= 50 ? 'style="color: #16a34a; font-weight: bold;"' : '';
         return `<tr>
             <td class="title-cell"><a href="${d.url || '#'}" target="_blank" title="${(d.title || '').replace(/"/g, '&quot;')}">${title}</a></td>
+            <td>${d.edition || '-'}</td>
             <td class="price">${d.price?.toFixed(2) || '-'}</td>
             <td class="price">${d.medianSoldPrice.toFixed(2)}</td>
             <td class="price" style="color: #16a34a;">+${d.potentialProfit.toFixed(2)}</td>
             <td ${profitClass}>${d.profitPercent.toFixed(0)}%</td>
-            <td>${d.category || '-'}</td>
+            <td>${d.comparableCount || 0}</td>
         </tr>`;
     }).join('');
 }

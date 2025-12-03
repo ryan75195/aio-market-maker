@@ -44,70 +44,14 @@ public class OpenAiEntityResolutionService : IEntityResolutionService
         if (products.Count == 0)
             return [];
 
-        var batches = products.Chunk(_settings.BatchSize).ToList();
-        var batchResults = new ConcurrentDictionary<int, List<EntityResolutionResult>>();
+        var results = new ConcurrentDictionary<string, EntityResolutionResult>();
 
         _logger.LogInformation(
-            "Processing {Count} products in {Batches} batches (max {Concurrency} parallel)",
-            products.Count, batches.Count, _settings.MaxConcurrency);
+            "Processing {Count} products individually (max {Concurrency} parallel)",
+            products.Count, _settings.MaxConcurrency);
 
-        // Process batches in parallel with concurrency limit
-        var tasks = batches.Select((batch, index) =>
-            ProcessBatchWithSemaphoreAsync(batch.ToList(), index, batchResults, ct)).ToList();
-
-        await Task.WhenAll(tasks);
-
-        // Flatten results in order
-        var results = new List<EntityResolutionResult>();
-        for (int i = 0; i < batches.Count; i++)
-        {
-            if (batchResults.TryGetValue(i, out var batch))
-            {
-                results.AddRange(batch);
-            }
-        }
-
-        // Validate we got results for all products
-        var resultIds = results.Select(r => r.ListingId).ToHashSet();
-        var missingIds = products
-            .Where(p => p.ListingId != null && !resultIds.Contains(p.ListingId))
-            .Select(p => p.ListingId)
-            .ToList();
-
-        if (missingIds.Count > 0)
-        {
-            throw new EntityResolutionException(
-                $"Entity resolution failed: missing results for {missingIds.Count} listings: {string.Join(", ", missingIds.Take(5))}");
-        }
-
-        return results;
-    }
-
-    private async Task ProcessBatchWithSemaphoreAsync(
-        IReadOnlyList<EbayProduct> batch,
-        int batchIndex,
-        ConcurrentDictionary<int, List<EntityResolutionResult>> results,
-        CancellationToken ct)
-    {
-        await _semaphore.WaitAsync(ct);
-        try
-        {
-            _logger.LogInformation("Processing batch {Index} of {Count} products", batchIndex + 1, batch.Count);
-            var batchResults = await ProcessBatchAsync(batch, ct);
-            results[batchIndex] = batchResults;
-        }
-        finally
-        {
-            _semaphore.Release();
-        }
-    }
-
-    private async Task<List<EntityResolutionResult>> ProcessBatchAsync(
-        IReadOnlyList<EbayProduct> batch,
-        CancellationToken ct)
-    {
-        // Find similar product names from Pinecone to provide context
-        var listings = batch
+        // Find similar product names for all products in one batch call
+        var listings = products
             .Where(p => p.ListingId != null && !string.IsNullOrEmpty(p.Title))
             .Select(p => (p.ListingId!, p.Title!))
             .ToList();
@@ -117,10 +61,71 @@ public class OpenAiEntityResolutionService : IEntityResolutionService
         if (similarNames.Count > 0)
         {
             _logger.LogInformation("Found similar product names for {Count}/{Total} listings",
-                similarNames.Count, batch.Count);
+                similarNames.Count, products.Count);
         }
 
-        var userPrompt = _promptBuilder.BuildUserPrompt(batch, similarNames);
+        // Process each product in parallel with concurrency limit
+        var tasks = products.Select(product =>
+            ProcessSingleProductAsync(product, similarNames, results, ct)).ToList();
+
+        await Task.WhenAll(tasks);
+
+        // Validate we got results for all products
+        var missingIds = products
+            .Where(p => p.ListingId != null && !results.ContainsKey(p.ListingId))
+            .Select(p => p.ListingId)
+            .ToList();
+
+        if (missingIds.Count > 0)
+        {
+            throw new EntityResolutionException(
+                $"Entity resolution failed: missing results for {missingIds.Count} listings: {string.Join(", ", missingIds.Take(5))}");
+        }
+
+        // Return results in original order
+        return products
+            .Where(p => p.ListingId != null && results.ContainsKey(p.ListingId))
+            .Select(p => results[p.ListingId!])
+            .ToList();
+    }
+
+    private async Task ProcessSingleProductAsync(
+        EbayProduct product,
+        IReadOnlyDictionary<string, IReadOnlyList<SimilarProductName>> similarNames,
+        ConcurrentDictionary<string, EntityResolutionResult> results,
+        CancellationToken ct)
+    {
+        if (product.ListingId == null)
+            return;
+
+        await _semaphore.WaitAsync(ct);
+        try
+        {
+            var result = await CallLlmForSingleProductAsync(product, similarNames, ct);
+            if (result != null)
+            {
+                results[product.ListingId] = result;
+            }
+        }
+        finally
+        {
+            _semaphore.Release();
+        }
+    }
+
+    private async Task<EntityResolutionResult?> CallLlmForSingleProductAsync(
+        EbayProduct product,
+        IReadOnlyDictionary<string, IReadOnlyList<SimilarProductName>> similarNames,
+        CancellationToken ct)
+    {
+        // Get similar names for this specific product
+        IReadOnlyList<SimilarProductName>? productSimilarNames = null;
+        if (product.ListingId != null && similarNames.TryGetValue(product.ListingId, out var similar))
+        {
+            productSimilarNames = similar;
+        }
+
+        var userPrompt = _promptBuilder.BuildSingleProductPrompt(product, productSimilarNames);
 
         Exception? lastException = null;
 
@@ -128,13 +133,14 @@ public class OpenAiEntityResolutionService : IEntityResolutionService
         {
             try
             {
-                _logger.LogDebug("OpenAI request attempt {Attempt}/{MaxRetries}", attempt, _settings.MaxRetries);
+                _logger.LogDebug("OpenAI request for {ListingId} attempt {Attempt}/{MaxRetries}",
+                    product.ListingId, attempt, _settings.MaxRetries);
 
                 var chatClient = _client.GetChatClient(_settings.Model);
 
                 var messages = new List<ChatMessage>
                 {
-                    new SystemChatMessage(_promptBuilder.SystemPrompt),
+                    new SystemChatMessage(_promptBuilder.SingleProductSystemPrompt),
                     new UserChatMessage(userPrompt)
                 };
 
@@ -146,15 +152,17 @@ public class OpenAiEntityResolutionService : IEntityResolutionService
                 var response = await chatClient.CompleteChatAsync(messages, options, ct);
 
                 var content = response.Value.Content[0].Text;
-                _logger.LogDebug("OpenAI response: {Content}", content?.Substring(0, Math.Min(content?.Length ?? 0, 500)));
-                return ParseResponse(content, batch);
+                _logger.LogDebug("OpenAI response for {ListingId}: {Content}",
+                    product.ListingId, content?.Substring(0, Math.Min(content?.Length ?? 0, 300)));
+
+                return ParseSingleProductResponse(content, product.ListingId!);
             }
             catch (Exception ex) when (attempt < _settings.MaxRetries)
             {
                 lastException = ex;
                 _logger.LogWarning(ex,
-                    "OpenAI request failed (attempt {Attempt}/{MaxRetries}): {Message}",
-                    attempt, _settings.MaxRetries, ex.Message);
+                    "OpenAI request failed for {ListingId} (attempt {Attempt}/{MaxRetries}): {Message}",
+                    product.ListingId, attempt, _settings.MaxRetries, ex.Message);
 
                 // Exponential backoff
                 var delay = TimeSpan.FromSeconds(Math.Pow(2, attempt));
@@ -163,123 +171,52 @@ public class OpenAiEntityResolutionService : IEntityResolutionService
         }
 
         throw new EntityResolutionException(
-            $"OpenAI request failed after {_settings.MaxRetries} attempts",
+            $"OpenAI request failed for {product.ListingId} after {_settings.MaxRetries} attempts",
             lastException!);
     }
 
-    private List<EntityResolutionResult> ParseResponse(string content, IReadOnlyList<EbayProduct> batch)
+    private EntityResolutionResult ParseSingleProductResponse(string content, string listingId)
     {
         try
         {
-            _logger.LogInformation("Parsing OpenAI response ({Length} chars): {Preview}",
-                content?.Length ?? 0, content?.Substring(0, Math.Min(content?.Length ?? 0, 300)));
-
-            // The response might be wrapped in a root object or be a direct array
             var jsonDoc = JsonDocument.Parse(content);
-            JsonElement resultsArray;
+            var root = jsonDoc.RootElement;
 
-            if (jsonDoc.RootElement.ValueKind == JsonValueKind.Array)
+            var category = GetStringProperty(root, "category", "classification", "type");
+            if (string.IsNullOrEmpty(category))
             {
-                resultsArray = jsonDoc.RootElement;
-            }
-            else if (jsonDoc.RootElement.ValueKind == JsonValueKind.Object)
-            {
-                // Try common property names
-                if (jsonDoc.RootElement.TryGetProperty("results", out var results) ||
-                    jsonDoc.RootElement.TryGetProperty("products", out results) ||
-                    jsonDoc.RootElement.TryGetProperty("classifications", out results) ||
-                    jsonDoc.RootElement.TryGetProperty("items", out results) ||
-                    jsonDoc.RootElement.TryGetProperty("data", out results))
-                {
-                    resultsArray = results;
-                }
-                else
-                {
-                    // Find the first array property in the object
-                    resultsArray = default;
-                    foreach (var prop in jsonDoc.RootElement.EnumerateObject())
-                    {
-                        if (prop.Value.ValueKind == JsonValueKind.Array)
-                        {
-                            _logger.LogInformation("Found array in property '{Name}'", prop.Name);
-                            resultsArray = prop.Value;
-                            break;
-                        }
-                    }
-
-                    if (resultsArray.ValueKind != JsonValueKind.Array)
-                    {
-                        _logger.LogError("Unexpected JSON structure. Root properties: {Props}",
-                            string.Join(", ", jsonDoc.RootElement.EnumerateObject().Select(p => $"{p.Name}:{p.Value.ValueKind}")));
-                        throw new EntityResolutionException(
-                            $"Unexpected JSON structure in OpenAI response. Expected array or object with results/products/classifications property.");
-                    }
-                }
-            }
-            else
-            {
-                throw new EntityResolutionException(
-                    $"Unexpected JSON root type: {jsonDoc.RootElement.ValueKind}");
+                throw new EntityResolutionException($"Missing category for listing {listingId}");
             }
 
-            var parsed = new List<EntityResolutionResult>();
-
-            foreach (var item in resultsArray.EnumerateArray())
+            // Validate category is one of our known categories
+            if (!ProductCategory.All.Contains(category))
             {
-                // Handle different property name variations (listingId, listing_id, id)
-                var listingId = GetStringProperty(item, "listingId", "listing_id", "id");
-                if (string.IsNullOrEmpty(listingId))
-                {
-                    _logger.LogWarning("Response item missing listingId. Item properties: {Props}",
-                        string.Join(", ", item.EnumerateObject().Select(p => p.Name)));
-                    throw new EntityResolutionException("Missing listingId in response item");
-                }
-
-                var category = GetStringProperty(item, "category", "classification", "type");
-                if (string.IsNullOrEmpty(category))
-                {
-                    throw new EntityResolutionException($"Missing category for listing {listingId}");
-                }
-
-                // Validate category is one of our known categories
-                if (!ProductCategory.All.Contains(category))
-                {
-                    _logger.LogWarning("Unknown category '{Category}' for listing {ListingId}, mapping to 'other'",
-                        category, listingId);
-                    category = ProductCategory.Other;
-                }
-
-                decimal? confidence = null;
-                if (item.TryGetProperty("confidence", out var confProp) && confProp.ValueKind == JsonValueKind.Number)
-                {
-                    confidence = confProp.GetDecimal();
-                }
-
-                var productName = GetStringProperty(item, "productName", "product_name", "name");
-                var attributes = ParseAttributes(item);
-                var bundledItems = ParseBundledItems(item);
-
-                parsed.Add(new EntityResolutionResult(
-                    listingId,
-                    category,
-                    confidence,
-                    productName,
-                    attributes,
-                    bundledItems));
+                _logger.LogWarning("Unknown category '{Category}' for listing {ListingId}, mapping to 'other'",
+                    category, listingId);
+                category = ProductCategory.Other;
             }
 
-            if (parsed.Count != batch.Count)
+            decimal? confidence = null;
+            if (root.TryGetProperty("confidence", out var confProp) && confProp.ValueKind == JsonValueKind.Number)
             {
-                _logger.LogWarning(
-                    "Response count mismatch: expected {Expected}, got {Actual}",
-                    batch.Count, parsed.Count);
+                confidence = confProp.GetDecimal();
             }
 
-            return parsed;
+            var productName = GetStringProperty(root, "productName", "product_name", "name");
+            var attributes = ParseAttributes(root);
+            var bundledItems = ParseBundledItems(root);
+
+            return new EntityResolutionResult(
+                listingId,
+                category,
+                confidence,
+                productName,
+                attributes,
+                bundledItems);
         }
         catch (JsonException ex)
         {
-            throw new EntityResolutionException($"Failed to parse OpenAI response as JSON: {ex.Message}", ex);
+            throw new EntityResolutionException($"Failed to parse OpenAI response as JSON for {listingId}: {ex.Message}", ex);
         }
     }
 
