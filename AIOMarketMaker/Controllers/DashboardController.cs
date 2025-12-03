@@ -646,7 +646,7 @@ namespace AIOMarketMaker.Controllers
                     count = g.Count(),
                     soldCount = g.Count(p => p.ListingStatus == "Sold"),
                     activeCount = g.Count(p => p.ListingStatus != "Sold"),
-                    avgPrice = Math.Round(g.Where(p => p.Price.HasValue).Average(p => (double)p.Price!.Value), 2),
+                    avgPrice = g.Any(p => p.Price.HasValue) ? Math.Round(g.Where(p => p.Price.HasValue).Average(p => (double)p.Price!.Value), 2) : 0,
                     avgSoldPrice = g.Any(p => p.ListingStatus == "Sold" && p.Price.HasValue)
                         ? Math.Round(g.Where(p => p.ListingStatus == "Sold" && p.Price.HasValue).Average(p => (double)p.Price!.Value), 2)
                         : 0
@@ -663,7 +663,7 @@ namespace AIOMarketMaker.Controllers
                     brand = g.Key,
                     count = g.Count(),
                     soldCount = g.Count(p => p.ListingStatus == "Sold"),
-                    avgPrice = Math.Round(g.Where(p => p.Price.HasValue).Average(p => (double)p.Price!.Value), 2),
+                    avgPrice = g.Any(p => p.Price.HasValue) ? Math.Round(g.Where(p => p.Price.HasValue).Average(p => (double)p.Price!.Value), 2) : 0,
                     models = g.Where(p => !string.IsNullOrEmpty(p.Model))
                         .GroupBy(p => p.Model)
                         .Select(m => new { model = m.Key, count = m.Count() })
@@ -685,7 +685,7 @@ namespace AIOMarketMaker.Controllers
                     count = g.Count(),
                     soldCount = g.Count(p => p.ListingStatus == "Sold"),
                     activeCount = g.Count(p => p.ListingStatus != "Sold"),
-                    avgPrice = Math.Round(g.Where(p => p.Price.HasValue).Average(p => (double)p.Price!.Value), 2),
+                    avgPrice = g.Any(p => p.Price.HasValue) ? Math.Round(g.Where(p => p.Price.HasValue).Average(p => (double)p.Price!.Value), 2) : 0,
                     avgSoldPrice = g.Any(p => p.ListingStatus == "Sold" && p.Price.HasValue)
                         ? Math.Round(g.Where(p => p.ListingStatus == "Sold" && p.Price.HasValue).Average(p => (double)p.Price!.Value), 2)
                         : 0
@@ -787,19 +787,24 @@ namespace AIOMarketMaker.Controllers
                 .OrderBy(x => x.date)
                 .ToList();
 
-            // Best deals (active base_product with highest potential margin)
+            // Best deals (active products with highest potential margin)
+            // Compare against sold products with same ProductName AND Category for accurate profit estimates
             var bestDeals = activeProducts
-                .Where(p => p.Category == "base_product")
+                .Where(p => !string.IsNullOrEmpty(p.ProductName) && !string.IsNullOrEmpty(p.Category))
                 .Select(p =>
                 {
-                    var sameCategorySold = soldProducts.Where(x => x.Category == "base_product").ToList();
-                    var medianPrice = sameCategorySold.Any() ? GetMedian(sameCategorySold.Select(x => (double)x.Price!.Value).ToList()) : 0;
+                    // Match by ProductName + Category (bundles vs base_product have different values)
+                    var sameProductSold = soldProducts
+                        .Where(x => x.ProductName == p.ProductName && x.Category == p.Category)
+                        .ToList();
+                    var medianPrice = sameProductSold.Any() ? GetMedian(sameProductSold.Select(x => (double)x.Price!.Value).ToList()) : 0;
                     var potentialProfit = medianPrice - (double)(p.Price ?? 0);
                     var profitPercent = p.Price > 0 ? (potentialProfit / (double)p.Price.Value) * 100 : 0;
                     return new
                     {
                         ebayListingId = p.EbayListingId,
                         productName = p.ProductName,
+                        edition = p.Edition,
                         title = p.Title,
                         price = p.Price,
                         brand = p.Brand,
@@ -808,10 +813,11 @@ namespace AIOMarketMaker.Controllers
                         medianSoldPrice = Math.Round(medianPrice, 2),
                         potentialProfit = Math.Round(potentialProfit, 2),
                         profitPercent = Math.Round(profitPercent, 1),
-                        url = p.Url
+                        url = p.Url,
+                        comparableCount = sameProductSold.Count
                     };
                 })
-                .Where(x => x.potentialProfit > 0 && x.profitPercent > 20)
+                .Where(x => x.comparableCount > 0 && x.potentialProfit > 0 && x.profitPercent > 20)
                 .OrderByDescending(x => x.profitPercent)
                 .Take(10)
                 .ToList();

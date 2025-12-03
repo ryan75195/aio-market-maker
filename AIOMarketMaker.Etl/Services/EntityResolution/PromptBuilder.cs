@@ -64,6 +64,15 @@ public class PromptBuilder
         Be precise and consistent in your classifications.
         """;
 
+    public string SingleProductSystemPrompt => """
+        You are a product classification expert. Analyze the product listing and:
+        1. Classify it into an absolute category (what the item IS)
+        2. Extract and normalize key product attributes
+
+        Respond with a single JSON object (not an array).
+        Be precise and consistent.
+        """;
+
     public string BuildUserPrompt(IReadOnlyList<EbayProduct> products)
         => BuildUserPrompt(products, null);
 
@@ -151,6 +160,100 @@ public class PromptBuilder
         sb.AppendLine("IMPORTANT: productName should be the BASE product line (e.g., 'PlayStation 5' for all PS5 variants). Put 'Pro', 'Digital Edition', etc. in the edition field.");
 
         return sb.ToString();
+    }
+
+    public string BuildSingleProductPrompt(
+        EbayProduct product,
+        IReadOnlyList<SimilarProductName>? similarNames)
+    {
+        var sb = new StringBuilder();
+
+        sb.AppendLine("## Classification Categories (Absolute - What the item IS)");
+        sb.AppendLine();
+        sb.AppendLine("- base_product: The primary/standalone product (console, phone, laptop, appliance, etc.)");
+        sb.AppendLine("- bundle: Multiple items sold together as a package");
+        sb.AppendLine("- accessory: Add-on item that works with a base product (case, controller, charger, etc.)");
+        sb.AppendLine("- consumable: Items that get used up (ink, batteries, filters, cleaning supplies, etc.)");
+        sb.AppendLine("- replacement_part: Spare parts, repair components");
+        sb.AppendLine("- packaging_only: Empty box, case, or packaging without the actual product");
+        sb.AppendLine("- media: Software, games, movies, music, books");
+        sb.AppendLine("- other: Doesn't fit other categories");
+        sb.AppendLine();
+        sb.AppendLine(AttributeGuidelines);
+        sb.AppendLine();
+        sb.AppendLine("## Product to Classify");
+        sb.AppendLine();
+        sb.AppendLine("```json");
+        sb.AppendLine(SerializeSingleProduct(product));
+        sb.AppendLine("```");
+        sb.AppendLine();
+
+        // Add similar product names if available
+        if (similarNames != null && similarNames.Count > 0)
+        {
+            sb.AppendLine("## Existing Product Names (Use for Consistency)");
+            sb.AppendLine();
+            sb.AppendLine("Similar products already exist in our database.");
+            sb.AppendLine("**STRONGLY prefer using an existing ProductName if this is the same product.**");
+            sb.AppendLine();
+
+            foreach (var match in similarNames.Take(3))
+            {
+                var info = new List<string>();
+                if (!string.IsNullOrEmpty(match.Category)) info.Add($"category: {match.Category}");
+                if (!string.IsNullOrEmpty(match.Brand)) info.Add($"brand: {match.Brand}");
+                info.Add($"score: {match.Score:F2}");
+                sb.AppendLine($"  - \"{match.ProductName}\" ({string.Join(", ", info)})");
+            }
+            sb.AppendLine();
+        }
+
+        sb.AppendLine("## Required Response Format");
+        sb.AppendLine();
+        sb.AppendLine("Respond with a single JSON object (NOT an array):");
+        sb.AppendLine("```json");
+        sb.AppendLine("""
+            {
+              "category": "base_product",
+              "confidence": 0.95,
+              "productName": "PlayStation 5",
+              "attributes": {
+                "brand": "Sony",
+                "model": "CFI-2000",
+                "storageCapacity": "1TB",
+                "color": "White",
+                "edition": "Pro",
+                "variantType": null
+              },
+              "bundledItems": null
+            }
+            """);
+        sb.AppendLine("```");
+        sb.AppendLine();
+        sb.AppendLine("For bundles, list bundledItems as an array of item descriptions.");
+        sb.AppendLine("Set attributes to null if not determinable from the listing.");
+        sb.AppendLine("IMPORTANT: productName should be the BASE product line (e.g., 'PlayStation 5' for all PS5 variants). Put 'Pro', 'Digital Edition', etc. in the edition field.");
+
+        return sb.ToString();
+    }
+
+    private string SerializeSingleProduct(EbayProduct product)
+    {
+        var simplified = new
+        {
+            listingId = product.ListingId,
+            title = product.Title,
+            price = product.Price,
+            condition = product.Condition?.ToString(),
+            itemSpecifics = TruncateString(product.ItemSpecifics, 1000),
+            description = TruncateString(product.Description, MaxDescriptionLength)
+        };
+
+        return JsonSerializer.Serialize(simplified, new JsonSerializerOptions
+        {
+            WriteIndented = true,
+            PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+        });
     }
 
     private string SerializeProducts(IReadOnlyList<EbayProduct> products)
