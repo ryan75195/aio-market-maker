@@ -1,11 +1,11 @@
 // Run with: dotnet run --project AIOMarketMaker.Etl -- --process-existing
 // Or execute directly in the ETL project
 
-using AIOMarketMaker.Etl.Configuration;
+using AIOMarketMaker.Core.Configuration;
 using AIOMarketMaker.Etl.Data;
 using AIOMarketMaker.Etl.Data.Models;
-using AIOMarketMaker.Etl.Services.EntityResolution;
-using AIOMarketMaker.Etl.Services.VectorSearch;
+using AIOMarketMaker.Core.Services.EntityResolution;
+using AIOMarketMaker.Core.Services.VectorSearch;
 using AIOMarketMaker.Models.Ebay;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -99,7 +99,7 @@ public static class ProcessExistingListings
 
             try
             {
-                var results = await entityResolutionService.ResolveAsync(batch);
+                var results = await entityResolutionService.Resolve(batch);
 
                 // Build lookup from eBay ListingId to database Listing
                 var listingLookup = listingsWithoutProducts
@@ -121,7 +121,7 @@ public static class ProcessExistingListings
                 // Index product names in Pinecone
                 try
                 {
-                    await productNameIndexer.IndexNewProductNamesAsync(products);
+                    await productNameIndexer.IndexNewProductNames(products);
                     Console.WriteLine($"  Indexed {products.Count} product names in Pinecone");
                 }
                 catch (Exception indexEx)

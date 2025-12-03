@@ -1,4 +1,4 @@
-namespace AIOMarketMaker.Etl.Services.VectorSearch;
+namespace AIOMarketMaker.Core.Services.VectorSearch;
 
 public record SimilarProductName(
     string ProductName,

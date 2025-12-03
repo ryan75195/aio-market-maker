@@ -1,9 +1,9 @@
 using System.Text;
 using System.Text.Json;
-using AIOMarketMaker.Etl.Services.VectorSearch;
+using AIOMarketMaker.Core.Services.VectorSearch;
 using AIOMarketMaker.Models.Ebay;
 
-namespace AIOMarketMaker.Etl.Services.EntityResolution;
+namespace AIOMarketMaker.Core.Services.EntityResolution;
 
 /// <summary>
 /// Builds prompts for entity resolution using an LLM.

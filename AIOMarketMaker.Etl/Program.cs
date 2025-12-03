@@ -1,10 +1,10 @@
 ﻿using AIOMarketMaker.Etl;
-using AIOMarketMaker.Etl.Configuration;
+using AIOMarketMaker.Core.Configuration;
 using AIOMarketMaker.Etl.Data;
 using AIOMarketMaker.Etl.Data.Models;
 using AIOMarketMaker.Etl.Scripts;
 using AIOMarketMaker.Models.Ebay;
-using AIOMarketMaker.Services;
+using AIOMarketMaker.Core.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;

@@ -1,4 +1,4 @@
-namespace AIOMarketMaker.Etl.Services.VectorSearch;
+namespace AIOMarketMaker.Core.Services.VectorSearch;
 
 /// <summary>
 /// Service for generating text embeddings using OpenAI.

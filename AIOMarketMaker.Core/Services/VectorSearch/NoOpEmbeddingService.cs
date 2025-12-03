@@ -1,4 +1,4 @@
-namespace AIOMarketMaker.Etl.Services.VectorSearch;
+namespace AIOMarketMaker.Core.Services.VectorSearch;
 
 /// <summary>
 /// No-op embedding service used when Pinecone is not configured.

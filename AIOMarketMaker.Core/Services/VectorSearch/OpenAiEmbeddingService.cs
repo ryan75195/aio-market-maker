@@ -1,10 +1,10 @@
 using System.Collections.Concurrent;
-using AIOMarketMaker.Etl.Configuration;
+using AIOMarketMaker.Core.Configuration;
 using Microsoft.Extensions.Logging;
 using OpenAI;
 using OpenAI.Embeddings;
 
-namespace AIOMarketMaker.Etl.Services.VectorSearch;
+namespace AIOMarketMaker.Core.Services.VectorSearch;
 
 public class OpenAiEmbeddingService : IEmbeddingService
 {

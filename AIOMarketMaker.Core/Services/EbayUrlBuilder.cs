@@ -1,6 +1,6 @@
 ﻿using System.Web;
 
-namespace AIOMarketMaker.Services
+namespace AIOMarketMaker.Core.Services
 {
     public interface IEbayUrlBuilder
     {

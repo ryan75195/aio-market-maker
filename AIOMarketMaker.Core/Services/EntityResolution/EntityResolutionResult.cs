@@ -1,4 +1,4 @@
-namespace AIOMarketMaker.Etl.Services.EntityResolution;
+namespace AIOMarketMaker.Core.Services.EntityResolution;
 
 /// <summary>
 /// Result of entity resolution for a single listing.

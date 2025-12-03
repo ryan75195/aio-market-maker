@@ -1,12 +1,13 @@
 ﻿// Program.cs
 using System.Text.Json;
-using AIOMarketMaker.Services;
-using AIOMarketMaker.Etl.Configuration;
+using AIOMarketMaker.Core.Services;
+using AIOMarketMaker.Core.Configuration;
 using AIOMarketMaker.Etl.Data;
 using AIOMarketMaker.Etl.Data.Migrations;
 using AIOMarketMaker.Etl.Services;
-using AIOMarketMaker.Etl.Services.EntityResolution;
-using AIOMarketMaker.Etl.Services.VectorSearch;
+using AIOMarketMaker.Services;
+using AIOMarketMaker.Core.Services.EntityResolution;
+using AIOMarketMaker.Core.Services.VectorSearch;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Builder;
 using Microsoft.Data.Sqlite;

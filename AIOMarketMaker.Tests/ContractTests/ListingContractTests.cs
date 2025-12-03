@@ -1,4 +1,4 @@
-﻿using AIOMarketMaker.Services;
+﻿using AIOMarketMaker.Core.Services;
 using Microsoft.Extensions.DependencyInjection;
 using AIOMarketMaker.Tests.Utils;
 using Microsoft.Extensions.Configuration;

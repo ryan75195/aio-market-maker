@@ -1,9 +1,9 @@
 using System.Collections.Concurrent;
-using AIOMarketMaker.Etl.Configuration;
-using AIOMarketMaker.Etl.Data.Models;
+using AIOMarketMaker.Core.Configuration;
+using AIOMarketMaker.Core.Models;
 using Microsoft.Extensions.Logging;
 
-namespace AIOMarketMaker.Etl.Services.VectorSearch;
+namespace AIOMarketMaker.Core.Services.VectorSearch;
 
 public class ProductNameIndexer : IProductNameIndexer
 {
@@ -27,8 +27,8 @@ public class ProductNameIndexer : IProductNameIndexer
         _searchSemaphore = new SemaphoreSlim(settings.MaxSearchConcurrency);
     }
 
-    public async Task IndexNewProductNamesAsync(
-        IReadOnlyList<Product> products,
+    public async Task IndexNewProductNames(
+        IReadOnlyList<IProductInfo> products,
         CancellationToken ct = default)
     {
         var newProductNames = products

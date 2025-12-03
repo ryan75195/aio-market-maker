@@ -1,11 +1,11 @@
 using System.Security.Cryptography;
 using System.Text;
-using AIOMarketMaker.Etl.Configuration;
+using AIOMarketMaker.Core.Configuration;
 using Microsoft.Extensions.Logging;
 using Pinecone;
 using Pinecone.Rest;
 
-namespace AIOMarketMaker.Etl.Services.VectorSearch;
+namespace AIOMarketMaker.Core.Services.VectorSearch;
 
 public class PineconeService : IPineconeService
 {

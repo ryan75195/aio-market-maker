@@ -1,13 +1,13 @@
 using System.Collections.Concurrent;
 using System.Text.Json;
-using AIOMarketMaker.Etl.Configuration;
-using AIOMarketMaker.Etl.Services.VectorSearch;
+using AIOMarketMaker.Core.Configuration;
+using AIOMarketMaker.Core.Services.VectorSearch;
 using AIOMarketMaker.Models.Ebay;
 using Microsoft.Extensions.Logging;
 using OpenAI;
 using OpenAI.Chat;
 
-namespace AIOMarketMaker.Etl.Services.EntityResolution;
+namespace AIOMarketMaker.Core.Services.EntityResolution;
 
 /// <summary>
 /// Entity resolution service using OpenAI GPT models.
@@ -37,7 +37,7 @@ public class OpenAiEntityResolutionService : IEntityResolutionService
         _semaphore = new SemaphoreSlim(settings.MaxConcurrency);
     }
 
-    public async Task<IReadOnlyList<EntityResolutionResult>> ResolveAsync(
+    public async Task<IReadOnlyList<EntityResolutionResult>> Resolve(
         IReadOnlyList<EbayProduct> products,
         CancellationToken ct = default)
     {
