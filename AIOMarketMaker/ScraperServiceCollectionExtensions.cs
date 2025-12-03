@@ -1,7 +1,7 @@
 ﻿// in AIOMarketMaker.Services (or a Shared DI project)
-using AIOMarketMaker.Api.Parsers;
-using AIOMarketMaker.Api.Services;
-using AIOMarketMaker.Services;
+using AIOMarketMaker.Core.Parsers;
+using AIOMarketMaker.Core.Services;
+using AIOMarketMaker.Core.Services;
 using Azure.Data.Tables;
 using Azure.Storage.Blobs;
 using Microsoft.Extensions.Configuration;

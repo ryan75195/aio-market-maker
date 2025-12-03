@@ -1,6 +1,6 @@
-using AIOMarketMaker.Etl.Data.Models;
+using AIOMarketMaker.Core.Models;
 
-namespace AIOMarketMaker.Etl.Services.VectorSearch;
+namespace AIOMarketMaker.Core.Services.VectorSearch;
 
 /// <summary>
 /// High-level service that coordinates embedding generation and Pinecone indexing.
@@ -10,8 +10,8 @@ public interface IProductNameIndexer
     /// <summary>
     /// Indexes new product names that don't already exist in Pinecone.
     /// </summary>
-    Task IndexNewProductNamesAsync(
-        IReadOnlyList<Product> products,
+    Task IndexNewProductNames(
+        IReadOnlyList<IProductInfo> products,
         CancellationToken ct = default);
 
     /// <summary>

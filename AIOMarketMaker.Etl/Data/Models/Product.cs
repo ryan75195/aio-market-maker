@@ -1,9 +1,11 @@
+using AIOMarketMaker.Core.Models;
+
 namespace AIOMarketMaker.Etl.Data.Models;
 
 /// <summary>
 /// Denormalized product data combining LLM classification with listing details.
 /// </summary>
-public class Product
+public class Product : IProductInfo
 {
     public int Id { get; set; }
 

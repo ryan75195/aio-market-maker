@@ -1,4 +1,4 @@
-namespace AIOMarketMaker.Etl.Configuration;
+namespace AIOMarketMaker.Core.Configuration;
 
 public class PineconeSettings
 {

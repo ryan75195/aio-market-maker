@@ -1,6 +1,6 @@
-using AIOMarketMaker.Etl.Configuration;
-using AIOMarketMaker.Etl.Services.EntityResolution;
-using AIOMarketMaker.Etl.Services.VectorSearch;
+using AIOMarketMaker.Core.Configuration;
+using AIOMarketMaker.Core.Services.EntityResolution;
+using AIOMarketMaker.Core.Services.VectorSearch;
 using AIOMarketMaker.Models.Ebay;
 using Microsoft.Extensions.Logging;
 using NUnit.Framework;
@@ -99,7 +99,7 @@ public class OpenAiEntityResolutionIntegrationTests
 
         // Act
         Console.WriteLine("Calling OpenAI API...");
-        var results = await _service.ResolveAsync(products);
+        var results = await _service.Resolve(products);
 
         // Assert
         Assert.That(results, Is.Not.Null);
@@ -137,7 +137,7 @@ public class OpenAiEntityResolutionIntegrationTests
 
         // Act
         Console.WriteLine("Calling OpenAI API for bundle...");
-        var results = await _service.ResolveAsync(products);
+        var results = await _service.Resolve(products);
 
         // Assert
         Assert.That(results, Is.Not.Null);
@@ -172,7 +172,7 @@ public class OpenAiEntityResolutionIntegrationTests
 
         // Act
         Console.WriteLine("Calling OpenAI API for accessory...");
-        var results = await _service.ResolveAsync(products);
+        var results = await _service.Resolve(products);
 
         // Assert
         Assert.That(results, Is.Not.Null);
@@ -221,7 +221,7 @@ public class OpenAiEntityResolutionIntegrationTests
 
         // Act
         Console.WriteLine("Calling OpenAI API for multiple products...");
-        var results = await _service.ResolveAsync(products);
+        var results = await _service.Resolve(products);
 
         // Assert
         Assert.That(results, Is.Not.Null);
@@ -290,7 +290,7 @@ public class OpenAiEntityResolutionIntegrationTests
 
         // Now try to parse it
         Console.WriteLine("=== PARSED RESULT ===");
-        var results = await _service.ResolveAsync(products);
+        var results = await _service.Resolve(products);
         foreach (var r in results)
         {
             Console.WriteLine($"ListingId: {r.ListingId}");

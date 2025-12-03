@@ -1,5 +1,5 @@
-using AIOMarketMaker.Etl.Configuration;
-using AIOMarketMaker.Etl.Services.VectorSearch;
+using AIOMarketMaker.Core.Configuration;
+using AIOMarketMaker.Core.Services.VectorSearch;
 using Microsoft.Extensions.Logging;
 using Moq;
 using Pinecone;

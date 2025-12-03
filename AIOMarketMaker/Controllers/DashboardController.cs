@@ -2,6 +2,7 @@ using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
 using Microsoft.Extensions.Logging;
 using AIOMarketMaker.Etl.Data;
+using AIOMarketMaker.Core.Services;
 using AIOMarketMaker.Services;
 using AIOMarketMaker.Services.Dtos;
 using System.Net;

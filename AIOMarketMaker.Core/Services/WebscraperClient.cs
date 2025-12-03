@@ -5,7 +5,7 @@ using System.Text.Json;
 using ScraperWorker.Services;
 using Microsoft.Extensions.Logging;       // JobEntity, JobItemEntity
 
-namespace AIOMarketMaker.Api.Services
+namespace AIOMarketMaker.Core.Services
 {
     public interface IWebscraperClient
     {

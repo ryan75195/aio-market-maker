@@ -1,14 +1,14 @@
-using AIOMarketMaker.Etl.Data.Models;
+using AIOMarketMaker.Core.Models;
 
-namespace AIOMarketMaker.Etl.Services.VectorSearch;
+namespace AIOMarketMaker.Core.Services.VectorSearch;
 
 /// <summary>
 /// No-op product name indexer used when Pinecone is not configured.
 /// </summary>
 public class NoOpProductNameIndexer : IProductNameIndexer
 {
-    public Task IndexNewProductNamesAsync(
-        IReadOnlyList<Product> products,
+    public Task IndexNewProductNames(
+        IReadOnlyList<IProductInfo> products,
         CancellationToken ct = default)
         => Task.CompletedTask;
 

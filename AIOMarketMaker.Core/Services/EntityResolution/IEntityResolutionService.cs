@@ -1,6 +1,6 @@
 using AIOMarketMaker.Models.Ebay;
 
-namespace AIOMarketMaker.Etl.Services.EntityResolution;
+namespace AIOMarketMaker.Core.Services.EntityResolution;
 
 /// <summary>
 /// Service for resolving entity classification and normalizing product attributes using an LLM.
@@ -15,7 +15,7 @@ public interface IEntityResolutionService
     /// <param name="ct">Cancellation token</param>
     /// <returns>Resolution results with category and normalized fields</returns>
     /// <exception cref="EntityResolutionException">Thrown on API failure or invalid response</exception>
-    Task<IReadOnlyList<EntityResolutionResult>> ResolveAsync(
+    Task<IReadOnlyList<EntityResolutionResult>> Resolve(
         IReadOnlyList<EbayProduct> products,
         CancellationToken ct = default);
 }
