@@ -99,44 +99,11 @@
                 <div class="form-row">
                     <div class="form-group">
                         <label>Search Term *</label>
-                        <input type="text" id="searchTerm" placeholder="e.g. iPhone 15 Pro" style="width: 250px;">
+                        <input type="text" id="searchTerm" placeholder="e.g. iPhone 15 Pro" style="width: 300px;">
                     </div>
                     <div class="form-group">
-                        <label>Search Type</label>
-                        <select id="searchType">
-                            <option value="SOLD">Sold Listings</option>
-                            <option value="ACTIVE">Active Listings</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label>Buying Format</label>
-                        <select id="buyingFormat">
-                            <option value="BUY_NOW">Buy It Now</option>
-                            <option value="AUCTION">Auction</option>
-                            <option value="ALL">All</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label>Condition</label>
-                        <select id="condition">
-                            <option value="USED">Used</option>
-                            <option value="NEW">New</option>
-                            <option value="ALL">All</option>
-                        </select>
-                    </div>
-                </div>
-                <div class="form-row">
-                    <div class="form-group">
-                        <label>Frequency (minutes)</label>
-                        <input type="number" id="frequencyMinutes" value="60" style="width: 100px;">
-                    </div>
-                    <div class="form-group">
-                        <label>Lookback Days</label>
-                        <input type="number" id="lookbackDays" value="7" style="width: 100px;">
-                    </div>
-                    <div class="form-group">
-                        <label>Item Limit</label>
-                        <input type="number" id="itemLimit" placeholder="100" style="width: 100px;">
+                        <label>Filter Instructions (optional)</label>
+                        <input type="text" id="filterInstructions" placeholder="e.g. exclude bundles, accessories" style="width: 300px;">
                     </div>
                     <div class="form-group" style="justify-content: flex-end;">
                         <button class="btn btn-success" onclick="createJob()">Create Job</button>
@@ -263,46 +230,13 @@
                 <div class="form-row">
                     <div class="form-group">
                         <label>Search Term *</label>
-                        <input type="text" id="editSearchTerm" placeholder="e.g. iPhone 15 Pro" style="width: 250px;">
-                    </div>
-                    <div class="form-group">
-                        <label>Search Type</label>
-                        <select id="editSearchType">
-                            <option value="SOLD">Sold Listings</option>
-                            <option value="ACTIVE">Active Listings</option>
-                        </select>
+                        <input type="text" id="editSearchTerm" placeholder="e.g. iPhone 15 Pro" style="width: 300px;">
                     </div>
                 </div>
                 <div class="form-row">
                     <div class="form-group">
-                        <label>Buying Format</label>
-                        <select id="editBuyingFormat">
-                            <option value="BUY_NOW">Buy It Now</option>
-                            <option value="AUCTION">Auction</option>
-                            <option value="ALL">All</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label>Condition</label>
-                        <select id="editCondition">
-                            <option value="USED">Used</option>
-                            <option value="NEW">New</option>
-                            <option value="ALL">All</option>
-                        </select>
-                    </div>
-                </div>
-                <div class="form-row">
-                    <div class="form-group">
-                        <label>Frequency (minutes)</label>
-                        <input type="number" id="editFrequencyMinutes" value="60" style="width: 100px;">
-                    </div>
-                    <div class="form-group">
-                        <label>Lookback Days</label>
-                        <input type="number" id="editLookbackDays" style="width: 100px;">
-                    </div>
-                    <div class="form-group">
-                        <label>Item Limit</label>
-                        <input type="number" id="editItemLimit" style="width: 100px;">
+                        <label>Filter Instructions (optional)</label>
+                        <input type="text" id="editFilterInstructions" placeholder="e.g. exclude bundles, accessories" style="width: 300px;">
                     </div>
                 </div>
                 <div class="form-row">

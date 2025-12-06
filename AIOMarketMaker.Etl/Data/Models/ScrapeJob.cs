@@ -1,7 +1,8 @@
 namespace AIOMarketMaker.Etl.Data.Models;
 
 /// <summary>
-/// Represents a scheduled eBay scraping job configuration.
+/// Represents an eBay scraping job configuration.
+/// Jobs always scrape both active and sold listings.
 /// </summary>
 public class ScrapeJob
 {
@@ -13,34 +14,9 @@ public class ScrapeJob
     public required string SearchTerm { get; set; }
 
     /// <summary>
-    /// Buying format filter: BUY_NOW, AUCTION, ALL
+    /// Optional instructions for filtering results (e.g., "exclude bundles, accessories")
     /// </summary>
-    public required string BuyingFormat { get; set; }
-
-    /// <summary>
-    /// Item condition filter: NEW, USED, FOR_PARTS_NOT_WORKING, etc.
-    /// </summary>
-    public required string Condition { get; set; }
-
-    /// <summary>
-    /// Whether to search SOLD or ACTIVE listings
-    /// </summary>
-    public required string SearchType { get; set; }
-
-    /// <summary>
-    /// How often to run this job in minutes
-    /// </summary>
-    public int FrequencyMinutes { get; set; }
-
-    /// <summary>
-    /// For sold items - how many days back to search
-    /// </summary>
-    public int? LookbackDays { get; set; }
-
-    /// <summary>
-    /// For active items - maximum number of items to fetch
-    /// </summary>
-    public int? ItemLimit { get; set; }
+    public string? FilterInstructions { get; set; }
 
     /// <summary>
     /// Whether this job is enabled

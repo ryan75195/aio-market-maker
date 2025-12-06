@@ -60,8 +60,8 @@ public class JobRunner : IJobRunner
 
     public async Task<JobRunResult> RunJob(ScrapeJob job, CancellationToken ct = default)
     {
-        _logger.LogInformation("Processing job {JobId}: '{SearchTerm}' ({SearchType})",
-            job.Id, job.SearchTerm, job.SearchType);
+        _logger.LogInformation("Processing job {JobId}: '{SearchTerm}'",
+            job.Id, job.SearchTerm);
 
         try
         {
@@ -103,36 +103,72 @@ public class JobRunner : IJobRunner
 
     private async Task<List<IEbayProductSummary>> SearchEbay(ScrapeJob job, CancellationToken ct)
     {
-        var buyingFormat = Enum.Parse<BuyingFormat>(job.BuyingFormat, ignoreCase: true);
-        var condition = Enum.Parse<Condition>(job.Condition, ignoreCase: true);
+        var allResults = new List<IEbayProductSummary>();
+        var seenIds = new HashSet<string>();
 
-        IEnumerable<IEbayProductSummary> searchResults;
+        // Always use ALL for format and NULL for condition - users filter in the database post-search
+        var buyingFormat = BuyingFormat.ALL;
+        var condition = Condition.NULL;
 
-        if (job.SearchType.Equals("SOLD", StringComparison.OrdinalIgnoreCase))
+        // 1. Search SOLD listings with smart lookback
+        var lookbackDays = CalculateLookbackDays(job.LastRunUtc);
+        var endDate = DateTime.UtcNow;
+        var startDate = endDate.AddDays(-lookbackDays);
+
+        _logger.LogInformation("Searching sold listings for '{SearchTerm}' ({LookbackDays} day lookback)",
+            job.SearchTerm, lookbackDays);
+
+        var soldResults = await _ebayScraper.SearchSoldListings(
+            job.SearchTerm,
+            buyingFormat,
+            condition,
+            startDate,
+            endDate);
+
+        foreach (var result in soldResults)
         {
-            var lookbackDays = job.LookbackDays ?? 7;
-            var endDate = DateTime.UtcNow;
-            var startDate = endDate.AddDays(-lookbackDays);
-
-            searchResults = await _ebayScraper.SearchSoldListings(
-                job.SearchTerm,
-                buyingFormat,
-                condition,
-                startDate,
-                endDate);
+            if (result.ListingId != null && seenIds.Add(result.ListingId))
+            {
+                allResults.Add(result);
+            }
         }
-        else
+
+        _logger.LogInformation("Found {SoldCount} sold listings", soldResults.Count());
+
+        // 2. Search ACTIVE listings (large limit to get all)
+        _logger.LogInformation("Searching active listings for '{SearchTerm}'", job.SearchTerm);
+
+        var activeResults = await _ebayScraper.SearchActiveListings(
+            job.SearchTerm,
+            buyingFormat,
+            condition,
+            itemLimit: 10000);
+
+        foreach (var result in activeResults)
         {
-            searchResults = await _ebayScraper.SearchActiveListings(
-                job.SearchTerm,
-                buyingFormat,
-                condition,
-                itemLimit: job.ItemLimit ?? 100);
+            if (result.ListingId != null && seenIds.Add(result.ListingId))
+            {
+                allResults.Add(result);
+            }
         }
 
-        var summaries = searchResults.ToList();
-        _logger.LogInformation("Found {Count} listings from search", summaries.Count);
-        return summaries;
+        _logger.LogInformation("Found {ActiveCount} active listings", activeResults.Count());
+        _logger.LogInformation("Total unique listings: {TotalCount}", allResults.Count);
+
+        return allResults;
+    }
+
+    private static int CalculateLookbackDays(DateTime? lastRunUtc)
+    {
+        if (lastRunUtc == null)
+        {
+            // First run: look back 90 days to get historical data
+            return 90;
+        }
+
+        // Calculate days since last run, with minimum of 1 day and buffer of 1 day
+        var daysSinceLastRun = (int)Math.Ceiling((DateTime.UtcNow - lastRunUtc.Value).TotalDays);
+        return Math.Max(1, daysSinceLastRun + 1); // +1 day buffer for safety
     }
 
     private async Task<string[]> FilterNewListings(

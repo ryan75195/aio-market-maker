@@ -1,14 +1,11 @@
 ﻿using AIOMarketMaker.Etl;
 using AIOMarketMaker.Core.Configuration;
 using AIOMarketMaker.Etl.Data;
-using AIOMarketMaker.Etl.Data.Models;
 using AIOMarketMaker.Etl.Scripts;
-using AIOMarketMaker.Models.Ebay;
-using AIOMarketMaker.Core.Services;
+using AIOMarketMaker.Etl.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using Newtonsoft.Json;
 
 /*
  Goal for this app is to run on a schedule and scrape a list of search terms on ebay from a database table. It will then filter for new items and then scrape the listings
@@ -86,7 +83,7 @@ public class Program
             return;
         }
 
-        var ebayScraper = host.Services.GetRequiredService<IEbayScraper>();
+        var jobRunner = host.Services.GetRequiredService<IJobRunner>();
 
         // Get all enabled scrape jobs
         var jobs = await dbContext.ScrapeJobs
@@ -97,81 +94,20 @@ public class Program
 
         foreach (var job in jobs)
         {
-            Console.WriteLine($"[ETL] Processing job {job.Id}: '{job.SearchTerm}' ({job.SearchType})");
+            Console.WriteLine($"[ETL] Processing job {job.Id}: '{job.SearchTerm}'");
 
             try
             {
-                // Parse enums from job configuration
-                var buyingFormat = Enum.Parse<BuyingFormat>(job.BuyingFormat, ignoreCase: true);
-                var condition = Enum.Parse<Condition>(job.Condition, ignoreCase: true);
+                var result = await jobRunner.RunJob(job);
 
-                IEnumerable<IEbayProductSummary> searchResults;
-
-                if (job.SearchType.Equals("SOLD", StringComparison.OrdinalIgnoreCase))
+                if (result.Success)
                 {
-                    var lookbackDays = job.LookbackDays ?? 7;
-                    var endDate = DateTime.UtcNow;
-                    var startDate = endDate.AddDays(-lookbackDays);
-
-                    searchResults = await ebayScraper.SearchSoldListings(
-                        job.SearchTerm,
-                        buyingFormat,
-                        condition,
-                        startDate,
-                        endDate);
+                    Console.WriteLine($"[ETL] Job {job.Id} complete: {result.ListingsFound} found, {result.NewListingsFetched} new, {result.ProductsSaved} products");
                 }
                 else
                 {
-                    searchResults = await ebayScraper.SearchActiveListings(
-                        job.SearchTerm,
-                        buyingFormat,
-                        condition,
-                        itemLimit: job.ItemLimit ?? 100);
+                    Console.WriteLine($"[ETL] Job {job.Id} failed: {result.Error}");
                 }
-
-                var summaries = searchResults.ToList();
-                Console.WriteLine($"[ETL] Found {summaries.Count} listings from search");
-
-                // Filter out listings we already have in the database
-                var existingListingIds = (await dbContext.Listings
-                    .Where(l => l.ScrapeJobId == job.Id)
-                    .Select(l => l.ListingId)
-                    .ToListAsync())
-                    .ToHashSet();
-
-                var newListingIds = summaries
-                    .Where(s => s.ListingId != null && !existingListingIds.Contains(s.ListingId))
-                    .Select(s => s.ListingId!)
-                    .ToArray();
-
-                Console.WriteLine($"[ETL] {newListingIds.Length} new listings to fetch (skipping {summaries.Count - newListingIds.Length} existing)");
-
-                if (newListingIds.Length == 0)
-                {
-                    Console.WriteLine($"[ETL] No new listings for job {job.Id}, skipping");
-                    continue;
-                }
-
-                // Fetch full listing details
-                var items = await ebayScraper.GetItemsFromListings(newListingIds);
-                var products = items.ToList();
-
-                Console.WriteLine($"[ETL] Fetched {products.Count} full listings");
-
-                // Convert to database entities and save
-                var newListings = products
-                    .Where(p => p.ListingId != null)
-                    .Select(p => MapToListing(p, job.Id))
-                    .ToList();
-
-                dbContext.Listings.AddRange(newListings);
-                await dbContext.SaveChangesAsync();
-
-                Console.WriteLine($"[ETL] Saved {newListings.Count} listings to database");
-
-                // Update job's last run time
-                job.LastRunUtc = DateTime.UtcNow;
-                await dbContext.SaveChangesAsync();
             }
             catch (Exception ex)
             {
@@ -186,29 +122,6 @@ public class Program
         await host.StopAsync();
     }
 
-    private static Listing MapToListing(EbayProduct ebayProduct, int scrapeJobId)
-    {
-        return new Listing
-        {
-            ListingId = ebayProduct.ListingId!,
-            ScrapeJobId = scrapeJobId,
-            Title = ebayProduct.Title,
-            Price = ebayProduct.Price,
-            Currency = ebayProduct.Currency,
-            ShippingCost = ebayProduct.ShippingCost,
-            Url = ebayProduct.Url,
-            Condition = ebayProduct.Condition?.ToString(),
-            ListingStatus = ebayProduct.ListingStatus?.ToString(),
-            PurchaseFormat = ebayProduct.PurchaseFormat?.ToString(),
-            Description = ebayProduct.Description,
-            ItemSpecifics = ebayProduct.ItemSpecifics,
-            Images = ebayProduct.Images != null ? JsonConvert.SerializeObject(ebayProduct.Images) : null,
-            Location = ebayProduct.Location,
-            EndDateUtc = ebayProduct.EndDateUtc,
-            CreatedUtc = DateTime.UtcNow
-        };
-    }
-
     private static async Task InspectDatabase(EtlDbContext dbContext)
     {
         Console.WriteLine("=== Database Inspection ===\n");
@@ -219,7 +132,8 @@ public class Program
         foreach (var job in jobs)
         {
             var lastRun = job.LastRunUtc?.ToString("yyyy-MM-dd HH:mm:ss") ?? "never";
-            Console.WriteLine($"  [{job.Id}] {job.SearchTerm} | {job.SearchType} | {job.BuyingFormat} | {job.Condition} | Enabled={job.IsEnabled} | LastRun={lastRun}");
+            var filter = !string.IsNullOrEmpty(job.FilterInstructions) ? $" | Filter: {job.FilterInstructions}" : "";
+            Console.WriteLine($"  [{job.Id}] {job.SearchTerm}{filter} | Enabled={job.IsEnabled} | LastRun={lastRun}");
         }
 
         Console.WriteLine();

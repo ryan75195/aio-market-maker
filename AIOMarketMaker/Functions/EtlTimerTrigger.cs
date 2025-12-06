@@ -2,13 +2,12 @@ using Microsoft.Azure.Functions.Worker;
 using Microsoft.DurableTask.Client;
 using Microsoft.Extensions.Logging;
 using AIOMarketMaker.Etl.Data;
-using Microsoft.EntityFrameworkCore;
 
 namespace AIOMarketMaker.Functions;
 
 /// <summary>
 /// Timer trigger for scheduled ETL runs.
-/// Runs all enabled jobs that are due for execution based on their FrequencyMinutes setting.
+/// DISABLED: Jobs are now on-demand only. Use dashboard to run jobs manually.
 ///
 /// Configure the schedule in local.settings.json:
 /// "EtlSchedule": "0 */15 * * * *"  (every 15 minutes)
@@ -27,57 +26,17 @@ public class EtlTimerTrigger
     }
 
     /// <summary>
-    /// Timer-triggered function that checks for jobs due to run and starts orchestrations.
-    /// Default schedule: every 15 minutes. Configure via EtlSchedule app setting.
-    /// DISABLED: Auto-run is currently disabled. Use dashboard to run jobs manually.
+    /// Timer-triggered function that was previously used for scheduled job runs.
+    /// DISABLED: Jobs are now on-demand only. Use dashboard to run jobs manually.
     /// </summary>
     [Function("EtlScheduledRun")]
-    public async Task Run(
+    public Task Run(
         [TimerTrigger("%EtlSchedule%")] TimerInfo timerInfo,
         [DurableClient] DurableTaskClient client)
     {
-        // DISABLED: Auto-run functionality is disabled. Use dashboard to run jobs manually.
+        // DISABLED: Auto-run functionality is disabled. Jobs are now on-demand only.
+        // Use the dashboard "Run Now" button or "Run All Enabled" to execute jobs.
         _logger.LogInformation("ETL scheduled run triggered but auto-run is DISABLED. Use dashboard to run jobs manually.");
-        return;
-
-        #pragma warning disable CS0162 // Unreachable code detected
-        _logger.LogInformation("ETL scheduled run triggered at {Time}", DateTime.UtcNow);
-
-        if (timerInfo.IsPastDue)
-        {
-            _logger.LogWarning("Timer is running late!");
-        }
-        #pragma warning restore CS0162
-
-        // Find jobs that are enabled and due to run
-        var now = DateTime.UtcNow;
-
-        // Load enabled jobs and filter in memory (SQLite doesn't support DateDiff)
-        var enabledJobs = await _dbContext.ScrapeJobs
-            .Where(j => j.IsEnabled)
-            .ToListAsync();
-
-        var dueJobs = enabledJobs
-            .Where(j => j.LastRunUtc == null ||
-                        (now - j.LastRunUtc.Value).TotalMinutes >= j.FrequencyMinutes)
-            .ToList();
-
-        if (dueJobs.Count == 0)
-        {
-            _logger.LogInformation("No jobs due for execution");
-            return;
-        }
-
-        _logger.LogInformation("Found {Count} jobs due for execution", dueJobs.Count);
-
-        var jobIds = dueJobs.Select(j => j.Id).ToList();
-
-        // Start the orchestration for all due jobs
-        var instanceId = await client.ScheduleNewOrchestrationInstanceAsync(
-            nameof(EtlOrchestration.RunAllJobsOrchestration),
-            jobIds);
-
-        _logger.LogInformation("Started orchestration {InstanceId} for {Count} scheduled jobs: {JobIds}",
-            instanceId, jobIds.Count, string.Join(", ", jobIds));
+        return Task.CompletedTask;
     }
 }

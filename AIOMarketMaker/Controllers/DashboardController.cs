@@ -431,14 +431,10 @@ namespace AIOMarketMaker.Controllers
                 <div class=""job-card"" id=""job-{job.Id}"">
                     <div class=""job-info"">
                         <div class=""job-title"">{System.Web.HttpUtility.HtmlEncode(job.SearchTerm)} {enabledBadge}</div>
-                        <div class=""job-meta"">
-                            Type: {job.SearchType} | Format: {job.BuyingFormat} | Condition: {job.Condition} |
-                            Frequency: {job.FrequencyMinutes}min | Last Run: {lastRun}
-                        </div>
+                        <div class=""job-meta"">Last Run: {lastRun}</div>
                     </div>
                     <div class=""job-actions"">
                         <button class=""btn btn-primary"" onclick=""runJob({job.Id})"">Run Now</button>
-                        <button class=""btn btn-info"" onclick=""refreshJobStatuses({job.Id})"">Refresh Status</button>
                         <button class=""btn btn-secondary"" onclick=""editJob({job.Id})"">Edit</button>
                         <button class=""btn {toggleBtnClass}"" onclick=""toggleJob({job.Id})"">{toggleBtnText}</button>
                         <button class=""btn btn-danger"" onclick=""deleteJob({job.Id})"">Delete</button>

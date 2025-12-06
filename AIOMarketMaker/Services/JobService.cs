@@ -20,12 +20,7 @@ public class JobService : IJobService
             .Select(j => new JobDto(
                 j.Id,
                 j.SearchTerm,
-                j.BuyingFormat,
-                j.Condition,
-                j.SearchType,
-                j.FrequencyMinutes,
-                j.LookbackDays,
-                j.ItemLimit,
+                j.FilterInstructions,
                 j.IsEnabled,
                 j.LastRunUtc,
                 j.CreatedUtc
@@ -38,12 +33,7 @@ public class JobService : IJobService
         var job = new ScrapeJob
         {
             SearchTerm = request.SearchTerm,
-            BuyingFormat = request.BuyingFormat ?? "BUY_NOW",
-            Condition = request.Condition ?? "USED",
-            SearchType = request.SearchType ?? "SOLD",
-            FrequencyMinutes = request.FrequencyMinutes,
-            LookbackDays = request.LookbackDays,
-            ItemLimit = request.ItemLimit,
+            FilterInstructions = request.FilterInstructions,
             IsEnabled = request.IsEnabled,
             CreatedUtc = DateTime.UtcNow
         };
@@ -54,12 +44,7 @@ public class JobService : IJobService
         return new JobDto(
             job.Id,
             job.SearchTerm,
-            job.BuyingFormat,
-            job.Condition,
-            job.SearchType,
-            job.FrequencyMinutes,
-            job.LookbackDays,
-            job.ItemLimit,
+            job.FilterInstructions,
             job.IsEnabled,
             job.LastRunUtc,
             job.CreatedUtc
@@ -73,12 +58,7 @@ public class JobService : IJobService
             return null;
 
         job.SearchTerm = request.SearchTerm;
-        job.BuyingFormat = request.BuyingFormat ?? job.BuyingFormat;
-        job.Condition = request.Condition ?? job.Condition;
-        job.SearchType = request.SearchType ?? job.SearchType;
-        job.FrequencyMinutes = request.FrequencyMinutes;
-        job.LookbackDays = request.LookbackDays;
-        job.ItemLimit = request.ItemLimit;
+        job.FilterInstructions = request.FilterInstructions;
         job.IsEnabled = request.IsEnabled;
 
         await _dbContext.SaveChangesAsync(ct);
@@ -86,12 +66,7 @@ public class JobService : IJobService
         return new JobDto(
             job.Id,
             job.SearchTerm,
-            job.BuyingFormat,
-            job.Condition,
-            job.SearchType,
-            job.FrequencyMinutes,
-            job.LookbackDays,
-            job.ItemLimit,
+            job.FilterInstructions,
             job.IsEnabled,
             job.LastRunUtc,
             job.CreatedUtc
