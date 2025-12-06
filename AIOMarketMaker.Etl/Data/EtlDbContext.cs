@@ -38,11 +38,10 @@ public class EtlDbContext : DbContext
             entity.HasKey(e => e.Id);
 
             entity.Property(e => e.SearchTerm).IsRequired().HasMaxLength(255);
-            entity.Property(e => e.BuyingFormat).IsRequired().HasMaxLength(20);
-            entity.Property(e => e.Condition).IsRequired().HasMaxLength(30);
-            entity.Property(e => e.SearchType).IsRequired().HasMaxLength(10);
             entity.Property(e => e.IsEnabled).HasDefaultValue(true);
             entity.Property(e => e.CreatedUtc).HasDefaultValueSql("datetime('now')");
+
+            entity.HasIndex(e => e.IsEnabled);
         });
 
         modelBuilder.Entity<Listing>(entity =>

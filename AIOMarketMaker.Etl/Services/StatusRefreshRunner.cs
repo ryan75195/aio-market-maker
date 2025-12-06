@@ -164,6 +164,19 @@ public class StatusRefreshRunner : IStatusRefreshRunner
                             Source = "StatusRefresh"
                         });
 
+                        // Also update the denormalized Product record
+                        var product = await _dbContext.Products
+                            .FirstOrDefaultAsync(p => p.ListingId == listing.Id, ct);
+                        if (product != null)
+                        {
+                            product.ListingStatus = newStatus;
+                            if (newStatus == "Sold" && parsed.SoldDateUtc.HasValue)
+                            {
+                                product.SoldDateUtc = parsed.SoldDateUtc;
+                                product.EndDateUtc = parsed.SoldDateUtc;
+                            }
+                        }
+
                         changes.Add(new StatusChangeInfo(
                             listing.Id,
                             listing.ListingId,

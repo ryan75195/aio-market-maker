@@ -524,12 +524,7 @@ async function createJob() {
 
     const data = {
         searchTerm,
-        searchType: document.getElementById('searchType').value,
-        buyingFormat: document.getElementById('buyingFormat').value,
-        condition: document.getElementById('condition').value,
-        frequencyMinutes: parseInt(document.getElementById('frequencyMinutes').value) || 60,
-        lookbackDays: parseInt(document.getElementById('lookbackDays').value) || null,
-        itemLimit: parseInt(document.getElementById('itemLimit').value) || null,
+        filterInstructions: document.getElementById('filterInstructions').value.trim() || null,
         isEnabled: true
     };
 
@@ -737,12 +732,7 @@ async function editJob(id) {
         // Populate the edit form (API returns PascalCase properties)
         document.getElementById('editJobId').value = job.Id;
         document.getElementById('editSearchTerm').value = job.SearchTerm || '';
-        document.getElementById('editSearchType').value = job.SearchType || 'SOLD';
-        document.getElementById('editBuyingFormat').value = job.BuyingFormat || 'BUY_NOW';
-        document.getElementById('editCondition').value = job.Condition || 'USED';
-        document.getElementById('editFrequencyMinutes').value = job.FrequencyMinutes || 60;
-        document.getElementById('editLookbackDays').value = job.LookbackDays || '';
-        document.getElementById('editItemLimit').value = job.ItemLimit || '';
+        document.getElementById('editFilterInstructions').value = job.FilterInstructions || '';
         document.getElementById('editIsEnabled').checked = job.IsEnabled;
 
         // Show the modal
@@ -771,12 +761,7 @@ async function saveJob() {
 
     const data = {
         searchTerm,
-        searchType: document.getElementById('editSearchType').value,
-        buyingFormat: document.getElementById('editBuyingFormat').value,
-        condition: document.getElementById('editCondition').value,
-        frequencyMinutes: parseInt(document.getElementById('editFrequencyMinutes').value) || 60,
-        lookbackDays: parseInt(document.getElementById('editLookbackDays').value) || null,
-        itemLimit: parseInt(document.getElementById('editItemLimit').value) || null,
+        filterInstructions: document.getElementById('editFilterInstructions').value.trim() || null,
         isEnabled: document.getElementById('editIsEnabled').checked
     };
 
