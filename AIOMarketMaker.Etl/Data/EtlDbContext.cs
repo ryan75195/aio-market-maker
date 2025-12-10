@@ -19,7 +19,6 @@ public class EtlDbContext : DbContext
 
     public DbSet<ScrapeJob> ScrapeJobs { get; set; } = null!;
     public DbSet<Listing> Listings { get; set; } = null!;
-    public DbSet<Product> Products { get; set; } = null!;
     public DbSet<ListingStatusHistory> ListingStatusHistory { get; set; } = null!;
 
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
@@ -59,25 +58,6 @@ public class EtlDbContext : DbContext
             entity.HasOne(e => e.ScrapeJob)
                 .WithMany()
                 .HasForeignKey(e => e.ScrapeJobId);
-        });
-
-        modelBuilder.Entity<Product>(entity =>
-        {
-            entity.ToTable("Products");
-            entity.HasKey(e => e.Id);
-
-            entity.Property(e => e.Category).IsRequired().HasMaxLength(50);
-            entity.HasIndex(e => e.ListingId).IsUnique();
-            entity.HasIndex(e => e.Category);
-            entity.HasIndex(e => e.Brand);
-            entity.HasIndex(e => e.Model);
-
-            entity.Property(e => e.ResolvedUtc).HasDefaultValueSql("datetime('now')");
-
-            entity.HasOne(e => e.Listing)
-                .WithOne(l => l.Product)
-                .HasForeignKey<Product>(e => e.ListingId)
-                .OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<ListingStatusHistory>(entity =>

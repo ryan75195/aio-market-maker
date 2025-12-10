@@ -1,8 +1,10 @@
-﻿using AIOMarketMaker.Core.Services;
+using AIOMarketMaker.Core.Services;
+using AIOMarketMaker.Core.Parsers;
 using Microsoft.Extensions.DependencyInjection;
 using AIOMarketMaker.Tests.Utils;
-using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.Hosting;
+using ScraperWorker.Services;
+using Azure.Data.Tables;
+using Azure.Storage.Blobs;
 
 namespace AIOMarketMaker.Tests.Contract
 {
@@ -13,17 +15,21 @@ namespace AIOMarketMaker.Tests.Contract
         [SetUp]
         public void Setup()
         {
-            Environment.SetEnvironmentVariable(
-              "StorageConnectionString",
-              "DefaultEndpointsProtocol=https;AccountName=webscraperstorageacc;AccountKey=zio92liWbgYZN9oS/L65JV2RZp21eXanu19X1G+ioDO7UI0qAMj5wAICuaSPwOcwnM+fk4Y3pvgs+AStZmZOHg==;EndpointSuffix=core.windows.net"
-            );
-
-            var config = new ConfigurationBuilder()
-                .AddEnvironmentVariables()
-                .Build();
+            var storageConnectionString = "DefaultEndpointsProtocol=https;AccountName=webscraperstorageacc;AccountKey=zio92liWbgYZN9oS/L65JV2RZp21eXanu19X1G+ioDO7UI0qAMj5wAICuaSPwOcwnM+fk4Y3pvgs+AStZmZOHg==;EndpointSuffix=core.windows.net";
 
             var services = new ServiceCollection();
-            services.AddEbayScraperPipeline(config);
+
+            services.AddSingleton(new TableServiceClient(storageConnectionString));
+            services.AddSingleton(new BlobServiceClient(storageConnectionString));
+            services.AddSingleton<IEbayUrlBuilder, EbayUrlBuilder>();
+            services.AddSingleton<ISearchParser, EbaySearchParser>();
+            services.AddSingleton<IListingParser, EbayListingParser>();
+            services.AddSingleton<IJobRepository, AzureJobRepository>();
+            services.AddHttpClient<IWebscraperClient, WebscraperClient>(client => {
+                client.BaseAddress = new Uri("http://localhost:7126");
+            });
+            services.AddSingleton<IEbayScraper, EbayScraper>();
+
             var provider = services.BuildServiceProvider();
             _serviceUnderTest = provider.GetRequiredService<IEbayScraper>();
         }
@@ -34,7 +40,7 @@ namespace AIOMarketMaker.Tests.Contract
             var itemId = "135758131788";
 
             var listing = await this._serviceUnderTest.GetItemsFromListings([itemId]);
-         
+
             ListingAssertions.AssertValidActiveListing(listing.First(), itemId);
         }
 

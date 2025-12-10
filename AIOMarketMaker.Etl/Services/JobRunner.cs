@@ -1,7 +1,5 @@
 using AIOMarketMaker.Etl.Data;
 using AIOMarketMaker.Etl.Data.Models;
-using AIOMarketMaker.Core.Services.EntityResolution;
-using AIOMarketMaker.Core.Services.VectorSearch;
 using AIOMarketMaker.Models.Ebay;
 using AIOMarketMaker.Core.Services;
 using Microsoft.EntityFrameworkCore;
@@ -15,7 +13,6 @@ public record JobRunResult(
     bool Success,
     int ListingsFound,
     int NewListingsFetched,
-    int ProductsSaved,
     string? Error
 );
 
@@ -25,25 +22,22 @@ public interface IJobRunner
     Task<JobRunResult> RunJob(ScrapeJob job, CancellationToken ct = default);
 }
 
+/// <summary>
+/// Runs scrape jobs to fetch eBay listings and save them to the database.
+/// </summary>
 public class JobRunner : IJobRunner
 {
     private readonly EtlDbContext _dbContext;
     private readonly IEbayScraper _ebayScraper;
-    private readonly IEntityResolutionService _entityResolutionService;
-    private readonly IProductNameIndexer _productNameIndexer;
     private readonly ILogger<JobRunner> _logger;
 
     public JobRunner(
         EtlDbContext dbContext,
         IEbayScraper ebayScraper,
-        IEntityResolutionService entityResolutionService,
-        IProductNameIndexer productNameIndexer,
         ILogger<JobRunner> logger)
     {
         _dbContext = dbContext;
         _ebayScraper = ebayScraper;
-        _entityResolutionService = entityResolutionService;
-        _productNameIndexer = productNameIndexer;
         _logger = logger;
     }
 
@@ -52,7 +46,7 @@ public class JobRunner : IJobRunner
         var job = await _dbContext.ScrapeJobs.FindAsync(new object[] { jobId }, ct);
         if (job == null)
         {
-            return new JobRunResult(jobId, false, 0, 0, 0, $"Job {jobId} not found");
+            return new JobRunResult(jobId, false, 0, 0, $"Job {jobId} not found");
         }
 
         return await RunJob(job, ct);
@@ -72,30 +66,20 @@ public class JobRunner : IJobRunner
             {
                 _logger.LogInformation("No new listings for job {JobId}, skipping fetch", job.Id);
                 await UpdateJobTimestamp(job, ct);
-                return new JobRunResult(job.Id, true, searchResults.Count, 0, 0, null);
+                return new JobRunResult(job.Id, true, searchResults.Count, 0, null);
             }
 
             var ebayProducts = await FetchEbayProducts(newSearchResultIds);
             var listings = await SaveEbayListings(ebayProducts, job.Id, ct);
             await SaveInitialStatusHistory(listings, ct);
-
-            var resolved = await ResolveEntities(ebayProducts, ct);
-            var products = await SaveNormalizedProducts(resolved, listings, ct);
-
-            await TryIndexProductNames(products, ct);
             await UpdateJobTimestamp(job, ct);
 
-            return new JobRunResult(job.Id, true, searchResults.Count, newSearchResultIds.Length, products.Count, null);
-        }
-        catch (EntityResolutionException ex)
-        {
-            _logger.LogError(ex, "Entity resolution failed for job {JobId}: {Message}", job.Id, ex.Message);
-            throw;
+            return new JobRunResult(job.Id, true, searchResults.Count, newSearchResultIds.Length, null);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error processing job {JobId}: {Message}", job.Id, ex.Message);
-            return new JobRunResult(job.Id, false, 0, 0, 0, ex.Message);
+            return new JobRunResult(job.Id, false, 0, 0, ex.Message);
         }
     }
 
@@ -106,11 +90,10 @@ public class JobRunner : IJobRunner
         var allResults = new List<IEbayProductSummary>();
         var seenIds = new HashSet<string>();
 
-        // Always use ALL for format and NULL for condition - users filter in the database post-search
         var buyingFormat = BuyingFormat.ALL;
         var condition = Condition.NULL;
 
-        // 1. Search SOLD listings with smart lookback
+        // Search SOLD listings with smart lookback
         var lookbackDays = CalculateLookbackDays(job.LastRunUtc);
         var endDate = DateTime.UtcNow;
         var startDate = endDate.AddDays(-lookbackDays);
@@ -135,7 +118,7 @@ public class JobRunner : IJobRunner
 
         _logger.LogInformation("Found {SoldCount} sold listings", soldResults.Count());
 
-        // 2. Search ACTIVE listings (large limit to get all)
+        // Search ACTIVE listings
         _logger.LogInformation("Searching active listings for '{SearchTerm}'", job.SearchTerm);
 
         var activeResults = await _ebayScraper.SearchActiveListings(
@@ -162,13 +145,11 @@ public class JobRunner : IJobRunner
     {
         if (lastRunUtc == null)
         {
-            // First run: look back 90 days to get historical data
-            return 90;
+            return 90; // First run: look back 90 days
         }
 
-        // Calculate days since last run, with minimum of 1 day and buffer of 1 day
         var daysSinceLastRun = (int)Math.Ceiling((DateTime.UtcNow - lastRunUtc.Value).TotalDays);
-        return Math.Max(1, daysSinceLastRun + 1); // +1 day buffer for safety
+        return Math.Max(1, daysSinceLastRun + 1); // +1 day buffer
     }
 
     private async Task<string[]> FilterNewListings(
@@ -214,7 +195,7 @@ public class JobRunner : IJobRunner
         _dbContext.Listings.AddRange(newListings);
         await _dbContext.SaveChangesAsync(ct);
 
-        _logger.LogInformation("Saved {Count} raw listings to database", newListings.Count);
+        _logger.LogInformation("Saved {Count} listings to database", newListings.Count);
         return newListings;
     }
 
@@ -234,45 +215,6 @@ public class JobRunner : IJobRunner
         await _dbContext.SaveChangesAsync(ct);
 
         _logger.LogInformation("Created {Count} initial history records", historyRecords.Count);
-    }
-
-    private async Task<IReadOnlyList<EntityResolutionResult>> ResolveEntities(
-        List<EbayProduct> ebayProducts,
-        CancellationToken ct)
-    {
-        _logger.LogInformation("Starting entity resolution for {Count} products", ebayProducts.Count);
-        return await _entityResolutionService.Resolve(ebayProducts, ct);
-    }
-
-    private async Task<List<Product>> SaveNormalizedProducts(
-        IReadOnlyList<EntityResolutionResult> resolved,
-        List<Listing> listings,
-        CancellationToken ct)
-    {
-        var listingLookup = listings.ToDictionary(l => l.ListingId, l => l);
-
-        var normalizedProducts = resolved
-            .Where(r => listingLookup.ContainsKey(r.ListingId))
-            .Select(r => MapToProduct(r, listingLookup[r.ListingId]))
-            .ToList();
-
-        _dbContext.Products.AddRange(normalizedProducts);
-        await _dbContext.SaveChangesAsync(ct);
-
-        _logger.LogInformation("Saved {Count} normalized products to database", normalizedProducts.Count);
-        return normalizedProducts;
-    }
-
-    private async Task TryIndexProductNames(List<Product> products, CancellationToken ct)
-    {
-        try
-        {
-            await _productNameIndexer.IndexNewProductNames(products, ct);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Failed to index product names in Pinecone: {Message}", ex.Message);
-        }
     }
 
     private async Task UpdateJobTimestamp(ScrapeJob job, CancellationToken ct)
@@ -305,52 +247,6 @@ public class JobRunner : IJobRunner
             Location = ebayProduct.Location,
             EndDateUtc = ebayProduct.EndDateUtc,
             CreatedUtc = DateTime.UtcNow
-        };
-    }
-
-    private static Product MapToProduct(EntityResolutionResult resolution, Listing listing)
-    {
-        DateTime? listedDateUtc = null;
-        DateTime? soldDateUtc = null;
-
-        if (listing.ListingStatus == "Sold")
-        {
-            soldDateUtc = listing.EndDateUtc;
-        }
-        else
-        {
-            listedDateUtc = listing.CreatedUtc;
-        }
-
-        return new Product
-        {
-            ListingId = listing.Id,
-            Category = resolution.Category,
-            CategoryConfidence = resolution.CategoryConfidence,
-            ProductName = resolution.ProductName,
-            Brand = resolution.Attributes.Brand,
-            Model = resolution.Attributes.Model,
-            StorageCapacity = resolution.Attributes.StorageCapacity,
-            Color = resolution.Attributes.Color,
-            Edition = resolution.Attributes.Edition,
-            VariantType = resolution.Attributes.VariantType,
-            BundledItems = resolution.BundledItems != null
-                ? JsonConvert.SerializeObject(resolution.BundledItems)
-                : null,
-            EbayListingId = listing.ListingId,
-            Title = listing.Title,
-            Price = listing.Price,
-            Currency = listing.Currency,
-            ShippingCost = listing.ShippingCost,
-            Url = listing.Url,
-            Condition = listing.Condition,
-            ListingStatus = listing.ListingStatus,
-            PurchaseFormat = listing.PurchaseFormat,
-            Location = listing.Location,
-            EndDateUtc = listing.EndDateUtc,
-            ListedDateUtc = listedDateUtc,
-            SoldDateUtc = soldDateUtc,
-            ResolvedUtc = DateTime.UtcNow
         };
     }
 

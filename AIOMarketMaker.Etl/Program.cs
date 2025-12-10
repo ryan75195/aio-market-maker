@@ -1,18 +1,9 @@
-﻿using AIOMarketMaker.Etl;
-using AIOMarketMaker.Core.Configuration;
+using AIOMarketMaker.Etl;
 using AIOMarketMaker.Etl.Data;
-using AIOMarketMaker.Etl.Scripts;
 using AIOMarketMaker.Etl.Services;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
-/*
- Goal for this app is to run on a schedule and scrape a list of search terms on ebay from a database table. It will then filter for new items and then scrape the listings
- and load them into a clean product database. It should also scrape for updates on existing listings to see if they have sold yet and update accordingly.
- It will read the search terms from an azure sql database table and write the product items to a database too. Any images will be stored in blob storage in a folder corresponding
- to an item id in the database. The config will also be a databse table, which specifies the scrape frequency
- */
 public class Program
 {
     public static async Task Main(string[] args)
@@ -31,54 +22,19 @@ public class Program
             return;
         }
 
-        // Handle --reset flag (delete all listings and products)
+        // Handle --reset flag (delete all listings)
         if (args.Contains("--reset"))
         {
-            Console.WriteLine("[ETL] Resetting database - deleting all listings and products...");
+            Console.WriteLine("[ETL] Resetting database - deleting all listings...");
 
-            var productCount = await dbContext.Products.CountAsync();
             var listingCount = await dbContext.Listings.CountAsync();
             var historyCount = await dbContext.ListingStatusHistory.CountAsync();
 
-            dbContext.Products.RemoveRange(dbContext.Products);
             dbContext.ListingStatusHistory.RemoveRange(dbContext.ListingStatusHistory);
             dbContext.Listings.RemoveRange(dbContext.Listings);
             await dbContext.SaveChangesAsync();
 
-            Console.WriteLine($"[ETL] Deleted {productCount} products, {listingCount} listings, {historyCount} history records");
-            await host.StopAsync();
-            return;
-        }
-
-        // Handle --clear-products flag (delete only products, keep listings)
-        if (args.Contains("--clear-products"))
-        {
-            Console.WriteLine("[ETL] Clearing products table...");
-
-            var productCount = await dbContext.Products.CountAsync();
-            dbContext.Products.RemoveRange(dbContext.Products);
-            await dbContext.SaveChangesAsync();
-
-            Console.WriteLine($"[ETL] Deleted {productCount} products");
-            await host.StopAsync();
-            return;
-        }
-
-        // Handle --process-existing flag (run entity resolution on existing listings without products)
-        if (args.Contains("--process-existing"))
-        {
-            var configuration = scope.ServiceProvider.GetRequiredService<IConfiguration>();
-            var dbPath = configuration["DatabasePath"] ?? "etl.db";
-            var connectionString = $"Data Source={dbPath}";
-
-            var openAiSettings = configuration.GetSection("OpenAi").Get<OpenAiSettings>()
-                ?? throw new InvalidOperationException("OpenAi configuration section is required");
-
-            var pineconeSettings = configuration.GetSection("Pinecone").Get<PineconeSettings>();
-            var embeddingSettings = configuration.GetSection("Embedding").Get<EmbeddingSettings>()
-                ?? new EmbeddingSettings();
-
-            await ProcessExistingListings.RunAsync(connectionString, openAiSettings, pineconeSettings, embeddingSettings);
+            Console.WriteLine($"[ETL] Deleted {listingCount} listings, {historyCount} history records");
             await host.StopAsync();
             return;
         }
@@ -102,7 +58,7 @@ public class Program
 
                 if (result.Success)
                 {
-                    Console.WriteLine($"[ETL] Job {job.Id} complete: {result.ListingsFound} found, {result.NewListingsFetched} new, {result.ProductsSaved} products");
+                    Console.WriteLine($"[ETL] Job {job.Id} complete: {result.ListingsFound} found, {result.NewListingsFetched} new");
                 }
                 else
                 {
@@ -138,7 +94,7 @@ public class Program
 
         Console.WriteLine();
 
-        // Listings (raw scraped data)
+        // Listings
         var listingCount = await dbContext.Listings.CountAsync();
         Console.WriteLine($"Listings ({listingCount}):");
 
@@ -168,6 +124,17 @@ public class Program
                 Console.WriteLine($"    {g.Status ?? "null"}: {g.Count}");
             }
 
+            // Stats by condition
+            Console.WriteLine("\n  By Condition:");
+            var conditionGroups = await dbContext.Listings
+                .GroupBy(l => l.Condition)
+                .Select(g => new { Condition = g.Key, Count = g.Count() })
+                .ToListAsync();
+            foreach (var g in conditionGroups)
+            {
+                Console.WriteLine($"    {g.Condition ?? "null"}: {g.Count}");
+            }
+
             // Price stats
             var priceStats = await dbContext.Listings
                 .Where(l => l.Price.HasValue)
@@ -186,38 +153,8 @@ public class Program
             }
         }
 
-        Console.WriteLine();
-
-        // Products (normalized/classified data)
-        var productCount = await dbContext.Products.CountAsync();
-        Console.WriteLine($"Products (normalized) ({productCount}):");
-
-        if (productCount > 0)
-        {
-            // Stats by category
-            Console.WriteLine("  By Category:");
-            var categoryGroups = await dbContext.Products
-                .GroupBy(p => p.Category)
-                .Select(g => new { Category = g.Key, Count = g.Count() })
-                .ToListAsync();
-            foreach (var g in categoryGroups)
-            {
-                Console.WriteLine($"    {g.Category}: {g.Count}");
-            }
-
-            // Stats by brand
-            Console.WriteLine("\n  By Brand (top 10):");
-            var brandGroups = await dbContext.Products
-                .Where(p => p.Brand != null)
-                .GroupBy(p => p.Brand)
-                .Select(g => new { Brand = g.Key, Count = g.Count() })
-                .OrderByDescending(g => g.Count)
-                .Take(10)
-                .ToListAsync();
-            foreach (var g in brandGroups)
-            {
-                Console.WriteLine($"    {g.Brand}: {g.Count}");
-            }
-        }
+        // Status history
+        var historyCount = await dbContext.ListingStatusHistory.CountAsync();
+        Console.WriteLine($"\nListingStatusHistory ({historyCount})");
     }
 }

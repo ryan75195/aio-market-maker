@@ -364,6 +364,8 @@ FodyWeavers.xsd
 
 # SQLite databases
 *.db
+*.db-shm
+*.db-wal
 
 # Local settings (contains connection strings)
 local.settings.json

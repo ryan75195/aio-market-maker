@@ -164,18 +164,8 @@ public class StatusRefreshRunner : IStatusRefreshRunner
                             Source = "StatusRefresh"
                         });
 
-                        // Also update the denormalized Product record
-                        var product = await _dbContext.Products
-                            .FirstOrDefaultAsync(p => p.ListingId == listing.Id, ct);
-                        if (product != null)
-                        {
-                            product.ListingStatus = newStatus;
-                            if (newStatus == "Sold" && parsed.SoldDateUtc.HasValue)
-                            {
-                                product.SoldDateUtc = parsed.SoldDateUtc;
-                                product.EndDateUtc = parsed.SoldDateUtc;
-                            }
-                        }
+                        // NOTE: Products are now cluster-level aggregates, not per-listing records.
+                        // Product statistics should be recalculated separately if needed.
 
                         changes.Add(new StatusChangeInfo(
                             listing.Id,

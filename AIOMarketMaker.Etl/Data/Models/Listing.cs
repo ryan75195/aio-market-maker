@@ -2,7 +2,6 @@ namespace AIOMarketMaker.Etl.Data.Models;
 
 /// <summary>
 /// Raw eBay listing data as scraped from the website.
-/// This preserves the original data before any LLM processing.
 /// </summary>
 public class Listing
 {
@@ -45,6 +44,5 @@ public class Listing
 
     // Navigation properties
     public ScrapeJob? ScrapeJob { get; set; }
-    public Product? Product { get; set; }
     public ICollection<ListingStatusHistory> StatusHistory { get; set; } = new List<ListingStatusHistory>();
 }
