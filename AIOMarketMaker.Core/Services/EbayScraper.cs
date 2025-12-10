@@ -1,13 +1,13 @@
 ﻿// Services/EbayScraper.cs
-using AIOMarketMaker.Api.Parsers;
-using AIOMarketMaker.Api.Services;
+using AIOMarketMaker.Core.Parsers;
+using AIOMarketMaker.Core.Services;
 using AIOMarketMaker.Models.Ebay;
 using AngleSharp;
 using AngleSharp.Dom;
 using Microsoft.Extensions.Logging;
 using ScraperWorker.Services;
 
-namespace AIOMarketMaker.Services
+namespace AIOMarketMaker.Core.Services
 {
     public interface IEbayScraper
     {
@@ -150,7 +150,14 @@ namespace AIOMarketMaker.Services
             var urls = products
                 .Select(x => x.descriptionSource)
                 .Where(u => !string.IsNullOrEmpty(u))   // ← drop any null/empty
-                .Distinct();
+                .Distinct()
+                .ToList();
+
+            // Return empty dictionary if no description URLs to fetch
+            if (urls.Count == 0)
+            {
+                return new Dictionary<string, string>();
+            }
 
             var metas = await _fetcher.RunJobAsync(urls);
 
@@ -219,7 +226,7 @@ namespace AIOMarketMaker.Services
             return productList;
         }
 
-        private readonly IBrowsingContext _browsingContext = BrowsingContext.New(Configuration.Default);
+        private readonly IBrowsingContext _browsingContext = BrowsingContext.New(AngleSharp.Configuration.Default);
 
         private async Task<IDocument> LoadDocumentAsync(string html)
         {

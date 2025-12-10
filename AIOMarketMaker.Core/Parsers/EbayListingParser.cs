@@ -6,11 +6,11 @@ using AIOMarketMaker.Models.Ebay;
 using AngleSharp.Dom;
 using AngleSharp.Text;
 using Microsoft.Extensions.Logging;
-using AIOMarketMaker.Api.Utils;
+using AIOMarketMaker.Core.Utils;
 
 [assembly: InternalsVisibleTo("AIOMarketMaker.Tests")]
 
-namespace AIOMarketMaker.Services
+namespace AIOMarketMaker.Core.Parsers
 {
 
     public record ExtractedEbayListing(
