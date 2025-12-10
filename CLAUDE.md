@@ -149,8 +149,45 @@ Focus on parser logic (`EbaySearchParser`, `EbayListingParser`) with AngleSharp 
 - Parsers return `null` or default values for missing data rather than throwing
 - `try/catch` blocks are used sparingly (e.g., shipping price parsing)
 - The `WebscraperClient.RunJobAsync()` polls every 5 seconds until job completes
+- **Fail Fast for External Services**: Do NOT swallow errors from external services like Pinecone, OpenAI, etc. Let exceptions propagate so issues are caught early rather than silently degrading functionality. If a service is optional, configure it to not be used at all rather than catching and ignoring errors at runtime.
 
 ### Anti-Patterns to Avoid
 - Don't parse prices with culture-specific decimal separators without normalization
 - Don't assume all listings have descriptions or item specifics
 - Don't skip duplicate detection in paginated searches (use `HashSet<string>` for seen IDs)
+
+## Database Management
+
+### CRITICAL: Never Delete the Database
+The SQLite database (`etl.db`) contains valuable production data. **NEVER** suggest deleting or recreating the database to fix schema issues. Always use migrations instead.
+
+### Migration System
+This project uses a custom SQL migration system located in `AIOMarketMaker.Etl/Data/Migrations/`:
+- Migrations are plain `.sql` files with sequential numbering: `001_InitialCreate.sql`, `002_CreateProductsTable.sql`, etc.
+- The `MigrationRunner` class automatically applies pending migrations on startup
+- Applied migrations are tracked in the `__MigrationHistory` table
+
+### Adding New Tables/Schema Changes
+When adding new EF Core entities or modifying the schema:
+1. Create the model class in `AIOMarketMaker.Etl/Data/Models/`
+2. Add the `DbSet<T>` to `EtlDbContext`
+3. Configure the entity in `OnModelCreating()`
+4. **Create a new migration SQL file** in `Data/Migrations/` with the next sequence number
+5. Use `CREATE TABLE IF NOT EXISTS` and `CREATE INDEX IF NOT EXISTS` for idempotency
+6. The migration will be applied automatically on next application restart
+
+### Example Migration Format
+```sql
+-- Migration: 003_CreateProductStatusHistoryTable
+-- Description: Creates the ProductStatusHistory table
+-- Date: 2025-11-28
+
+CREATE TABLE IF NOT EXISTS ProductStatusHistory (
+    Id INTEGER PRIMARY KEY AUTOINCREMENT,
+    -- columns...
+    FOREIGN KEY (ProductId) REFERENCES Products(Id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS IX_ProductStatusHistory_ProductId
+ON ProductStatusHistory (ProductId);
+```

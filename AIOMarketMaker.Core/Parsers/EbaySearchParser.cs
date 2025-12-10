@@ -2,11 +2,11 @@
 using System.Globalization;
 using System.Text.RegularExpressions;
 using System.Web;
-using AIOMarketMaker.Api.Utils;
+using AIOMarketMaker.Core.Utils;
 using AIOMarketMaker.Models.Ebay;
 using AngleSharp.Dom;
 
-namespace AIOMarketMaker.Api.Parsers
+namespace AIOMarketMaker.Core.Parsers
 {
     public interface ISearchParser
     {

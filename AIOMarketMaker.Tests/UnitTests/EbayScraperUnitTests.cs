@@ -1,6 +1,6 @@
-﻿using AIOMarketMaker.Api.Parsers;
-using AIOMarketMaker.Api.Services;
-using AIOMarketMaker.Services;
+﻿using AIOMarketMaker.Core.Parsers;
+using AIOMarketMaker.Core.Services;
+using AIOMarketMaker.Core.Services;
 using AIOMarketMaker.Tests.Utils;
 using AngleSharp;
 using AngleSharp.Dom;

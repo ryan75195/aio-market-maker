@@ -7,7 +7,7 @@ using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 
-namespace AIOMarketMaker.Api.Utils
+namespace AIOMarketMaker.Core.Utils
 {
     public static class StringParsing
     {
