@@ -3,6 +3,7 @@ using AIOMarketMaker.Etl.Data.Models;
 using AIOMarketMaker.Models.Ebay;
 using AIOMarketMaker.Core.Services;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 
@@ -30,15 +31,18 @@ public class JobRunner : IJobRunner
     private readonly EtlDbContext _dbContext;
     private readonly IEbayScraper _ebayScraper;
     private readonly ILogger<JobRunner> _logger;
+    private readonly int _defaultLookbackDays;
 
     public JobRunner(
         EtlDbContext dbContext,
         IEbayScraper ebayScraper,
+        IConfiguration configuration,
         ILogger<JobRunner> logger)
     {
         _dbContext = dbContext;
         _ebayScraper = ebayScraper;
         _logger = logger;
+        _defaultLookbackDays = configuration.GetValue<int>("Scraping:DefaultLookbackDays", 90);
     }
 
     public async Task<JobRunResult> RunJob(int jobId, CancellationToken ct = default)
@@ -141,11 +145,11 @@ public class JobRunner : IJobRunner
         return allResults;
     }
 
-    private static int CalculateLookbackDays(DateTime? lastRunUtc)
+    private int CalculateLookbackDays(DateTime? lastRunUtc)
     {
         if (lastRunUtc == null)
         {
-            return 90; // First run: look back 90 days
+            return _defaultLookbackDays;
         }
 
         var daysSinceLastRun = (int)Math.Ceiling((DateTime.UtcNow - lastRunUtc.Value).TotalDays);

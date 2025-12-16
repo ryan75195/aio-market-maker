@@ -16,18 +16,14 @@ namespace AIOMarketMaker.Core.Services
 
         public string BuildSearchUrl(string query, bool sold, int page, Condition condition, BuyingFormat buyingFormat)
         {
-            var flags = $"{(sold ? "&LH_Sold=1" : string.Empty)}" +
-                        $"{(sold ? "&LH_Complete=1" : string.Empty)}" +
-
-                        $"{(buyingFormat == BuyingFormat.BUY_NOW ? $"&LH_BIN=1" : string.Empty)}" +
-                        $"{(buyingFormat == BuyingFormat.AUCTION ? $"&LH_Auction=1" : string.Empty)}" +
-                        $"{(buyingFormat == BuyingFormat.ALL ? $"&LH_All=1" : string.Empty)}" +
-
-                        $"{(condition != null ? $"&LH_ItemCondition={this.GetConditionValue(condition)}" : string.Empty)}";
+            var flags = $"{(sold ? "&LH_Sold=1&LH_Complete=1" : string.Empty)}" +
+                        $"{(buyingFormat == BuyingFormat.BUY_NOW ? "&LH_BIN=1" : string.Empty)}" +
+                        $"{(buyingFormat == BuyingFormat.AUCTION ? "&LH_Auction=1" : string.Empty)}" +
+                        $"{(condition != Condition.NULL ? $"&LH_ItemCondition={this.GetConditionValue(condition)}" : string.Empty)}";
 
 
             return $"{BaseSearchUrl}?_nkw={HttpUtility.UrlEncode(query)}{flags}" +
-                   $"&_pgn={page}&_ipg=240&LH_TitleDesc=1";
+                   $"&_pgn={page}&_ipg=240&LH_TitleDesc=0";
         }
 
         private int GetConditionValue(Condition condition)

@@ -1,6 +1,9 @@
 {
   "StorageConnectionString": "DefaultEndpointsProtocol=https;AccountName=webscraperstorageacc;AccountKey=zio92liWbgYZN9oS/L65JV2RZp21eXanu19X1G+ioDO7UI0qAMj5wAICuaSPwOcwnM+fk4Y3pvgs+AStZmZOHg==;EndpointSuffix=core.windows.net",
-  "DatabasePath": "E:\\Dev\\source\\repos\\AIOMarketMaker\\AIOMarketMaker.Etl\\etl.db",
+  "DatabasePath": "C:\\Users\\ryan7\\source\\repos\\AIOMarketMaker\\AIOMarketMaker.Etl\\etl.db",
+  "Scraping": {
+    "DefaultLookbackDays": 180
+  },
   "OpenAi": {
     "ApiKey": "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",
     "Model": "gpt-4o-mini",
