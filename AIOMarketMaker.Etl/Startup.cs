@@ -73,8 +73,12 @@ namespace AIOMarketMaker.Etl
                     services.AddSingleton<IEbayScraper, EbayScraper>();
 
                     // HttpClient for WebscraperClient
+                    var scraperBaseUrl = configuration.GetValue<string>("ScraperApi:BaseUrl") ?? "http://localhost:7126";
+                    var scraperApiKey = configuration.GetValue<string>("ScraperApi:ApiKey") ?? "";
+
+                    services.AddSingleton(new ScraperApiConfig(scraperBaseUrl, scraperApiKey));
                     services.AddHttpClient<IWebscraperClient, WebscraperClient>(client => {
-                        client.BaseAddress = new Uri("http://localhost:7126");
+                        client.BaseAddress = new Uri(scraperBaseUrl);
                     });
 
                     // Job runner

@@ -7,6 +7,8 @@ using Microsoft.Extensions.Logging;       // JobEntity, JobItemEntity
 
 namespace AIOMarketMaker.Core.Services
 {
+    public record ScraperApiConfig(string BaseUrl, string ApiKey);
+
     public interface IWebscraperClient
     {
         Task<StartResponse> NewJobAsync(
@@ -32,12 +34,23 @@ namespace AIOMarketMaker.Core.Services
     public class WebscraperClient : IWebscraperClient
     {
         private readonly HttpClient _http;
-        private ILogger<WebscraperClient> _logger;
+        private readonly ILogger<WebscraperClient> _logger;
+        private readonly IJobRepository _jobRepository;
+        private readonly string _apiKey;
 
-        public WebscraperClient(HttpClient http, ILogger<WebscraperClient> logger)
+        public WebscraperClient(HttpClient http, ScraperApiConfig config, IJobRepository jobRepository, ILogger<WebscraperClient> logger)
         {
             _http = http ?? throw new ArgumentNullException(nameof(http));
+            _jobRepository = jobRepository ?? throw new ArgumentNullException(nameof(jobRepository));
             _logger = logger;
+            _apiKey = config?.ApiKey ?? "";
+        }
+
+        private string AppendApiKey(string uri)
+        {
+            if (string.IsNullOrEmpty(_apiKey)) return uri;
+            var separator = uri.Contains("?") ? "&" : "?";
+            return $"{uri}{separator}code={Uri.EscapeDataString(_apiKey)}";
         }
 
         public async Task<IEnumerable<JobItemEntity>> RunJobAsync(IEnumerable<string> urls)
@@ -73,7 +86,7 @@ namespace AIOMarketMaker.Core.Services
             CancellationToken ct = default)
         {
             var req = new StartRequest(urls.ToArray(), null);
-            var resp = await _http.PostAsJsonAsync("api/NewJob", req, ct);
+            var resp = await _http.PostAsJsonAsync(AppendApiKey("api/NewJob"), req, ct);
             resp.EnsureSuccessStatusCode();
 
             var body = await resp.Content.ReadFromJsonAsync<StartResponse>(cancellationToken: ct);
@@ -81,8 +94,7 @@ namespace AIOMarketMaker.Core.Services
         }
 
         /// <summary>
-        /// Kicks off a job and waits up to <paramref name="timeout"/> for it to finish,
-        /// then returns the HTML of the first page.
+        /// Kicks off a job and waits for it to finish, then returns the HTML of the first page.
         /// </summary>
         public async Task<string> GetPageHtmlAsync(
             string url,
@@ -90,13 +102,48 @@ namespace AIOMarketMaker.Core.Services
             TimeSpan? timeout = null,
             CancellationToken ct = default)
         {
-            var req = new StartRequest([url], null);
+            // Start a new job for this single URL
+            var job = await NewJobAsync(new[] { url }, proxies, ct);
+            var jobId = job.JobId;
 
-            var resp = await _http.PostAsJsonAsync("api/GetPageHtml", req, ct);
-            resp.EnsureSuccessStatusCode();
+            // Poll until complete
+            var jobStatus = JobStatusType.Pending;
+            while (jobStatus != JobStatusType.Success && jobStatus != JobStatusType.Failure)
+            {
+                ct.ThrowIfCancellationRequested();
+                await Task.Delay(2000, ct);
 
-            // API returns raw HTML
-            return await resp.Content.ReadAsStringAsync(ct);
+                var currentStatus = await GetStatusAsync(jobId, ct);
+                if (currentStatus != null)
+                {
+                    _logger.LogDebug("Job {JobId} status: {Status}", jobId, currentStatus.Status);
+                    jobStatus = currentStatus.Status;
+                }
+            }
+
+            if (jobStatus == JobStatusType.Failure)
+            {
+                throw new InvalidOperationException($"Scrape job {jobId} failed");
+            }
+
+            // Get results and fetch HTML from blob storage
+            var results = await GetResultsAsync(jobId, ct);
+            var firstResult = results.FirstOrDefault();
+
+            if (firstResult == null || string.IsNullOrEmpty(firstResult.Url))
+            {
+                throw new InvalidOperationException($"No results returned for job {jobId}");
+            }
+
+            // Fetch HTML from blob storage using the job repository
+            var html = await _jobRepository.GetFileContentsAsync(jobId, firstResult.Url, ct);
+
+            if (string.IsNullOrEmpty(html))
+            {
+                throw new InvalidOperationException($"No HTML content in blob for job {jobId}");
+            }
+
+            return html;
         }
 
         /// <summary>
@@ -104,7 +151,7 @@ namespace AIOMarketMaker.Core.Services
         /// </summary>
         public async Task<JobEntity?> GetStatusAsync(string jobId, CancellationToken ct = default)
         {
-            var uri = $"api/GetStatus?jobId={Uri.EscapeDataString(jobId)}";
+            var uri = AppendApiKey($"api/GetStatus?jobId={Uri.EscapeDataString(jobId)}");
             var resp = await _http.GetAsync(uri, ct);
 
             if (resp.StatusCode == System.Net.HttpStatusCode.NotFound)
@@ -131,7 +178,7 @@ namespace AIOMarketMaker.Core.Services
             string jobId,
             CancellationToken ct = default)
         {
-            var uri = $"api/GetResults?jobId={Uri.EscapeDataString(jobId)}";
+            var uri = AppendApiKey($"api/GetResults?jobId={Uri.EscapeDataString(jobId)}");
             var resp = await _http.GetAsync(uri, ct);
             resp.EnsureSuccessStatusCode();
 
