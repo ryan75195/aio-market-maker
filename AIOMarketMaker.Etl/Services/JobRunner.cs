@@ -1,5 +1,5 @@
-using AIOMarketMaker.Etl.Data;
-using AIOMarketMaker.Etl.Data.Models;
+using AIOMarketMaker.Core.Data;
+using AIOMarketMaker.Core.Data.Models;
 using AIOMarketMaker.Models.Ebay;
 using AIOMarketMaker.Core.Services;
 using Microsoft.EntityFrameworkCore;

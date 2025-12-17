@@ -1,8 +1,8 @@
-using AIOMarketMaker.Etl.Data.Models;
+using AIOMarketMaker.Core.Data.Models;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 
-namespace AIOMarketMaker.Etl.Data;
+namespace AIOMarketMaker.Core.Data;
 
 public class EtlDbContext : DbContext
 {

@@ -1,4 +1,4 @@
-namespace AIOMarketMaker.Etl.Data.Models;
+namespace AIOMarketMaker.Core.Data.Models;
 
 /// <summary>
 /// Tracks the history of listing status changes.
