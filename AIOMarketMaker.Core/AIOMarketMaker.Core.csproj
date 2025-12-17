@@ -9,7 +9,16 @@
   <ItemGroup>
     <PackageReference Include="AngleSharp" Version="1.3.0" />
     <PackageReference Include="HdbscanSharp" Version="3.0.1" />
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.0" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="8.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="9.0.4" />
     <PackageReference Include="OpenAI" Version="2.8.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="Data\Migrations\*.sql">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
   </ItemGroup>
 
   <ItemGroup>

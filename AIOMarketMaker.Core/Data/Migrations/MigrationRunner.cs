@@ -1,7 +1,7 @@
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Logging;
 
-namespace AIOMarketMaker.Etl.Data.Migrations;
+namespace AIOMarketMaker.Core.Data.Migrations;
 
 /// <summary>
 /// Simple SQL migration runner for SQLite.

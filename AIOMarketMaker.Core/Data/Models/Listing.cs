@@ -1,4 +1,4 @@
-namespace AIOMarketMaker.Etl.Data.Models;
+namespace AIOMarketMaker.Core.Data.Models;
 
 /// <summary>
 /// Raw eBay listing data as scraped from the website.
