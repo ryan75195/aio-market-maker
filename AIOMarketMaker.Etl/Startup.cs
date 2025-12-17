@@ -78,6 +78,13 @@ namespace AIOMarketMaker.Etl
                     services.AddSingleton<IJobRepository, AzureJobRepository>();
                     services.AddSingleton<IEbayScraper, EbayScraper>();
 
+                    // Embedding service
+                    var openAiKey = configuration.GetValue<string>("OpenAi:ApiKey") ?? "";
+                    var embeddingModel = configuration.GetValue<string>("Embedding:Model") ?? "text-embedding-3-small";
+                    var embeddingDimensions = configuration.GetValue<int>("Embedding:Dimensions", 1536);
+                    services.AddSingleton(new EmbeddingConfig(openAiKey, embeddingModel, embeddingDimensions));
+                    services.AddSingleton<IEmbeddingService, EmbeddingService>();
+
                     // HttpClient for WebscraperClient
                     var scraperBaseUrl = configuration.GetValue<string>("ScraperApi:BaseUrl") ?? "http://localhost:7126";
                     var scraperApiKey = configuration.GetValue<string>("ScraperApi:ApiKey") ?? "";
