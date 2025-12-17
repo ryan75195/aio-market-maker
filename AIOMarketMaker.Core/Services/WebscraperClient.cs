@@ -102,45 +102,57 @@ namespace AIOMarketMaker.Core.Services
             TimeSpan? timeout = null,
             CancellationToken ct = default)
         {
-            // Start a new job for this single URL
+            var startTime = DateTime.UtcNow;
             var job = await NewJobAsync(new[] { url }, proxies, ct);
-            var jobId = job.JobId;
 
-            // Poll until complete
+            // Poll until complete (every 2s, but only log every 60s)
             var jobStatus = JobStatusType.Pending;
+            var lastLogTime = startTime;
             while (jobStatus != JobStatusType.Success && jobStatus != JobStatusType.Failure)
             {
                 ct.ThrowIfCancellationRequested();
                 await Task.Delay(2000, ct);
 
-                var currentStatus = await GetStatusAsync(jobId, ct);
+                var currentStatus = await GetStatusAsync(job.JobId, ct);
                 if (currentStatus != null)
                 {
-                    _logger.LogDebug("Job {JobId} status: {Status}", jobId, currentStatus.Status);
                     jobStatus = currentStatus.Status;
+
+                    // Log every 60 seconds if still running
+                    if ((DateTime.UtcNow - lastLogTime).TotalSeconds >= 60)
+                    {
+                        var elapsed = (DateTime.UtcNow - startTime).TotalSeconds;
+                        _logger.LogInformation("    Still waiting... ({Elapsed:F0}s elapsed)", elapsed);
+                        lastLogTime = DateTime.UtcNow;
+                    }
                 }
             }
 
+            var totalTime = (DateTime.UtcNow - startTime).TotalSeconds;
+
             if (jobStatus == JobStatusType.Failure)
             {
-                throw new InvalidOperationException($"Scrape job {jobId} failed");
+                _logger.LogError("    Failed after {Elapsed:F0}s", totalTime);
+                throw new InvalidOperationException($"Scrape job {job.JobId} failed");
             }
 
+            _logger.LogInformation("    Done ({Elapsed:F0}s)", totalTime);
+
             // Get results and fetch HTML from blob storage
-            var results = await GetResultsAsync(jobId, ct);
+            var results = await GetResultsAsync(job.JobId, ct);
             var firstResult = results.FirstOrDefault();
 
             if (firstResult == null || string.IsNullOrEmpty(firstResult.Url))
             {
-                throw new InvalidOperationException($"No results returned for job {jobId}");
+                throw new InvalidOperationException($"No results returned for job {job.JobId}");
             }
 
             // Fetch HTML from blob storage using the job repository
-            var html = await _jobRepository.GetFileContentsAsync(jobId, firstResult.Url, ct);
+            var html = await _jobRepository.GetFileContentsAsync(job.JobId, firstResult.Url, ct);
 
             if (string.IsNullOrEmpty(html))
             {
-                throw new InvalidOperationException($"No HTML content in blob for job {jobId}");
+                throw new InvalidOperationException($"No HTML content in blob for job {job.JobId}");
             }
 
             return html;

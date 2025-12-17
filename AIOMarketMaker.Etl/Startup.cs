@@ -3,6 +3,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using Serilog;
 using AIOMarketMaker.Core.Services;
 using ScraperWorker.Services;
@@ -31,6 +32,11 @@ namespace AIOMarketMaker.Etl
                           .AddJsonFile("appsettings.json", optional: true, reloadOnChange: true)
                           .AddJsonFile("local.settings.json", optional: true, reloadOnChange: true)
                           .AddEnvironmentVariables();
+                })
+                .ConfigureLogging(logging =>
+                {
+                    // Suppress noisy HttpClient logs
+                    logging.AddFilter("System.Net.Http.HttpClient", LogLevel.Warning);
                 })
                 .UseSerilog()
                 .ConfigureServices((hostingCtx, services) =>

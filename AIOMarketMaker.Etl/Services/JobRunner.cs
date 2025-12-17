@@ -102,8 +102,7 @@ public class JobRunner : IJobRunner
         var endDate = DateTime.UtcNow;
         var startDate = endDate.AddDays(-lookbackDays);
 
-        _logger.LogInformation("Searching sold listings for '{SearchTerm}' ({LookbackDays} day lookback)",
-            job.SearchTerm, lookbackDays);
+        _logger.LogInformation("Searching sold listings ({LookbackDays} day lookback)...", lookbackDays);
 
         var soldResults = await _ebayScraper.SearchSoldListings(
             job.SearchTerm,
@@ -120,10 +119,8 @@ public class JobRunner : IJobRunner
             }
         }
 
-        _logger.LogInformation("Found {SoldCount} sold listings", soldResults.Count());
-
         // Search ACTIVE listings
-        _logger.LogInformation("Searching active listings for '{SearchTerm}'", job.SearchTerm);
+        _logger.LogInformation("Searching active listings...");
 
         var activeResults = await _ebayScraper.SearchActiveListings(
             job.SearchTerm,
@@ -139,8 +136,7 @@ public class JobRunner : IJobRunner
             }
         }
 
-        _logger.LogInformation("Found {ActiveCount} active listings", activeResults.Count());
-        _logger.LogInformation("Total unique listings: {TotalCount}", allResults.Count);
+        _logger.LogInformation("Search complete: {TotalCount} unique listings found", allResults.Count);
 
         return allResults;
     }
