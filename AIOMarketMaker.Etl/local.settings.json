@@ -4,6 +4,10 @@
   "Scraping": {
     "DefaultLookbackDays": 180
   },
+  "ScraperApi": {
+    "BaseUrl": "https://scraper-api-gnu52mt6cve2q.azurewebsites.net",
+    "ApiKey": "TmWkgbOu6jzMVLs668aulN5fDFw9qEe_FDFTjae3fnbvAzFujKGhlQ=="
+  },
   "OpenAi": {
     "ApiKey": "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",
     "Model": "gpt-4o-mini",
