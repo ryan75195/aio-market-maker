@@ -85,6 +85,14 @@ namespace AIOMarketMaker.Etl
                     services.AddSingleton(new EmbeddingConfig(openAiKey, embeddingModel, embeddingDimensions));
                     services.AddSingleton<IEmbeddingService, EmbeddingService>();
 
+                    // Clustering service
+                    var clusteringConfig = new ClusteringConfig(
+                        configuration.GetValue<int>("Clustering:MinClusterSize", 5),
+                        configuration.GetValue<int>("Clustering:MinPoints", 3)
+                    );
+                    services.AddSingleton(clusteringConfig);
+                    services.AddSingleton<IClusteringService, ClusteringService>();
+
                     // HttpClient for WebscraperClient
                     var scraperBaseUrl = configuration.GetValue<string>("ScraperApi:BaseUrl") ?? "http://localhost:7126";
                     var scraperApiKey = configuration.GetValue<string>("ScraperApi:ApiKey") ?? "";
