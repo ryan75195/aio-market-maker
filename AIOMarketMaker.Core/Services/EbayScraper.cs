@@ -53,12 +53,17 @@ namespace AIOMarketMaker.Core.Services
 
             for (int page = 1; results.Count < itemLimit; page++)
             {
+                _logger.LogInformation("Fetching active listings page {Page} for '{Query}'...", page, query);
+
                 var items = await GetProductsFromPageAsync(query, page, sold: false, condition, buyingFormat);
                 var newItems = items.Where(i => seenIds.Add(i.ListingId)).ToList();
                 if (!newItems.Any()) break;
                 results.AddRange(newItems);
+
+                _logger.LogInformation("  Found {Count} listings (total: {Total})", newItems.Count, results.Count);
             }
 
+            _logger.LogInformation("Active search complete: {Count} listings found", results.Count);
             return results.Take(itemLimit);
         }
 
@@ -69,14 +74,13 @@ namespace AIOMarketMaker.Core.Services
             DateTime startDate,
             DateTime endDate)
         {
-            _logger.LogInformation("Searching sold listings: query=\"{Query}\", dateRange={Start:d} to {End:d}",
-                query, startDate, endDate);
-
             var results = new List<EbayProductSummary>();
             var seenIds = new HashSet<string>();
 
             for (int page = 1; ; page++)
             {
+                _logger.LogInformation("Fetching sold listings page {Page} for '{Query}'...", page, query);
+
                 var allPageItems = (await GetProductsFromPageAsync(
                         query, page, sold: true, condition, buyingFormat)).ToList();
 
@@ -86,15 +90,13 @@ namespace AIOMarketMaker.Core.Services
 
                 var newItems = pageItems.Where(p => seenIds.Add(p.ListingId)).ToList();
 
-                _logger.LogDebug("Page {Page}: {Total} items, {Filtered} in date range, {New} new unique",
-                    page, allPageItems.Count, pageItems.Count, newItems.Count);
-
                 if (newItems.Count == 0) break;
 
                 results.AddRange(newItems);
+                _logger.LogInformation("  Found {Count} listings (total: {Total})", newItems.Count, results.Count);
             }
 
-            _logger.LogInformation("Search complete: found {Count} sold listings", results.Count);
+            _logger.LogInformation("Sold search complete: {Count} listings found", results.Count);
             return results;
         }
 
@@ -190,13 +192,11 @@ namespace AIOMarketMaker.Core.Services
         private async Task<IEnumerable<EbayProductSummary>> GetProductsFromPageAsync(string query, int pageNumber, bool sold, Condition condition, BuyingFormat buyingFormat)
         {
             var urlString = _url.BuildSearchUrl(query, sold, pageNumber, condition, buyingFormat);
-            _logger.LogInformation("[GetProductsFromPage] Fetching URL: {Url}", urlString);
-
             var page = await _fetcher.GetPageHtmlAsync(urlString);
 
             if (string.IsNullOrEmpty(page))
             {
-                _logger.LogWarning("[GetProductsFromPage] Received null or empty HTML!");
+                _logger.LogWarning("Received empty page for '{Query}' page {Page}", query, pageNumber);
                 return Enumerable.Empty<EbayProductSummary>();
             }
 
@@ -211,17 +211,10 @@ namespace AIOMarketMaker.Core.Services
                 if (itemLinks.Length > 10)
                 {
                     _logger.LogError(
-                        "========== PARSER BROKEN ==========\n" +
-                        "EbaySearchParser returned 0 products but page contains {LinkCount} listing links.\n" +
-                        "eBay has likely changed their HTML structure.\n" +
-                        "The parser in EbaySearchParser.cs needs to be updated.\n" +
-                        "URL: {Url}\n" +
-                        "===================================",
-                        itemLinks.Length, urlString);
+                        "PARSER BROKEN: Page has {LinkCount} listing links but parser returned 0. eBay HTML structure may have changed.",
+                        itemLinks.Length);
                 }
             }
-
-            _logger.LogDebug("[GetProductsFromPage] Parser returned {Count} products from {Url}", productList.Count, urlString);
 
             return productList;
         }

@@ -1,7 +1,7 @@
 using AIOMarketMaker.Core.Parsers;
 using AIOMarketMaker.Core.Services;
-using AIOMarketMaker.Etl.Data;
-using AIOMarketMaker.Etl.Data.Models;
+using AIOMarketMaker.Core.Data;
+using AIOMarketMaker.Core.Data.Models;
 using AngleSharp;
 using AngleSharp.Dom;
 using Microsoft.EntityFrameworkCore;
