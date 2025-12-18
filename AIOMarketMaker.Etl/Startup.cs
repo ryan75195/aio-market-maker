@@ -3,12 +3,13 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using Serilog;
 using AIOMarketMaker.Core.Services;
 using ScraperWorker.Services;
 using AIOMarketMaker.Core.Parsers;
-using AIOMarketMaker.Etl.Data;
-using AIOMarketMaker.Etl.Data.Migrations;
+using AIOMarketMaker.Core.Data;
+using AIOMarketMaker.Core.Data.Migrations;
 using AIOMarketMaker.Etl.Services;
 using Azure.Data.Tables;
 using Azure.Storage.Blobs;
@@ -31,6 +32,11 @@ namespace AIOMarketMaker.Etl
                           .AddJsonFile("appsettings.json", optional: true, reloadOnChange: true)
                           .AddJsonFile("local.settings.json", optional: true, reloadOnChange: true)
                           .AddEnvironmentVariables();
+                })
+                .ConfigureLogging(logging =>
+                {
+                    // Suppress noisy HttpClient logs
+                    logging.AddFilter("System.Net.Http.HttpClient", LogLevel.Warning);
                 })
                 .UseSerilog()
                 .ConfigureServices((hostingCtx, services) =>
@@ -72,9 +78,28 @@ namespace AIOMarketMaker.Etl
                     services.AddSingleton<IJobRepository, AzureJobRepository>();
                     services.AddSingleton<IEbayScraper, EbayScraper>();
 
+                    // Embedding service
+                    var openAiKey = configuration.GetValue<string>("OpenAi:ApiKey") ?? "";
+                    var embeddingModel = configuration.GetValue<string>("Embedding:Model") ?? "text-embedding-3-small";
+                    var embeddingDimensions = configuration.GetValue<int>("Embedding:Dimensions", 1536);
+                    services.AddSingleton(new EmbeddingConfig(openAiKey, embeddingModel, embeddingDimensions));
+                    services.AddSingleton<IEmbeddingService, EmbeddingService>();
+
+                    // Clustering service
+                    var clusteringConfig = new ClusteringConfig(
+                        configuration.GetValue<int>("Clustering:MinClusterSize", 5),
+                        configuration.GetValue<int>("Clustering:MinPoints", 3)
+                    );
+                    services.AddSingleton(clusteringConfig);
+                    services.AddSingleton<IClusteringService, ClusteringService>();
+
                     // HttpClient for WebscraperClient
+                    var scraperBaseUrl = configuration.GetValue<string>("ScraperApi:BaseUrl") ?? "http://localhost:7126";
+                    var scraperApiKey = configuration.GetValue<string>("ScraperApi:ApiKey") ?? "";
+
+                    services.AddSingleton(new ScraperApiConfig(scraperBaseUrl, scraperApiKey));
                     services.AddHttpClient<IWebscraperClient, WebscraperClient>(client => {
-                        client.BaseAddress = new Uri("http://localhost:7126");
+                        client.BaseAddress = new Uri(scraperBaseUrl);
                     });
 
                     // Job runner

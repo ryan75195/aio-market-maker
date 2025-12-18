@@ -1,8 +1,9 @@
-using AIOMarketMaker.Etl.Data;
-using AIOMarketMaker.Etl.Data.Models;
+using AIOMarketMaker.Core.Data;
+using AIOMarketMaker.Core.Data.Models;
 using AIOMarketMaker.Models.Ebay;
 using AIOMarketMaker.Core.Services;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 
@@ -30,15 +31,18 @@ public class JobRunner : IJobRunner
     private readonly EtlDbContext _dbContext;
     private readonly IEbayScraper _ebayScraper;
     private readonly ILogger<JobRunner> _logger;
+    private readonly int _defaultLookbackDays;
 
     public JobRunner(
         EtlDbContext dbContext,
         IEbayScraper ebayScraper,
+        IConfiguration configuration,
         ILogger<JobRunner> logger)
     {
         _dbContext = dbContext;
         _ebayScraper = ebayScraper;
         _logger = logger;
+        _defaultLookbackDays = configuration.GetValue<int>("Scraping:DefaultLookbackDays", 90);
     }
 
     public async Task<JobRunResult> RunJob(int jobId, CancellationToken ct = default)
@@ -98,8 +102,7 @@ public class JobRunner : IJobRunner
         var endDate = DateTime.UtcNow;
         var startDate = endDate.AddDays(-lookbackDays);
 
-        _logger.LogInformation("Searching sold listings for '{SearchTerm}' ({LookbackDays} day lookback)",
-            job.SearchTerm, lookbackDays);
+        _logger.LogInformation("Searching sold listings ({LookbackDays} day lookback)...", lookbackDays);
 
         var soldResults = await _ebayScraper.SearchSoldListings(
             job.SearchTerm,
@@ -116,10 +119,8 @@ public class JobRunner : IJobRunner
             }
         }
 
-        _logger.LogInformation("Found {SoldCount} sold listings", soldResults.Count());
-
         // Search ACTIVE listings
-        _logger.LogInformation("Searching active listings for '{SearchTerm}'", job.SearchTerm);
+        _logger.LogInformation("Searching active listings...");
 
         var activeResults = await _ebayScraper.SearchActiveListings(
             job.SearchTerm,
@@ -135,17 +136,16 @@ public class JobRunner : IJobRunner
             }
         }
 
-        _logger.LogInformation("Found {ActiveCount} active listings", activeResults.Count());
-        _logger.LogInformation("Total unique listings: {TotalCount}", allResults.Count);
+        _logger.LogInformation("Search complete: {TotalCount} unique listings found", allResults.Count);
 
         return allResults;
     }
 
-    private static int CalculateLookbackDays(DateTime? lastRunUtc)
+    private int CalculateLookbackDays(DateTime? lastRunUtc)
     {
         if (lastRunUtc == null)
         {
-            return 90; // First run: look back 90 days
+            return _defaultLookbackDays;
         }
 
         var daysSinceLastRun = (int)Math.Ceiling((DateTime.UtcNow - lastRunUtc.Value).TotalDays);
