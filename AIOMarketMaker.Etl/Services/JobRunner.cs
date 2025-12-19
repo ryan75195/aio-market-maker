@@ -70,15 +70,16 @@ public class JobRunner : IJobRunner
             {
                 _logger.LogInformation("No new listings for job {JobId}, skipping fetch", job.Id);
                 await UpdateJobTimestamp(job, ct);
-                return new JobRunResult(job.Id, true, searchResults.Count, 0, null);
+                return new JobRunResult(job.Id, true, searchResults.Count(), 0, null);
             }
 
             var ebayProducts = await FetchEbayProducts(newSearchResultIds);
             var listings = await SaveEbayListings(ebayProducts, job.Id, ct);
+            
             await SaveInitialStatusHistory(listings, ct);
             await UpdateJobTimestamp(job, ct);
 
-            return new JobRunResult(job.Id, true, searchResults.Count, newSearchResultIds.Length, null);
+            return new JobRunResult(job.Id, true, searchResults.Count(), newSearchResultIds.Length, null);
         }
         catch (Exception ex)
         {
@@ -87,9 +88,7 @@ public class JobRunner : IJobRunner
         }
     }
 
-    #region Pipeline Steps
-
-    private async Task<List<IEbayProductSummary>> SearchEbay(ScrapeJob job, CancellationToken ct)
+    private async Task<IEnumerable<IEbayProductSummary>> SearchEbay(ScrapeJob job, CancellationToken ct)
     {
         var allResults = new List<IEbayProductSummary>();
         var seenIds = new HashSet<string>();
@@ -154,7 +153,7 @@ public class JobRunner : IJobRunner
 
     private async Task<string[]> FilterNewListings(
         int jobId,
-        List<IEbayProductSummary> searchResults,
+        IEnumerable<IEbayProductSummary> searchResults,
         CancellationToken ct)
     {
         var existingListingIds = (await _dbContext.Listings
@@ -169,12 +168,12 @@ public class JobRunner : IJobRunner
             .ToArray();
 
         _logger.LogInformation("{NewCount} new listings to fetch (skipping {ExistingCount} existing)",
-            newListingIds.Length, searchResults.Count - newListingIds.Length);
+            newListingIds.Length, searchResults.Count() - newListingIds.Length);
 
         return newListingIds;
     }
 
-    private async Task<List<EbayProduct>> FetchEbayProducts(string[] listingIds)
+    private async Task<IEnumerable<EbayProduct>> FetchEbayProducts(string[] listingIds)
     {
         var items = await _ebayScraper.GetItemsFromListings(listingIds);
         var ebayProducts = items.ToList();
@@ -182,8 +181,8 @@ public class JobRunner : IJobRunner
         return ebayProducts;
     }
 
-    private async Task<List<Listing>> SaveEbayListings(
-        List<EbayProduct> ebayProducts,
+    private async Task<IEnumerable<Listing>> SaveEbayListings(
+        IEnumerable<EbayProduct> ebayProducts,
         int jobId,
         CancellationToken ct)
     {
@@ -199,7 +198,7 @@ public class JobRunner : IJobRunner
         return newListings;
     }
 
-    private async Task SaveInitialStatusHistory(List<Listing> listings, CancellationToken ct)
+    private async Task SaveInitialStatusHistory(IEnumerable<Listing> listings, CancellationToken ct)
     {
         var historyRecords = listings.Select(l => new ListingStatusHistory
         {
@@ -223,10 +222,6 @@ public class JobRunner : IJobRunner
         await _dbContext.SaveChangesAsync(ct);
     }
 
-    #endregion
-
-    #region Mappers
-
     private static Listing MapToListing(EbayProduct ebayProduct, int scrapeJobId)
     {
         return new Listing
@@ -249,6 +244,4 @@ public class JobRunner : IJobRunner
             CreatedUtc = DateTime.UtcNow
         };
     }
-
-    #endregion
 }
