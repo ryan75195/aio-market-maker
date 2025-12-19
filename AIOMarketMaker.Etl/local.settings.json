@@ -17,14 +17,14 @@
     "BatchSize": 50
   },
   "Embedding": {
-    "Model": "text-embedding-3-small",
+    "Model": "text-embedding-3-large",
     "MaxBatchSize": 100,
-    "Dimensions": 1536,
+    "Dimensions": 3072,
     "MaxConcurrency": 25
   },
   "Pinecone": {
     "ApiKey": "pcsk_6MaG8A_MFDo28wskHvPRyYyj2DLpdbXVQUnWkoMgpM9MXQFBTYKFF6wZ2NFtdde6V5k3Yb",
-    "IndexName": "arbitrage-products",
+    "IndexName": "arbitrage",
     "TopK": 5,
     "SimilarityThreshold": 0.8,
     "MaxSearchConcurrency": 50
