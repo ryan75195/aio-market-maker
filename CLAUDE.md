@@ -124,6 +124,25 @@ Both `AIOMarketMaker.Api` and `AIOMarketMaker.Etl` require `local.settings.json`
 
 ## Testing Strategy
 
+### Test Conventions
+- Use **NUnit** as the test framework with **Moq** for mocking
+- Name tests using `Should_do_something_when_condition` format (e.g., `Should_return_zero_counts_when_indexing_empty_list`)
+- **Separate test levels into different files**:
+  - `{Service}Tests.cs` - Unit tests (no external dependencies)
+  - `{Service}IntegrationTests.cs` - Integration tests requiring real services
+- Mark integration tests with `[Category("Integration")]` and `[Explicit]` attributes
+- Use `Assert.Multiple()` to group related assertions
+
+### Test Organization
+```
+AIOMarketMaker.Tests/
+├── UnitTests/           # Isolated unit tests with mocks
+├── ContractTests/       # Tests against saved HTML snapshots
+├── Integration/         # End-to-end tests with real services
+├── Utils/               # Test helpers (PageBuilder, Assertions)
+└── Data/                # Test data files
+```
+
 ### Contract Tests
 HTML structure can change. Contract tests (`ContractTests/`) validate that parsers still work with saved HTML snapshots of different listing types:
 - `ActiveBuyItNowListing.html`
@@ -155,6 +174,8 @@ Focus on parser logic (`EbaySearchParser`, `EbayListingParser`) with AngleSharp 
 - Don't parse prices with culture-specific decimal separators without normalization
 - Don't assume all listings have descriptions or item specifics
 - Don't skip duplicate detection in paginated searches (use `HashSet<string>` for seen IDs)
+- Don't use `#region` / `#endregion` separators in code
+- Don't use `List<T>` in function signatures; prefer `IEnumerable<T>` for both inputs and outputs
 
 ## Database Management
 

@@ -33,23 +33,21 @@ public interface ISemanticSearchService
 
 public class SemanticSearchService : ISemanticSearchService
 {
-    private readonly PineconeClient _pinecone;
-    private readonly IndexClient _index;
+    private readonly IPineconeIndexClient _index;
     private readonly IEmbeddingService _embeddingService;
     private readonly PineconeConfig _config;
     private readonly ILogger<SemanticSearchService> _logger;
 
     public SemanticSearchService(
         PineconeConfig config,
+        IPineconeIndexClient index,
         IEmbeddingService embeddingService,
         ILogger<SemanticSearchService> logger)
     {
         _config = config;
+        _index = index;
         _embeddingService = embeddingService;
         _logger = logger;
-
-        _pinecone = new PineconeClient(config.ApiKey);
-        _index = _pinecone.Index(config.IndexName);
     }
 
     public async Task<IndexResult> IndexListingsAsync(
