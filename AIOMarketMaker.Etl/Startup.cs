@@ -93,6 +93,16 @@ namespace AIOMarketMaker.Etl
                     services.AddSingleton(clusteringConfig);
                     services.AddSingleton<IClusteringService, ClusteringService>();
 
+                    // Semantic search service (Pinecone)
+                    var pineconeConfig = new PineconeConfig(
+                        ApiKey: configuration.GetValue<string>("Pinecone:ApiKey") ?? "",
+                        IndexName: configuration.GetValue<string>("Pinecone:IndexName") ?? "arbitrage-products",
+                        TopK: configuration.GetValue<int>("Pinecone:TopK", 10),
+                        UpsertBatchSize: configuration.GetValue<int>("Pinecone:UpsertBatchSize", 100)
+                    );
+                    services.AddSingleton(pineconeConfig);
+                    services.AddSingleton<ISemanticSearchService, SemanticSearchService>();
+
                     // HttpClient for WebscraperClient
                     var scraperBaseUrl = configuration.GetValue<string>("ScraperApi:BaseUrl") ?? "http://localhost:7126";
                     var scraperApiKey = configuration.GetValue<string>("ScraperApi:ApiKey") ?? "";

@@ -6,6 +6,7 @@ using Serilog;
 using AIOMarketMaker.Core.Data;
 using AIOMarketMaker.Core.Data.Migrations;
 using AIOMarketMaker.Core.Services;
+using AIOMarketMaker.Console.Tasks;
 
 namespace AIOMarketMaker.Console;
 
@@ -58,6 +59,10 @@ public static class HostHelper
                 );
                 services.AddSingleton(clusteringConfig);
                 services.AddSingleton<IClusteringService, ClusteringService>();
+
+                // Task system
+                services.AddTaskRunner();
+                services.AddTask<ExampleTask>();
             })
             .Build();
     }
