@@ -371,3 +371,8 @@ FodyWeavers.xsd
 local.settings.json
 appsettings.Development.json
 clusters.txt
+
+# Console task output files
+output.txt
+output_*.txt
+search-test-results.txt

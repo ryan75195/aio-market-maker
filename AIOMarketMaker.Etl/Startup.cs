@@ -101,6 +101,11 @@ namespace AIOMarketMaker.Etl
                         UpsertBatchSize: configuration.GetValue<int>("Pinecone:UpsertBatchSize", 100)
                     );
                     services.AddSingleton(pineconeConfig);
+                    services.AddSingleton<IPineconeIndexClient>(sp =>
+                    {
+                        var config = sp.GetRequiredService<PineconeConfig>();
+                        return new PineconeIndexClientWrapper(config.ApiKey, config.IndexName);
+                    });
                     services.AddSingleton<ISemanticSearchService, SemanticSearchService>();
 
                     // HttpClient for WebscraperClient
