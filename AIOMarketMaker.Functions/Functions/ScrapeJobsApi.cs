@@ -1,0 +1,248 @@
+using Microsoft.Azure.Functions.Worker;
+using Microsoft.Azure.Functions.Worker.Http;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
+using AIOMarketMaker.Core.Data;
+using AIOMarketMaker.Core.Data.Models;
+using System.Net;
+using System.Text.Json;
+
+namespace AIOMarketMaker.Functions.Functions;
+
+public class ScrapeJobsApi
+{
+    private readonly EtlDbContext _dbContext;
+    private readonly ILogger<ScrapeJobsApi> _logger;
+
+    public ScrapeJobsApi(EtlDbContext dbContext, ILogger<ScrapeJobsApi> logger)
+    {
+        _dbContext = dbContext;
+        _logger = logger;
+    }
+
+    /// <summary>
+    /// GET /api/jobs - List all scrape jobs
+    /// </summary>
+    [Function("GetJobs")]
+    public async Task<HttpResponseData> GetJobs(
+        [HttpTrigger(AuthorizationLevel.Function, "get", Route = "jobs")] HttpRequestData req)
+    {
+        var jobs = await _dbContext.ScrapeJobs
+            .Select(j => new
+            {
+                j.Id,
+                j.SearchTerm,
+                j.FilterInstructions,
+                j.IsEnabled,
+                j.LastRunUtc,
+                j.CreatedUtc
+            })
+            .ToListAsync();
+
+        var response = req.CreateResponse(HttpStatusCode.OK);
+        await response.WriteAsJsonAsync(jobs);
+        return response;
+    }
+
+    /// <summary>
+    /// GET /api/jobs/{id} - Get a specific job
+    /// </summary>
+    [Function("GetJob")]
+    public async Task<HttpResponseData> GetJob(
+        [HttpTrigger(AuthorizationLevel.Function, "get", Route = "jobs/{id:int}")] HttpRequestData req,
+        int id)
+    {
+        var job = await _dbContext.ScrapeJobs.FindAsync(id);
+
+        if (job == null)
+        {
+            var notFound = req.CreateResponse(HttpStatusCode.NotFound);
+            await notFound.WriteAsJsonAsync(new { error = $"Job {id} not found" });
+            return notFound;
+        }
+
+        var response = req.CreateResponse(HttpStatusCode.OK);
+        await response.WriteAsJsonAsync(new
+        {
+            job.Id,
+            job.SearchTerm,
+            job.FilterInstructions,
+            job.IsEnabled,
+            job.LastRunUtc,
+            job.CreatedUtc
+        });
+        return response;
+    }
+
+    /// <summary>
+    /// POST /api/jobs - Create a new scrape job
+    /// Body: { "searchTerm": "ps5 console", "filterInstructions": "optional", "isEnabled": true }
+    /// </summary>
+    [Function("CreateJob")]
+    public async Task<HttpResponseData> CreateJob(
+        [HttpTrigger(AuthorizationLevel.Function, "post", Route = "jobs")] HttpRequestData req)
+    {
+        var requestBody = await req.ReadAsStringAsync();
+        var input = JsonSerializer.Deserialize<CreateJobRequest>(requestBody ?? "{}",
+            new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+
+        if (string.IsNullOrWhiteSpace(input?.SearchTerm))
+        {
+            var badRequest = req.CreateResponse(HttpStatusCode.BadRequest);
+            await badRequest.WriteAsJsonAsync(new { error = "searchTerm is required" });
+            return badRequest;
+        }
+
+        var job = new ScrapeJob
+        {
+            SearchTerm = input.SearchTerm,
+            FilterInstructions = input.FilterInstructions,
+            IsEnabled = input.IsEnabled ?? true,
+            CreatedUtc = DateTime.UtcNow
+        };
+
+        _dbContext.ScrapeJobs.Add(job);
+        await _dbContext.SaveChangesAsync();
+
+        _logger.LogInformation("Created scrape job {JobId}: '{SearchTerm}'", job.Id, job.SearchTerm);
+
+        var response = req.CreateResponse(HttpStatusCode.Created);
+        await response.WriteAsJsonAsync(new
+        {
+            job.Id,
+            job.SearchTerm,
+            job.FilterInstructions,
+            job.IsEnabled,
+            job.CreatedUtc
+        });
+        return response;
+    }
+
+    /// <summary>
+    /// PUT /api/jobs/{id} - Update a scrape job
+    /// Body: { "searchTerm": "...", "filterInstructions": "...", "isEnabled": true/false }
+    /// </summary>
+    [Function("UpdateJob")]
+    public async Task<HttpResponseData> UpdateJob(
+        [HttpTrigger(AuthorizationLevel.Function, "put", Route = "jobs/{id:int}")] HttpRequestData req,
+        int id)
+    {
+        var job = await _dbContext.ScrapeJobs.FindAsync(id);
+
+        if (job == null)
+        {
+            var notFound = req.CreateResponse(HttpStatusCode.NotFound);
+            await notFound.WriteAsJsonAsync(new { error = $"Job {id} not found" });
+            return notFound;
+        }
+
+        var requestBody = await req.ReadAsStringAsync();
+        var input = JsonSerializer.Deserialize<UpdateJobRequest>(requestBody ?? "{}",
+            new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+
+        if (input?.SearchTerm != null)
+            job.SearchTerm = input.SearchTerm;
+
+        if (input?.FilterInstructions != null)
+            job.FilterInstructions = input.FilterInstructions;
+
+        if (input?.IsEnabled != null)
+            job.IsEnabled = input.IsEnabled.Value;
+
+        await _dbContext.SaveChangesAsync();
+
+        _logger.LogInformation("Updated scrape job {JobId}", job.Id);
+
+        var response = req.CreateResponse(HttpStatusCode.OK);
+        await response.WriteAsJsonAsync(new
+        {
+            job.Id,
+            job.SearchTerm,
+            job.FilterInstructions,
+            job.IsEnabled,
+            job.LastRunUtc,
+            job.CreatedUtc
+        });
+        return response;
+    }
+
+    /// <summary>
+    /// DELETE /api/jobs/{id} - Delete a scrape job
+    /// </summary>
+    [Function("DeleteJob")]
+    public async Task<HttpResponseData> DeleteJob(
+        [HttpTrigger(AuthorizationLevel.Function, "delete", Route = "jobs/{id:int}")] HttpRequestData req,
+        int id)
+    {
+        var job = await _dbContext.ScrapeJobs.FindAsync(id);
+
+        if (job == null)
+        {
+            var notFound = req.CreateResponse(HttpStatusCode.NotFound);
+            await notFound.WriteAsJsonAsync(new { error = $"Job {id} not found" });
+            return notFound;
+        }
+
+        _dbContext.ScrapeJobs.Remove(job);
+        await _dbContext.SaveChangesAsync();
+
+        _logger.LogInformation("Deleted scrape job {JobId}: '{SearchTerm}'", id, job.SearchTerm);
+
+        var response = req.CreateResponse(HttpStatusCode.OK);
+        await response.WriteAsJsonAsync(new { message = $"Job {id} deleted" });
+        return response;
+    }
+
+    /// <summary>
+    /// POST /api/jobs/{id}/enable - Enable a job
+    /// </summary>
+    [Function("EnableJob")]
+    public async Task<HttpResponseData> EnableJob(
+        [HttpTrigger(AuthorizationLevel.Function, "post", Route = "jobs/{id:int}/enable")] HttpRequestData req,
+        int id)
+    {
+        var job = await _dbContext.ScrapeJobs.FindAsync(id);
+
+        if (job == null)
+        {
+            var notFound = req.CreateResponse(HttpStatusCode.NotFound);
+            await notFound.WriteAsJsonAsync(new { error = $"Job {id} not found" });
+            return notFound;
+        }
+
+        job.IsEnabled = true;
+        await _dbContext.SaveChangesAsync();
+
+        var response = req.CreateResponse(HttpStatusCode.OK);
+        await response.WriteAsJsonAsync(new { job.Id, job.SearchTerm, job.IsEnabled });
+        return response;
+    }
+
+    /// <summary>
+    /// POST /api/jobs/{id}/disable - Disable a job
+    /// </summary>
+    [Function("DisableJob")]
+    public async Task<HttpResponseData> DisableJob(
+        [HttpTrigger(AuthorizationLevel.Function, "post", Route = "jobs/{id:int}/disable")] HttpRequestData req,
+        int id)
+    {
+        var job = await _dbContext.ScrapeJobs.FindAsync(id);
+
+        if (job == null)
+        {
+            var notFound = req.CreateResponse(HttpStatusCode.NotFound);
+            await notFound.WriteAsJsonAsync(new { error = $"Job {id} not found" });
+            return notFound;
+        }
+
+        job.IsEnabled = false;
+        await _dbContext.SaveChangesAsync();
+
+        var response = req.CreateResponse(HttpStatusCode.OK);
+        await response.WriteAsJsonAsync(new { job.Id, job.SearchTerm, job.IsEnabled });
+        return response;
+    }
+}
+
+public record CreateJobRequest(string? SearchTerm, string? FilterInstructions, bool? IsEnabled);
+public record UpdateJobRequest(string? SearchTerm, string? FilterInstructions, bool? IsEnabled);
