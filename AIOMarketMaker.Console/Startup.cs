@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using Serilog;
 using AIOMarketMaker.Core.Data;
 using AIOMarketMaker.Core.Data.Migrations;
+using AIOMarketMaker.Core.Data.Models;
 using AIOMarketMaker.Core.Services;
 using AIOMarketMaker.Console.Tasks;
 
@@ -60,9 +61,29 @@ public static class HostHelper
                 services.AddSingleton(clusteringConfig);
                 services.AddSingleton<IClusteringService, ClusteringService>();
 
+                // Semantic search service (Pinecone)
+                var pineconeConfig = new PineconeConfig(
+                    ApiKey: configuration.GetValue<string>("Pinecone:ApiKey") ?? "",
+                    IndexName: configuration.GetValue<string>("Pinecone:IndexName") ?? "arbitrage",
+                    TopK: configuration.GetValue<int>("Pinecone:TopK", 10)
+                );
+                services.AddSingleton(pineconeConfig);
+                services.AddSingleton<IPineconeIndexClient>(sp =>
+                {
+                    var config = sp.GetRequiredService<PineconeConfig>();
+                    return new PineconeIndexClientWrapper(config.ApiKey, config.IndexName);
+                });
+                services.AddSingleton<ISemanticSearchService, SemanticSearchService>();
+
+                // Pricing analysis service
+                services.AddSingleton<IPricingAnalysisService, PricingAnalysisService>();
+
                 // Task system
                 services.AddTaskRunner();
                 services.AddTask<ExampleTask>();
+                services.AddTask<SearchTask>();
+                services.AddTask<SearchTestTask>();
+                services.AddTask<PricingTask>();
             })
             .Build();
     }
