@@ -1,6 +1,6 @@
 using AIOMarketMaker.Etl;
 using AIOMarketMaker.Core.Data;
-using AIOMarketMaker.Etl.Services;
+using AIOMarketMaker.Core.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 

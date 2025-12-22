@@ -1,21 +1,28 @@
+using System.Data.Common;
 using Microsoft.Data.Sqlite;
+using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Logging;
 
 namespace AIOMarketMaker.Core.Data.Migrations;
 
 /// <summary>
-/// Simple SQL migration runner for SQLite.
+/// SQL migration runner that supports both SQLite and SQL Server.
 /// Tracks applied migrations in a __MigrationHistory table.
 /// </summary>
 public class MigrationRunner
 {
     private readonly string _connectionString;
     private readonly ILogger<MigrationRunner>? _logger;
+    private readonly bool _useSqlServer;
 
-    public MigrationRunner(string connectionString, ILogger<MigrationRunner>? logger = null)
+    public MigrationRunner(
+        string connectionString,
+        ILogger<MigrationRunner>? logger = null,
+        bool useSqlServer = false)
     {
         _connectionString = connectionString;
         _logger = logger;
+        _useSqlServer = useSqlServer;
     }
 
     /// <summary>
@@ -23,7 +30,7 @@ public class MigrationRunner
     /// </summary>
     public void ApplyMigrations()
     {
-        using var connection = new SqliteConnection(_connectionString);
+        using var connection = CreateConnection();
         connection.Open();
 
         EnsureMigrationHistoryTable(connection);
@@ -44,30 +51,51 @@ public class MigrationRunner
             _logger?.LogInformation("Applying migration: {Migration}", migrationName);
 
             var sql = File.ReadAllText(migrationFile);
+
+            // Convert SQLite syntax to SQL Server if needed
+            if (_useSqlServer)
+            {
+                sql = ConvertToSqlServer(sql);
+            }
+
             ExecuteMigration(connection, sql, migrationName);
 
             _logger?.LogInformation("Migration {Migration} applied successfully", migrationName);
         }
     }
 
-    private void EnsureMigrationHistoryTable(SqliteConnection connection)
+    private DbConnection CreateConnection()
     {
-        const string sql = @"
-            CREATE TABLE IF NOT EXISTS __MigrationHistory (
-                MigrationId TEXT PRIMARY KEY,
-                AppliedUtc TEXT NOT NULL DEFAULT (datetime('now'))
-            );";
+        return _useSqlServer
+            ? new SqlConnection(_connectionString)
+            : new SqliteConnection(_connectionString);
+    }
 
-        using var command = new SqliteCommand(sql, connection);
+    private void EnsureMigrationHistoryTable(DbConnection connection)
+    {
+        var sql = _useSqlServer
+            ? @"IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = '__MigrationHistory')
+                CREATE TABLE __MigrationHistory (
+                    MigrationId NVARCHAR(255) PRIMARY KEY,
+                    AppliedUtc DATETIME2 NOT NULL DEFAULT GETUTCDATE()
+                );"
+            : @"CREATE TABLE IF NOT EXISTS __MigrationHistory (
+                    MigrationId TEXT PRIMARY KEY,
+                    AppliedUtc TEXT NOT NULL DEFAULT (datetime('now'))
+                );";
+
+        using var command = connection.CreateCommand();
+        command.CommandText = sql;
         command.ExecuteNonQuery();
     }
 
-    private HashSet<string> GetAppliedMigrations(SqliteConnection connection)
+    private HashSet<string> GetAppliedMigrations(DbConnection connection)
     {
         var migrations = new HashSet<string>();
 
         const string sql = "SELECT MigrationId FROM __MigrationHistory";
-        using var command = new SqliteCommand(sql, connection);
+        using var command = connection.CreateCommand();
+        command.CommandText = sql;
         using var reader = command.ExecuteReader();
 
         while (reader.Read())
@@ -78,22 +106,40 @@ public class MigrationRunner
         return migrations;
     }
 
-    private void ExecuteMigration(SqliteConnection connection, string sql, string migrationName)
+    private void ExecuteMigration(DbConnection connection, string sql, string migrationName)
     {
         using var transaction = connection.BeginTransaction();
         try
         {
             // Execute the migration SQL
-            using (var command = new SqliteCommand(sql, connection, transaction))
+            // Split by GO statements for SQL Server batch separation
+            var batches = _useSqlServer
+                ? SplitSqlBatches(sql)
+                : new[] { sql };
+
+            foreach (var batch in batches)
             {
+                if (string.IsNullOrWhiteSpace(batch)) continue;
+
+                using var command = connection.CreateCommand();
+                command.Transaction = transaction;
+                command.CommandText = batch;
                 command.ExecuteNonQuery();
             }
 
             // Record the migration
-            const string insertSql = "INSERT INTO __MigrationHistory (MigrationId) VALUES (@migrationId)";
-            using (var command = new SqliteCommand(insertSql, connection, transaction))
+            using (var command = connection.CreateCommand())
             {
-                command.Parameters.AddWithValue("@migrationId", migrationName);
+                command.Transaction = transaction;
+                command.CommandText = _useSqlServer
+                    ? "INSERT INTO __MigrationHistory (MigrationId) VALUES (@migrationId)"
+                    : "INSERT INTO __MigrationHistory (MigrationId) VALUES (@migrationId)";
+
+                var param = command.CreateParameter();
+                param.ParameterName = "@migrationId";
+                param.Value = migrationName;
+                command.Parameters.Add(param);
+
                 command.ExecuteNonQuery();
             }
 
@@ -104,6 +150,60 @@ public class MigrationRunner
             transaction.Rollback();
             throw;
         }
+    }
+
+    /// <summary>
+    /// Converts SQLite-specific SQL syntax to SQL Server syntax.
+    /// </summary>
+    private static string ConvertToSqlServer(string sql)
+    {
+        // Replace SQLite-specific syntax with SQL Server equivalents
+        var converted = sql;
+
+        // INTEGER PRIMARY KEY AUTOINCREMENT -> INT IDENTITY(1,1) PRIMARY KEY
+        converted = System.Text.RegularExpressions.Regex.Replace(
+            converted,
+            @"INTEGER\s+PRIMARY\s+KEY\s+AUTOINCREMENT",
+            "INT IDENTITY(1,1) PRIMARY KEY",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+        // datetime('now') -> GETUTCDATE()
+        converted = converted.Replace("datetime('now')", "GETUTCDATE()");
+
+        // TEXT -> NVARCHAR(MAX) (general text fields)
+        // Be careful not to replace TEXT in other contexts
+        converted = System.Text.RegularExpressions.Regex.Replace(
+            converted,
+            @"\bTEXT\b(?!\s+PRIMARY)",
+            "NVARCHAR(MAX)",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+        // CREATE TABLE IF NOT EXISTS -> IF NOT EXISTS pattern
+        converted = System.Text.RegularExpressions.Regex.Replace(
+            converted,
+            @"CREATE\s+TABLE\s+IF\s+NOT\s+EXISTS\s+(\w+)",
+            "IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = '$1') CREATE TABLE $1",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+        // CREATE INDEX IF NOT EXISTS -> IF NOT EXISTS pattern
+        converted = System.Text.RegularExpressions.Regex.Replace(
+            converted,
+            @"CREATE\s+INDEX\s+IF\s+NOT\s+EXISTS\s+(\w+)\s+ON\s+(\w+)",
+            "IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = '$1' AND object_id = OBJECT_ID('$2')) CREATE INDEX $1 ON $2",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+        return converted;
+    }
+
+    /// <summary>
+    /// Splits SQL into batches separated by GO statements.
+    /// </summary>
+    private static string[] SplitSqlBatches(string sql)
+    {
+        return System.Text.RegularExpressions.Regex.Split(
+            sql,
+            @"^\s*GO\s*$",
+            System.Text.RegularExpressions.RegexOptions.Multiline | System.Text.RegularExpressions.RegexOptions.IgnoreCase);
     }
 
     private IEnumerable<string> GetMigrationFiles()

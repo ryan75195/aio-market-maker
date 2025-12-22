@@ -1,13 +1,12 @@
+using System.Text.Json;
 using AIOMarketMaker.Core.Data;
 using AIOMarketMaker.Core.Data.Models;
 using AIOMarketMaker.Models.Ebay;
-using AIOMarketMaker.Core.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
-using Newtonsoft.Json;
 
-namespace AIOMarketMaker.Etl.Services;
+namespace AIOMarketMaker.Core.Services;
 
 public record JobRunResult(
     int JobId,
@@ -75,7 +74,7 @@ public class JobRunner : IJobRunner
 
             var ebayProducts = await FetchEbayProducts(newSearchResultIds);
             var listings = await SaveEbayListings(ebayProducts, job.Id, ct);
-            
+
             await SaveInitialStatusHistory(listings, ct);
             await UpdateJobTimestamp(job, ct);
 
@@ -238,7 +237,7 @@ public class JobRunner : IJobRunner
             PurchaseFormat = ebayProduct.PurchaseFormat?.ToString(),
             Description = ebayProduct.Description,
             ItemSpecifics = ebayProduct.ItemSpecifics,
-            Images = ebayProduct.Images != null ? JsonConvert.SerializeObject(ebayProduct.Images) : null,
+            Images = ebayProduct.Images != null ? JsonSerializer.Serialize(ebayProduct.Images) : null,
             Location = ebayProduct.Location,
             EndDateUtc = ebayProduct.EndDateUtc,
             CreatedUtc = DateTime.UtcNow
