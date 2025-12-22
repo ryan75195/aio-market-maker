@@ -24,7 +24,13 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          submodules: recursive
+          path: AIOMarketMaker
+
+      - name: Checkout AIOWebScraper
+        uses: actions/checkout@v4
+        with:
+          repository: private/EXTERNAL_SCRAPER_REPO
+          path: AIOWebScraper
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
@@ -32,16 +38,16 @@ jobs:
           dotnet-version: ${{ env.DOTNET_VERSION }}
 
       - name: Restore dependencies
-        run: dotnet restore AIOMarketMaker.sln
+        run: dotnet restore AIOMarketMaker/AIOMarketMaker.sln
 
       - name: Build solution
-        run: dotnet build AIOMarketMaker.sln --configuration Release --no-restore
+        run: dotnet build AIOMarketMaker/AIOMarketMaker.sln --configuration Release --no-restore
 
       - name: Run tests
-        run: dotnet test AIOMarketMaker.Tests/AIOMarketMaker.Tests.csproj --configuration Release --no-build --verbosity normal --filter "Category!=Integration"
+        run: dotnet test AIOMarketMaker/AIOMarketMaker.Tests/AIOMarketMaker.Tests.csproj --configuration Release --no-build --verbosity normal --filter "Category!=Integration"
 
       - name: Publish Functions project
-        run: dotnet publish ${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}/AIOMarketMaker.Functions.csproj --configuration Release --output ./publish
+        run: dotnet publish AIOMarketMaker/${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}/AIOMarketMaker.Functions.csproj --configuration Release --output ./publish
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -77,7 +83,7 @@ jobs:
         with:
           subscriptionId: ${{ vars.AZURE_SUBSCRIPTION_ID }}
           resourceGroupName: ${{ env.RESOURCE_GROUP }}
-          template: .github/infrastructure/main.bicep
+          template: ./.github/infrastructure/main.bicep
           parameters: >
             environment=dev
             sqlAdminPassword=${{ secrets.SQL_ADMIN_PASSWORD }}
