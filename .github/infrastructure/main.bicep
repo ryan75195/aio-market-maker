@@ -35,7 +35,7 @@ param scraperApiKey string = ''
 // Resource naming
 var resourceSuffix = '${baseName}-${environment}'
 var uniqueSuffix = uniqueString(resourceGroup().id, baseName, environment)
-var storageAccountName = 'st${replace(baseName, '-', '')}${uniqueSuffix}'
+var storageAccountName = 'staiomm${uniqueSuffix}' // max 24 chars: 7 + 13 = 20
 var functionAppName = 'func-${resourceSuffix}'
 var appInsightsName = 'appi-${resourceSuffix}'
 var logAnalyticsName = 'log-${resourceSuffix}'
