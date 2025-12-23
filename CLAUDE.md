@@ -177,6 +177,11 @@ Focus on parser logic (`EbaySearchParser`, `EbayListingParser`) with AngleSharp 
 - Don't use `#region` / `#endregion` separators in code
 - Don't use `List<T>` in function signatures; prefer `IEnumerable<T>` for both inputs and outputs
 
+### Debugging Azure Functions
+- **Always run locally first**: When debugging Azure Functions issues, run the project locally with `func start` or `dotnet run` instead of deploying and waiting for GitHub Actions. Local debugging is much faster and provides immediate feedback.
+- Use `local.settings.json` to configure connection strings for local development
+- The Functions project can connect to the real Azure SQL database locally for testing
+
 ## Database Management
 
 ### CRITICAL: Never Delete the Database

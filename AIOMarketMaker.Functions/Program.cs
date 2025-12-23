@@ -57,6 +57,33 @@ var host = new HostBuilder()
                 }
             }
 
+            // Fix schema issues: Convert IsEnabled from INT to BIT for proper boolean mapping
+            try
+            {
+                using var conn = new Microsoft.Data.SqlClient.SqlConnection(sqlConnectionString);
+                conn.Open();
+                using var cmd = conn.CreateCommand();
+                // First add a temp column, copy data, drop old, rename new
+                cmd.CommandText = @"
+                    IF EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
+                               WHERE TABLE_NAME = 'ScrapeJobs' AND COLUMN_NAME = 'IsEnabled'
+                               AND DATA_TYPE = 'int')
+                    BEGIN
+                        ALTER TABLE ScrapeJobs ADD IsEnabled_Temp BIT NOT NULL DEFAULT 1;
+                        UPDATE ScrapeJobs SET IsEnabled_Temp = CAST(IsEnabled AS BIT);
+                        ALTER TABLE ScrapeJobs DROP COLUMN IsEnabled;
+                        EXEC sp_rename 'ScrapeJobs.IsEnabled_Temp', 'IsEnabled', 'COLUMN';
+                        PRINT 'Converted IsEnabled from INT to BIT';
+                    END
+                ";
+                cmd.ExecuteNonQuery();
+                Console.WriteLine("Schema fix: IsEnabled column type checked/fixed");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Schema fix error (non-fatal): {ex.Message}");
+            }
+
             // Run migrations on startup
             try
             {
