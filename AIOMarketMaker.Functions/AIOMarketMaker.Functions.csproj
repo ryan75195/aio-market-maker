@@ -5,6 +5,9 @@
     <OutputType>Exe</OutputType>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <RuntimeIdentifier>win-x86</RuntimeIdentifier>
+    <SelfContained>false</SelfContained>
+    <_FunctionsSkipCleanOutput>true</_FunctionsSkipCleanOutput>
   </PropertyGroup>
 
   <ItemGroup>
