@@ -31,6 +31,10 @@ public class EtlDbContext : DbContext
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
+        // Detect if using SQL Server to use correct default value syntax
+        var isSqlServer = Database.IsSqlServer();
+        var dateDefaultSql = isSqlServer ? "GETUTCDATE()" : "datetime('now')";
+
         modelBuilder.Entity<ScrapeJob>(entity =>
         {
             entity.ToTable("ScrapeJobs");
@@ -38,7 +42,7 @@ public class EtlDbContext : DbContext
 
             entity.Property(e => e.SearchTerm).IsRequired().HasMaxLength(255);
             entity.Property(e => e.IsEnabled).HasDefaultValue(true);
-            entity.Property(e => e.CreatedUtc).HasDefaultValueSql("datetime('now')");
+            entity.Property(e => e.CreatedUtc).HasDefaultValueSql(dateDefaultSql);
 
             entity.HasIndex(e => e.IsEnabled);
         });
@@ -53,7 +57,7 @@ public class EtlDbContext : DbContext
             entity.HasIndex(e => e.ScrapeJobId);
             entity.HasIndex(e => e.ListingStatus);
 
-            entity.Property(e => e.CreatedUtc).HasDefaultValueSql("datetime('now')");
+            entity.Property(e => e.CreatedUtc).HasDefaultValueSql(dateDefaultSql);
 
             entity.HasOne(e => e.ScrapeJob)
                 .WithMany()
@@ -67,7 +71,7 @@ public class EtlDbContext : DbContext
 
             entity.Property(e => e.ListingStatus).IsRequired().HasMaxLength(20);
             entity.Property(e => e.Source).HasMaxLength(50);
-            entity.Property(e => e.RecordedUtc).HasDefaultValueSql("datetime('now')");
+            entity.Property(e => e.RecordedUtc).HasDefaultValueSql(dateDefaultSql);
 
             entity.HasIndex(e => e.ListingId);
             entity.HasIndex(e => e.RecordedUtc);
