@@ -26,49 +26,35 @@ var host = new HostBuilder()
         var sqlConnectionString = configuration.GetValue<string>("SqlConnectionString");
         if (!string.IsNullOrEmpty(sqlConnectionString))
         {
-            // First, apply a one-time schema fix directly (bypasses migration system)
-            // This ensures old NOT NULL columns are nullable, allowing the app to work
-            // even if migrations are stuck
-            try
+            // One-time database reset - drops all tables and lets migrations rebuild
+            // Remove this flag after the reset is complete
+            var resetDatabase = configuration.GetValue<bool>("ResetDatabase", false);
+            if (resetDatabase)
             {
-                using var conn = new Microsoft.Data.SqlClient.SqlConnection(sqlConnectionString);
-                conn.Open();
-
-                // Execute each ALTER separately - using dynamic SQL to handle the IF correctly
-                var columns = new[] { "BuyingFormat", "Condition", "SearchType" };
-                foreach (var col in columns)
-                {
-                    try
-                    {
-                        using var cmd = conn.CreateCommand();
-                        cmd.CommandText = $"ALTER TABLE ScrapeJobs ALTER COLUMN {col} NVARCHAR(MAX) NULL";
-                        cmd.ExecuteNonQuery();
-                        Console.WriteLine($"Made {col} nullable");
-                    }
-                    catch (Exception cmdEx)
-                    {
-                        Console.WriteLine($"Schema fix for {col}: {cmdEx.Message}");
-                    }
-                }
-
-                // Add FilterInstructions if missing
                 try
                 {
-                    using var cmd = conn.CreateCommand();
-                    cmd.CommandText = "IF COL_LENGTH('ScrapeJobs', 'FilterInstructions') IS NULL ALTER TABLE ScrapeJobs ADD FilterInstructions NVARCHAR(MAX) NULL";
-                    cmd.ExecuteNonQuery();
-                    Console.WriteLine("Added FilterInstructions column");
-                }
-                catch (Exception cmdEx)
-                {
-                    Console.WriteLine($"FilterInstructions: {cmdEx.Message}");
-                }
+                    Console.WriteLine("DATABASE RESET: Dropping all tables...");
+                    using var conn = new Microsoft.Data.SqlClient.SqlConnection(sqlConnectionString);
+                    conn.Open();
 
-                Console.WriteLine("Schema fix completed");
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Schema fix error (non-fatal): {ex.Message}");
+                    using var cmd = conn.CreateCommand();
+                    cmd.CommandText = @"
+                        DECLARE @sql NVARCHAR(MAX) = '';
+                        -- Drop all foreign keys first
+                        SELECT @sql += 'ALTER TABLE [' + OBJECT_SCHEMA_NAME(parent_object_id) + '].[' + OBJECT_NAME(parent_object_id) + '] DROP CONSTRAINT [' + name + '];' + CHAR(13)
+                        FROM sys.foreign_keys;
+                        -- Drop all tables
+                        SELECT @sql += 'DROP TABLE [' + TABLE_SCHEMA + '].[' + TABLE_NAME + '];' + CHAR(13)
+                        FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_TYPE = 'BASE TABLE';
+                        EXEC sp_executesql @sql;
+                    ";
+                    cmd.ExecuteNonQuery();
+                    Console.WriteLine("DATABASE RESET: All tables dropped successfully");
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"DATABASE RESET ERROR: {ex.Message}");
+                }
             }
 
             // Run migrations on startup
