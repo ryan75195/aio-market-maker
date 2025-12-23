@@ -27,9 +27,18 @@ var host = new HostBuilder()
         if (!string.IsNullOrEmpty(sqlConnectionString))
         {
             // Run migrations on startup
-            var migrationRunner = new MigrationRunner(sqlConnectionString, null, useSqlServer: true);
-            migrationRunner.ApplyMigrations();
-            Console.WriteLine("Database migrations applied successfully");
+            try
+            {
+                var migrationRunner = new MigrationRunner(sqlConnectionString, null, useSqlServer: true);
+                migrationRunner.ApplyMigrations();
+                Console.WriteLine("Database migrations applied successfully");
+            }
+            catch (Exception ex)
+            {
+                // Log migration error but don't prevent startup
+                Console.WriteLine($"Migration error: {ex.Message}");
+                Console.WriteLine(ex.ToString());
+            }
 
             services.AddDbContext<EtlDbContext>(options =>
                 options.UseSqlServer(sqlConnectionString));
