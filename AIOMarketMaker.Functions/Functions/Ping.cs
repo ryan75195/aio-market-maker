@@ -11,7 +11,7 @@ namespace AIOMarketMaker.Functions.Functions;
 public class Ping
 {
     // Build timestamp for deployment verification
-    private static readonly string BuildTime = "2024-12-23T20:00:00Z";
+    private static readonly string BuildTime = "2024-12-23T21:30:00Z";
 
     [Function("Ping")]
     public HttpResponseData Run(
