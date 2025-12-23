@@ -159,10 +159,11 @@ public class MigrationRunner
         var converted = sql;
 
         // First, find all columns used in indexes (can't be NVARCHAR(MAX))
+        // Match both CREATE INDEX and CREATE UNIQUE INDEX
         var indexedColumns = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var indexMatches = System.Text.RegularExpressions.Regex.Matches(
             sql,
-            @"CREATE\s+INDEX.*?\(([^)]+)\)",
+            @"CREATE\s+(?:UNIQUE\s+)?INDEX.*?\(([^)]+)\)",
             System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.Singleline);
         foreach (System.Text.RegularExpressions.Match match in indexMatches)
         {
@@ -224,11 +225,17 @@ public class MigrationRunner
             "IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = '$1') CREATE TABLE $1",
             System.Text.RegularExpressions.RegexOptions.IgnoreCase);
 
-        // CREATE INDEX IF NOT EXISTS -> IF NOT EXISTS pattern
+        // CREATE [UNIQUE] INDEX IF NOT EXISTS -> IF NOT EXISTS pattern
         converted = System.Text.RegularExpressions.Regex.Replace(
             converted,
-            @"CREATE\s+INDEX\s+IF\s+NOT\s+EXISTS\s+(\w+)\s+ON\s+(\w+)",
-            "IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = '$1' AND object_id = OBJECT_ID('$2')) CREATE INDEX $1 ON $2",
+            @"CREATE\s+(UNIQUE\s+)?INDEX\s+IF\s+NOT\s+EXISTS\s+(\w+)\s+ON\s+(\w+)",
+            match =>
+            {
+                var unique = match.Groups[1].Success ? "UNIQUE " : "";
+                var indexName = match.Groups[2].Value;
+                var tableName = match.Groups[3].Value;
+                return $"IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = '{indexName}' AND object_id = OBJECT_ID('{tableName}')) CREATE {unique}INDEX {indexName} ON {tableName}";
+            },
             System.Text.RegularExpressions.RegexOptions.IgnoreCase);
 
         return converted;
