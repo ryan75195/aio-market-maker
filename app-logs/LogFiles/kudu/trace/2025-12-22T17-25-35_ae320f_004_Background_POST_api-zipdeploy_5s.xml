@@ -1,0 +1,35 @@
+<step title="BackgroundTrace" date="2025-12-22T17:25:35.090" instance="ae320f" url="/api/zipdeploy" method="POST" >
+  <step title="Updating shutdown sentinel last write time" date="2025-12-22T17:25:35.121" SemaphoreCount="7" /><!-- duration: 31ms -->
+  <step title="LockFile &apos;C:\home\site\locks\deployments.lock&apos; acquired" date="2025-12-22T17:25:35.168" /><!-- duration: 31ms -->
+  <step title="Creating temporary deployment" date="2025-12-22T17:25:35.215" /><!-- duration: 156ms -->
+  <step title="Performing fetch based deployment" date="2025-12-22T17:25:35.402" >
+    <step title="Fetching changes." date="2025-12-22T17:25:35.636" /><!-- duration: 31ms -->
+    <step title="Starting LocalZipHandler" date="2025-12-22T17:25:35.683" /><!-- duration: 31ms -->
+    <step title="Starting ExtractTriggers" date="2025-12-22T17:25:35.746" /><!-- duration: 31ms -->
+    <step title="Before sending BuildRequestReceived status to /api/updatedeploystatus" date="2025-12-22T17:25:35.918" /><!-- duration: 16ms -->
+    <step title="DeploymentManager.Deploy(id:123d875877334979a93e6f25e24db885)" date="2025-12-22T17:25:35.965" >
+      <step title="Collecting changeset information" date="2025-12-22T17:25:36.027" /><!-- duration: 188ms -->
+      <step title="Updating submodules" date="2025-12-22T17:25:36.246" >
+        <step title="Updating submodules." date="2025-12-22T17:25:36.449" /><!-- duration: 31ms -->
+      </step><!-- duration: 250ms -->
+      <step title="Preparing deployment for commit id &apos;123d875877&apos;." date="2025-12-22T17:25:37.230" /><!-- duration: 31ms -->
+      <step title="Determining deployment builder" date="2025-12-22T17:25:37.433" >
+        <step title="Builder is RunFromZipSiteBuilder" date="2025-12-22T17:25:37.465" /><!-- duration: 16ms -->
+      </step><!-- duration: 63ms -->
+      <step title="Copying SSH keys" date="2025-12-22T17:25:37.574" /><!-- duration: 31ms -->
+      <step title="Building" date="2025-12-22T17:25:37.621" >
+        <step title="Skipping build. Project type: Run-From-Zip" date="2025-12-22T17:25:37.808" /><!-- duration: 16ms -->
+        <step title="Skipping post build. Project type: Run-From-Zip" date="2025-12-22T17:25:38.012" /><!-- duration: 16ms -->
+        <step title="Triggering recycle (preview mode disabled)." date="2025-12-22T17:25:38.293" /><!-- duration: 16ms -->
+        <step title="Ignoring FS watcher based recycle request as this is a classic Windows app." date="2025-12-22T17:25:38.341" /><!-- duration: 15ms -->
+        <step title="Deployment successful. DEPLOYMENTINFO: deploymentPath = Functions App ZipDeploy. Run from package., deployer = GITHUB_ZIP_DEPLOY_FUNCTIONS_V1, os = windows, sku = Dynamic, language = dotnet-isolated, siteName = func-aiomarketmaker-dev, slotName = Production, siteHostName = func-aiomarketmaker-dev.azurewebsites.net, deploymentStatus = Success" date="2025-12-22T17:25:38.559" /><!-- duration: 31ms -->
+      </step><!-- duration: 1360ms -->
+    </step><!-- duration: 3032ms -->
+    <step title="Cleaning up temp files" date="2025-12-22T17:25:39.028" /><!-- duration: 16ms -->
+    <step title="Updating C:\home\data\SitePackages\packagename.txt with deployment 20251222172532.zip" date="2025-12-22T17:25:39.075" /><!-- duration: 63ms -->
+    <step title="Begin HttpPost https://func-aiomarketmaker-dev.scm.azurewebsites.net/operations/settriggers, x-ms-request-id: 6ee62e99-d209-4ea9-9c08-536eea3062e9" date="2025-12-22T17:25:39.200" /><!-- duration: 31ms -->
+    <step title="End HttpPost, status: OK" date="2025-12-22T17:25:39.606" /><!-- duration: 16ms -->
+    <step title="Scheduling background sync triggers after delay" date="2025-12-22T17:25:39.653" /><!-- duration: 16ms -->
+  </step><!-- duration: 4360ms -->
+  <step title="LockFile &apos;C:\home\site\locks\deployments.lock&apos; released" date="2025-12-22T17:25:39.809" /><!-- duration: 16ms -->
+</step><!-- duration: 4782ms -->

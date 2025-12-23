@@ -1,0 +1,20 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<deployment>
+  <id>1322ad4696d04f83b47a6bfc272e1f9b</id>
+  <author>N/A</author>
+  <deployer>GITHUB_ZIP_DEPLOY_FUNCTIONS_V1</deployer>
+  <authorEmail>N/A</authorEmail>
+  <message>{"type":"deployment","sha":"0ce7517a6b21e2c971fcae42d572fa80c96a3592","repoName":"ryan75195/AIOMarketMaker","actor":"ryan75195","slotName":"production"}</message>
+  <progress></progress>
+  <status>Success</status>
+  <statusText></statusText>
+  <lastSuccessEndTime>2025-12-22T17:46:42.4434155Z</lastSuccessEndTime>
+  <receivedTime>2025-12-22T17:46:39.5684466Z</receivedTime>
+  <startTime>2025-12-22T17:46:40.3965725Z</startTime>
+  <endTime>2025-12-22T17:46:42.4434155Z</endTime>
+  <complete>True</complete>
+  <is_temp>False</is_temp>
+  <is_readonly>True</is_readonly>
+  <project_type>Run-From-Zip</project_type>
+  <vsproject_id></vsproject_id>
+</deployment>

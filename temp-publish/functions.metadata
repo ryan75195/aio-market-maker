@@ -1,0 +1,299 @@
+[
+  {
+    "name": "ManualScrapeTrigger",
+    "scriptFile": "AIOMarketMaker.Functions.dll",
+    "entryPoint": "AIOMarketMaker.Functions.Functions.ManualScrapeTrigger.Run",
+    "language": "dotnet-isolated",
+    "properties": {
+      "IsCodeless": false
+    },
+    "bindings": [
+      {
+        "name": "req",
+        "direction": "In",
+        "type": "httpTrigger",
+        "authLevel": "Function",
+        "methods": [
+          "post"
+        ],
+        "route": "scrape/start",
+        "properties": {}
+      },
+      {
+        "name": "client",
+        "direction": "In",
+        "type": "durableClient",
+        "properties": {}
+      },
+      {
+        "name": "$return",
+        "type": "http",
+        "direction": "Out"
+      }
+    ]
+  },
+  {
+    "name": "NightlyScrapeTrigger",
+    "scriptFile": "AIOMarketMaker.Functions.dll",
+    "entryPoint": "AIOMarketMaker.Functions.Functions.NightlyScrapeTrigger.Run",
+    "language": "dotnet-isolated",
+    "properties": {
+      "IsCodeless": false
+    },
+    "bindings": [
+      {
+        "name": "timer",
+        "direction": "In",
+        "type": "timerTrigger",
+        "schedule": "0 0 2 * * *",
+        "properties": {}
+      },
+      {
+        "name": "client",
+        "direction": "In",
+        "type": "durableClient",
+        "properties": {}
+      }
+    ]
+  },
+  {
+    "name": "GetJobs",
+    "scriptFile": "AIOMarketMaker.Functions.dll",
+    "entryPoint": "AIOMarketMaker.Functions.Functions.ScrapeJobsApi.GetJobs",
+    "language": "dotnet-isolated",
+    "properties": {
+      "IsCodeless": false
+    },
+    "bindings": [
+      {
+        "name": "req",
+        "direction": "In",
+        "type": "httpTrigger",
+        "authLevel": "Function",
+        "methods": [
+          "get"
+        ],
+        "route": "jobs",
+        "properties": {}
+      },
+      {
+        "name": "$return",
+        "type": "http",
+        "direction": "Out"
+      }
+    ]
+  },
+  {
+    "name": "GetJob",
+    "scriptFile": "AIOMarketMaker.Functions.dll",
+    "entryPoint": "AIOMarketMaker.Functions.Functions.ScrapeJobsApi.GetJob",
+    "language": "dotnet-isolated",
+    "properties": {
+      "IsCodeless": false
+    },
+    "bindings": [
+      {
+        "name": "req",
+        "direction": "In",
+        "type": "httpTrigger",
+        "authLevel": "Function",
+        "methods": [
+          "get"
+        ],
+        "route": "jobs/{id:int}",
+        "properties": {}
+      },
+      {
+        "name": "$return",
+        "type": "http",
+        "direction": "Out"
+      }
+    ]
+  },
+  {
+    "name": "CreateJob",
+    "scriptFile": "AIOMarketMaker.Functions.dll",
+    "entryPoint": "AIOMarketMaker.Functions.Functions.ScrapeJobsApi.CreateJob",
+    "language": "dotnet-isolated",
+    "properties": {
+      "IsCodeless": false
+    },
+    "bindings": [
+      {
+        "name": "req",
+        "direction": "In",
+        "type": "httpTrigger",
+        "authLevel": "Function",
+        "methods": [
+          "post"
+        ],
+        "route": "jobs",
+        "properties": {}
+      },
+      {
+        "name": "$return",
+        "type": "http",
+        "direction": "Out"
+      }
+    ]
+  },
+  {
+    "name": "UpdateJob",
+    "scriptFile": "AIOMarketMaker.Functions.dll",
+    "entryPoint": "AIOMarketMaker.Functions.Functions.ScrapeJobsApi.UpdateJob",
+    "language": "dotnet-isolated",
+    "properties": {
+      "IsCodeless": false
+    },
+    "bindings": [
+      {
+        "name": "req",
+        "direction": "In",
+        "type": "httpTrigger",
+        "authLevel": "Function",
+        "methods": [
+          "put"
+        ],
+        "route": "jobs/{id:int}",
+        "properties": {}
+      },
+      {
+        "name": "$return",
+        "type": "http",
+        "direction": "Out"
+      }
+    ]
+  },
+  {
+    "name": "DeleteJob",
+    "scriptFile": "AIOMarketMaker.Functions.dll",
+    "entryPoint": "AIOMarketMaker.Functions.Functions.ScrapeJobsApi.DeleteJob",
+    "language": "dotnet-isolated",
+    "properties": {
+      "IsCodeless": false
+    },
+    "bindings": [
+      {
+        "name": "req",
+        "direction": "In",
+        "type": "httpTrigger",
+        "authLevel": "Function",
+        "methods": [
+          "delete"
+        ],
+        "route": "jobs/{id:int}",
+        "properties": {}
+      },
+      {
+        "name": "$return",
+        "type": "http",
+        "direction": "Out"
+      }
+    ]
+  },
+  {
+    "name": "EnableJob",
+    "scriptFile": "AIOMarketMaker.Functions.dll",
+    "entryPoint": "AIOMarketMaker.Functions.Functions.ScrapeJobsApi.EnableJob",
+    "language": "dotnet-isolated",
+    "properties": {
+      "IsCodeless": false
+    },
+    "bindings": [
+      {
+        "name": "req",
+        "direction": "In",
+        "type": "httpTrigger",
+        "authLevel": "Function",
+        "methods": [
+          "post"
+        ],
+        "route": "jobs/{id:int}/enable",
+        "properties": {}
+      },
+      {
+        "name": "$return",
+        "type": "http",
+        "direction": "Out"
+      }
+    ]
+  },
+  {
+    "name": "DisableJob",
+    "scriptFile": "AIOMarketMaker.Functions.dll",
+    "entryPoint": "AIOMarketMaker.Functions.Functions.ScrapeJobsApi.DisableJob",
+    "language": "dotnet-isolated",
+    "properties": {
+      "IsCodeless": false
+    },
+    "bindings": [
+      {
+        "name": "req",
+        "direction": "In",
+        "type": "httpTrigger",
+        "authLevel": "Function",
+        "methods": [
+          "post"
+        ],
+        "route": "jobs/{id:int}/disable",
+        "properties": {}
+      },
+      {
+        "name": "$return",
+        "type": "http",
+        "direction": "Out"
+      }
+    ]
+  },
+  {
+    "name": "ScrapeOrchestrator",
+    "scriptFile": "AIOMarketMaker.Functions.dll",
+    "entryPoint": "AIOMarketMaker.Functions.Functions.ScrapeOrchestrator.RunOrchestrator",
+    "language": "dotnet-isolated",
+    "properties": {
+      "IsCodeless": false
+    },
+    "bindings": [
+      {
+        "name": "context",
+        "direction": "In",
+        "type": "orchestrationTrigger",
+        "properties": {}
+      }
+    ]
+  },
+  {
+    "name": "GetEnabledJobsActivity",
+    "scriptFile": "AIOMarketMaker.Functions.dll",
+    "entryPoint": "AIOMarketMaker.Functions.Activities.GetEnabledJobsActivity.Run",
+    "language": "dotnet-isolated",
+    "properties": {
+      "IsCodeless": false
+    },
+    "bindings": [
+      {
+        "name": "input",
+        "direction": "In",
+        "type": "activityTrigger",
+        "properties": {}
+      }
+    ]
+  },
+  {
+    "name": "ProcessJobActivity",
+    "scriptFile": "AIOMarketMaker.Functions.dll",
+    "entryPoint": "AIOMarketMaker.Functions.Activities.ProcessJobActivity.Run",
+    "language": "dotnet-isolated",
+    "properties": {
+      "IsCodeless": false
+    },
+    "bindings": [
+      {
+        "name": "jobId",
+        "direction": "In",
+        "type": "activityTrigger",
+        "properties": {}
+      }
+    ]
+  }
+]
