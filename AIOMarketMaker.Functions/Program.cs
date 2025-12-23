@@ -62,26 +62,62 @@ var host = new HostBuilder()
             {
                 using var conn = new Microsoft.Data.SqlClient.SqlConnection(sqlConnectionString);
                 conn.Open();
-                using var cmd = conn.CreateCommand();
-                // First add a temp column, copy data, drop old, rename new
-                cmd.CommandText = @"
-                    IF EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
-                               WHERE TABLE_NAME = 'ScrapeJobs' AND COLUMN_NAME = 'IsEnabled'
-                               AND DATA_TYPE = 'int')
-                    BEGIN
-                        ALTER TABLE ScrapeJobs ADD IsEnabled_Temp BIT NOT NULL DEFAULT 1;
-                        UPDATE ScrapeJobs SET IsEnabled_Temp = CAST(IsEnabled AS BIT);
-                        ALTER TABLE ScrapeJobs DROP COLUMN IsEnabled;
-                        EXEC sp_rename 'ScrapeJobs.IsEnabled_Temp', 'IsEnabled', 'COLUMN';
-                        PRINT 'Converted IsEnabled from INT to BIT';
-                    END
-                ";
-                cmd.ExecuteNonQuery();
-                Console.WriteLine("Schema fix: IsEnabled column type checked/fixed");
+
+                // Check if IsEnabled is still INT type
+                using (var checkCmd = conn.CreateCommand())
+                {
+                    checkCmd.CommandText = "SELECT DATA_TYPE FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'ScrapeJobs' AND COLUMN_NAME = 'IsEnabled'";
+                    var dataType = checkCmd.ExecuteScalar()?.ToString();
+                    Console.WriteLine($"IsEnabled DATA_TYPE: {dataType}");
+
+                    if (dataType?.ToLower() == "int")
+                    {
+                        Console.WriteLine("Converting IsEnabled from INT to BIT...");
+
+                        // Step 1: Add temp column
+                        using (var cmd = conn.CreateCommand())
+                        {
+                            cmd.CommandText = "ALTER TABLE ScrapeJobs ADD IsEnabled_Temp BIT NOT NULL DEFAULT 1";
+                            cmd.ExecuteNonQuery();
+                            Console.WriteLine("Step 1: Added IsEnabled_Temp column");
+                        }
+
+                        // Step 2: Copy data
+                        using (var cmd = conn.CreateCommand())
+                        {
+                            cmd.CommandText = "UPDATE ScrapeJobs SET IsEnabled_Temp = CAST(IsEnabled AS BIT)";
+                            cmd.ExecuteNonQuery();
+                            Console.WriteLine("Step 2: Copied data to temp column");
+                        }
+
+                        // Step 3: Drop old column
+                        using (var cmd = conn.CreateCommand())
+                        {
+                            cmd.CommandText = "ALTER TABLE ScrapeJobs DROP COLUMN IsEnabled";
+                            cmd.ExecuteNonQuery();
+                            Console.WriteLine("Step 3: Dropped old IsEnabled column");
+                        }
+
+                        // Step 4: Rename temp to IsEnabled
+                        using (var cmd = conn.CreateCommand())
+                        {
+                            cmd.CommandText = "EXEC sp_rename 'ScrapeJobs.IsEnabled_Temp', 'IsEnabled', 'COLUMN'";
+                            cmd.ExecuteNonQuery();
+                            Console.WriteLine("Step 4: Renamed temp column to IsEnabled");
+                        }
+
+                        Console.WriteLine("Schema fix: IsEnabled converted from INT to BIT");
+                    }
+                    else
+                    {
+                        Console.WriteLine($"Schema fix: IsEnabled is already {dataType}, no conversion needed");
+                    }
+                }
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Schema fix error (non-fatal): {ex.Message}");
+                Console.WriteLine($"Schema fix error: {ex.Message}");
+                Console.WriteLine(ex.ToString());
             }
 
             // Run migrations on startup
