@@ -74,8 +74,12 @@ resource functionApp 'Microsoft.Web/sites@2022-09-01' = {
     httpsOnly: true
     siteConfig: {
       netFrameworkVersion: 'v8.0'
+      use32BitWorkerProcess: false
       ftpsState: 'Disabled'
       minTlsVersion: '1.2'
+      cors: {
+        allowedOrigins: ['https://portal.azure.com']
+      }
       appSettings: [
         {
           name: 'AzureWebJobsStorage'
