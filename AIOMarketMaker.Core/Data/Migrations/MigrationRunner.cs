@@ -174,6 +174,34 @@ public class MigrationRunner
             }
         }
 
+        // Also find columns in UNIQUE constraints (these are also indexed)
+        var uniqueMatches = System.Text.RegularExpressions.Regex.Matches(
+            sql,
+            @"UNIQUE\s*\(([^)]+)\)",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        foreach (System.Text.RegularExpressions.Match match in uniqueMatches)
+        {
+            var columns = match.Groups[1].Value.Split(',');
+            foreach (var col in columns)
+            {
+                indexedColumns.Add(col.Trim());
+            }
+        }
+
+        // And PRIMARY KEY constraints
+        var pkMatches = System.Text.RegularExpressions.Regex.Matches(
+            sql,
+            @"PRIMARY\s+KEY\s*\(([^)]+)\)",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        foreach (System.Text.RegularExpressions.Match match in pkMatches)
+        {
+            var columns = match.Groups[1].Value.Split(',');
+            foreach (var col in columns)
+            {
+                indexedColumns.Add(col.Trim());
+            }
+        }
+
         // INTEGER PRIMARY KEY AUTOINCREMENT -> INT IDENTITY(1,1) PRIMARY KEY
         converted = System.Text.RegularExpressions.Regex.Replace(
             converted,
