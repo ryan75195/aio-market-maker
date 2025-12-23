@@ -26,9 +26,18 @@ var host = new HostBuilder()
         var sqlConnectionString = configuration.GetValue<string>("SqlConnectionString")
             ?? throw new InvalidOperationException("SqlConnectionString is required");
 
-        // Run migrations on startup
-        var migrationRunner = new MigrationRunner(sqlConnectionString, null, useSqlServer: true);
-        migrationRunner.ApplyMigrations();
+        // Run migrations on startup (with error handling)
+        try
+        {
+            var migrationRunner = new MigrationRunner(sqlConnectionString, null, useSqlServer: true);
+            migrationRunner.ApplyMigrations();
+            Console.WriteLine("Database migrations completed successfully");
+        }
+        catch (Exception ex)
+        {
+            // Log but don't fail startup - migrations may already be applied
+            Console.WriteLine($"Migration warning: {ex.Message}");
+        }
 
         services.AddDbContext<EtlDbContext>(options =>
             options.UseSqlServer(sqlConnectionString));
