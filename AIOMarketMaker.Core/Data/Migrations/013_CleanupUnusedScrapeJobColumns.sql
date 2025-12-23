@@ -4,6 +4,12 @@
 
 -- SQLite doesn't support DROP COLUMN directly, so we recreate the table
 
+-- First, drop any tables that might have foreign keys to ScrapeJobs
+-- (in case previous migrations didn't clean them up)
+DROP TABLE IF EXISTS ListingProductAssignments;
+DROP TABLE IF EXISTS Products;
+DROP TABLE IF EXISTS MetadataGroups;
+
 -- 1. Create new table with only used columns
 CREATE TABLE ScrapeJobs_new (
     Id INTEGER PRIMARY KEY AUTOINCREMENT,
