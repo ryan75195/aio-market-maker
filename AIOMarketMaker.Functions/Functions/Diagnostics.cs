@@ -59,11 +59,11 @@ public class Diagnostics
                     diagnostics.JobCountError = ex.Message;
                 }
 
-                // Get ScrapeJobs columns
+                // Get ScrapeJobs columns with data types
                 try
                 {
                     var columns = await _dbContext.Database
-                        .SqlQueryRaw<string>("SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'ScrapeJobs' ORDER BY ORDINAL_POSITION")
+                        .SqlQueryRaw<string>("SELECT COLUMN_NAME + ' (' + DATA_TYPE + ')' FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'ScrapeJobs' ORDER BY ORDINAL_POSITION")
                         .ToListAsync();
                     diagnostics.ScrapeJobsColumns = columns;
                 }
