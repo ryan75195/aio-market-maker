@@ -26,6 +26,34 @@ var host = new HostBuilder()
         var sqlConnectionString = configuration.GetValue<string>("SqlConnectionString");
         if (!string.IsNullOrEmpty(sqlConnectionString))
         {
+            // First, apply a one-time schema fix directly (bypasses migration system)
+            // This ensures old NOT NULL columns are nullable, allowing the app to work
+            // even if migrations are stuck
+            try
+            {
+                using var conn = new Microsoft.Data.SqlClient.SqlConnection(sqlConnectionString);
+                conn.Open();
+                using var cmd = conn.CreateCommand();
+                cmd.CommandText = @"
+                    IF OBJECT_ID('ScrapeJobs', 'U') IS NOT NULL
+                    BEGIN
+                        IF COL_LENGTH('ScrapeJobs', 'BuyingFormat') IS NOT NULL
+                            ALTER TABLE ScrapeJobs ALTER COLUMN BuyingFormat NVARCHAR(MAX) NULL;
+                        IF COL_LENGTH('ScrapeJobs', 'Condition') IS NOT NULL
+                            ALTER TABLE ScrapeJobs ALTER COLUMN Condition NVARCHAR(MAX) NULL;
+                        IF COL_LENGTH('ScrapeJobs', 'SearchType') IS NOT NULL
+                            ALTER TABLE ScrapeJobs ALTER COLUMN SearchType NVARCHAR(MAX) NULL;
+                        IF COL_LENGTH('ScrapeJobs', 'FilterInstructions') IS NULL
+                            ALTER TABLE ScrapeJobs ADD FilterInstructions NVARCHAR(MAX) NULL;
+                    END";
+                cmd.ExecuteNonQuery();
+                Console.WriteLine("Schema fix applied successfully");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Schema fix error (non-fatal): {ex.Message}");
+            }
+
             // Run migrations on startup
             try
             {
