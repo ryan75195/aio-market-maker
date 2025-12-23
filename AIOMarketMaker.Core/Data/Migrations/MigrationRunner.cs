@@ -163,7 +163,7 @@ public class MigrationRunner
         var indexMatches = System.Text.RegularExpressions.Regex.Matches(
             sql,
             @"CREATE\s+INDEX.*?\(([^)]+)\)",
-            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.Singleline);
         foreach (System.Text.RegularExpressions.Match match in indexMatches)
         {
             var columns = match.Groups[1].Value.Split(',');
