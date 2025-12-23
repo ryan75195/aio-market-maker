@@ -146,8 +146,12 @@ resource functionApp 'Microsoft.Web/sites@2022-09-01' = {
           value: 'true'
         }
         {
-          name: 'WEBSITE_RUN_FROM_PACKAGE'
-          value: '1'
+          name: 'WEBSITE_ENABLE_SYNC_UPDATE_SITE'
+          value: 'true'
+        }
+        {
+          name: 'SCM_DO_BUILD_DURING_DEPLOYMENT'
+          value: 'false'
         }
       ]
     }
