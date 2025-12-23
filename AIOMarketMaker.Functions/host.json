@@ -18,6 +18,11 @@
   "extensions": {
     "http": {
       "routePrefix": "api"
+    },
+    "durableTask": {
+      "storageProvider": {
+        "type": "AzureStorage"
+      }
     }
   }
 }
