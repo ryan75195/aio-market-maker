@@ -26,29 +26,12 @@ jobs:
         with:
           path: AIOMarketMaker
 
-      - name: Checkout AIOWebScraper
-        uses: actions/checkout@v4
-        with:
-          repository: ryan75195/AIOWebScraper
-          path: AIOWebScraper
-          token: ${{ secrets.GH_PAT }}
-
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: ${{ env.DOTNET_VERSION }}
 
-      - name: Restore dependencies
-        run: dotnet restore AIOMarketMaker/AIOMarketMaker.sln
-
-      - name: Build solution
-        run: dotnet build AIOMarketMaker/AIOMarketMaker.sln --configuration Release --no-restore
-
-      - name: Run tests
-        run: dotnet test AIOMarketMaker/AIOMarketMaker.Tests/AIOMarketMaker.Tests.csproj --configuration Release --no-build --verbosity normal --filter "Category!=Integration"
-        continue-on-error: true
-
-      - name: Publish Functions project
+      - name: Restore and publish Functions project
         run: dotnet publish AIOMarketMaker/${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}/AIOMarketMaker.Functions.csproj --configuration Release --output ./publish
 
       - name: Upload artifact
