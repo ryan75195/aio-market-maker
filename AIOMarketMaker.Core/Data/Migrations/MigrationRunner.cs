@@ -36,12 +36,12 @@ public class MigrationRunner
         EnsureMigrationHistoryTable(connection);
 
         var appliedMigrations = GetAppliedMigrations(connection);
-        var migrationFiles = GetMigrationFiles();
+        var migrations = GetMigrations().ToList();
 
-        foreach (var migrationFile in migrationFiles.OrderBy(f => f))
+        _logger?.LogInformation("Found {Count} embedded migrations", migrations.Count);
+
+        foreach (var (migrationName, sql) in migrations)
         {
-            var migrationName = Path.GetFileNameWithoutExtension(migrationFile);
-
             if (appliedMigrations.Contains(migrationName))
             {
                 _logger?.LogDebug("Migration {Migration} already applied, skipping", migrationName);
@@ -50,15 +50,14 @@ public class MigrationRunner
 
             _logger?.LogInformation("Applying migration: {Migration}", migrationName);
 
-            var sql = File.ReadAllText(migrationFile);
-
+            var convertedSql = sql;
             // Convert SQLite syntax to SQL Server if needed
             if (_useSqlServer)
             {
-                sql = ConvertToSqlServer(sql);
+                convertedSql = ConvertToSqlServer(sql);
             }
 
-            ExecuteMigration(connection, sql, migrationName);
+            ExecuteMigration(connection, convertedSql, migrationName);
 
             _logger?.LogInformation("Migration {Migration} applied successfully", migrationName);
         }
@@ -227,18 +226,38 @@ public class MigrationRunner
             System.Text.RegularExpressions.RegexOptions.Multiline | System.Text.RegularExpressions.RegexOptions.IgnoreCase);
     }
 
-    private IEnumerable<string> GetMigrationFiles()
+    private IEnumerable<(string Name, string Sql)> GetMigrations()
     {
-        // Look for migration files in the Migrations folder relative to the assembly
-        var assemblyLocation = Path.GetDirectoryName(typeof(MigrationRunner).Assembly.Location);
-        var migrationsPath = Path.Combine(assemblyLocation!, "Data", "Migrations");
+        var assembly = typeof(MigrationRunner).Assembly;
+        var resourceNames = assembly.GetManifestResourceNames()
+            .Where(n => n.EndsWith(".sql", StringComparison.OrdinalIgnoreCase))
+            .OrderBy(n => n);
 
-        if (!Directory.Exists(migrationsPath))
+        foreach (var resourceName in resourceNames)
         {
-            _logger?.LogWarning("Migrations folder not found at {Path}", migrationsPath);
-            return Enumerable.Empty<string>();
-        }
+            // Extract migration name from resource (e.g., "AIOMarketMaker.Core.Data.Migrations.001_InitialCreate.sql" -> "001_InitialCreate")
+            var migrationName = Path.GetFileNameWithoutExtension(resourceName.Split('.').Last());
+            if (string.IsNullOrEmpty(migrationName))
+            {
+                // Try alternate extraction for resource names like "...Migrations.001_InitialCreate.sql"
+                var parts = resourceName.Split('.');
+                if (parts.Length >= 2)
+                {
+                    migrationName = parts[^2]; // Second to last part
+                }
+            }
 
-        return Directory.GetFiles(migrationsPath, "*.sql");
+            using var stream = assembly.GetManifestResourceStream(resourceName);
+            if (stream == null)
+            {
+                _logger?.LogWarning("Could not read embedded resource: {Resource}", resourceName);
+                continue;
+            }
+
+            using var reader = new StreamReader(stream);
+            var sql = reader.ReadToEnd();
+
+            yield return (migrationName, sql);
+        }
     }
 }
