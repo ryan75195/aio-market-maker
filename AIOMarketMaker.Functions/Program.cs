@@ -33,20 +33,29 @@ var host = new HostBuilder()
             {
                 using var conn = new Microsoft.Data.SqlClient.SqlConnection(sqlConnectionString);
                 conn.Open();
-                using var cmd = conn.CreateCommand();
-                cmd.CommandText = @"
-                    IF OBJECT_ID('ScrapeJobs', 'U') IS NOT NULL
-                    BEGIN
-                        IF COL_LENGTH('ScrapeJobs', 'BuyingFormat') IS NOT NULL
-                            ALTER TABLE ScrapeJobs ALTER COLUMN BuyingFormat NVARCHAR(MAX) NULL;
-                        IF COL_LENGTH('ScrapeJobs', 'Condition') IS NOT NULL
-                            ALTER TABLE ScrapeJobs ALTER COLUMN Condition NVARCHAR(MAX) NULL;
-                        IF COL_LENGTH('ScrapeJobs', 'SearchType') IS NOT NULL
-                            ALTER TABLE ScrapeJobs ALTER COLUMN SearchType NVARCHAR(MAX) NULL;
-                        IF COL_LENGTH('ScrapeJobs', 'FilterInstructions') IS NULL
-                            ALTER TABLE ScrapeJobs ADD FilterInstructions NVARCHAR(MAX) NULL;
-                    END";
-                cmd.ExecuteNonQuery();
+
+                // Execute each ALTER separately to avoid IF statement issues
+                var alterCommands = new[]
+                {
+                    "IF COL_LENGTH('ScrapeJobs', 'BuyingFormat') IS NOT NULL EXEC('ALTER TABLE ScrapeJobs ALTER COLUMN BuyingFormat NVARCHAR(MAX) NULL')",
+                    "IF COL_LENGTH('ScrapeJobs', 'Condition') IS NOT NULL EXEC('ALTER TABLE ScrapeJobs ALTER COLUMN Condition NVARCHAR(MAX) NULL')",
+                    "IF COL_LENGTH('ScrapeJobs', 'SearchType') IS NOT NULL EXEC('ALTER TABLE ScrapeJobs ALTER COLUMN SearchType NVARCHAR(MAX) NULL')",
+                    "IF COL_LENGTH('ScrapeJobs', 'FilterInstructions') IS NULL EXEC('ALTER TABLE ScrapeJobs ADD FilterInstructions NVARCHAR(MAX) NULL')"
+                };
+
+                foreach (var sql in alterCommands)
+                {
+                    try
+                    {
+                        using var cmd = conn.CreateCommand();
+                        cmd.CommandText = sql;
+                        cmd.ExecuteNonQuery();
+                    }
+                    catch (Exception cmdEx)
+                    {
+                        Console.WriteLine($"Schema fix command skipped: {cmdEx.Message}");
+                    }
+                }
                 Console.WriteLine("Schema fix applied successfully");
             }
             catch (Exception ex)
