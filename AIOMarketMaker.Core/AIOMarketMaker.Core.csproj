@@ -20,9 +20,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <None Update="Data\Migrations\*.sql">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
+    <EmbeddedResource Include="Data\Migrations\*.sql" />
   </ItemGroup>
 
   <ItemGroup>
