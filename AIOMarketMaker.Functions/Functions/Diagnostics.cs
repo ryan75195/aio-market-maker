@@ -59,6 +59,33 @@ public class Diagnostics
                     diagnostics.JobCountError = ex.Message;
                 }
 
+                // Get ScrapeJobs columns
+                try
+                {
+                    var columns = await _dbContext.Database
+                        .SqlQueryRaw<string>("SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'ScrapeJobs' ORDER BY ORDINAL_POSITION")
+                        .ToListAsync();
+                    diagnostics.ScrapeJobsColumns = columns;
+                }
+                catch (Exception ex)
+                {
+                    diagnostics.ScrapeJobsColumnsError = ex.Message;
+                }
+
+                // Try to select a job with all columns
+                try
+                {
+                    var job = await _dbContext.ScrapeJobs
+                        .Select(j => new { j.Id, j.SearchTerm, j.FilterInstructions, j.IsEnabled, j.LastRunUtc, j.CreatedUtc })
+                        .FirstOrDefaultAsync();
+                    diagnostics.JobSelectSuccess = job != null ? "Job found" : "No jobs";
+                    diagnostics.JobSelectResult = job?.ToString();
+                }
+                catch (Exception ex)
+                {
+                    diagnostics.JobSelectError = ex.Message;
+                }
+
                 // Try to list migration history
                 try
                 {
@@ -95,6 +122,11 @@ public class DiagnosticsResult
     public string? TablesError { get; set; }
     public int? JobCount { get; set; }
     public string? JobCountError { get; set; }
+    public List<string>? ScrapeJobsColumns { get; set; }
+    public string? ScrapeJobsColumnsError { get; set; }
+    public string? JobSelectSuccess { get; set; }
+    public string? JobSelectResult { get; set; }
+    public string? JobSelectError { get; set; }
     public List<string>? AppliedMigrations { get; set; }
     public string? MigrationsError { get; set; }
 }
