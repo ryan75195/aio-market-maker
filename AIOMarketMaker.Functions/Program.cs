@@ -34,29 +34,37 @@ var host = new HostBuilder()
                 using var conn = new Microsoft.Data.SqlClient.SqlConnection(sqlConnectionString);
                 conn.Open();
 
-                // Execute each ALTER separately to avoid IF statement issues
-                var alterCommands = new[]
-                {
-                    "IF COL_LENGTH('ScrapeJobs', 'BuyingFormat') IS NOT NULL EXEC('ALTER TABLE ScrapeJobs ALTER COLUMN BuyingFormat NVARCHAR(MAX) NULL')",
-                    "IF COL_LENGTH('ScrapeJobs', 'Condition') IS NOT NULL EXEC('ALTER TABLE ScrapeJobs ALTER COLUMN Condition NVARCHAR(MAX) NULL')",
-                    "IF COL_LENGTH('ScrapeJobs', 'SearchType') IS NOT NULL EXEC('ALTER TABLE ScrapeJobs ALTER COLUMN SearchType NVARCHAR(MAX) NULL')",
-                    "IF COL_LENGTH('ScrapeJobs', 'FilterInstructions') IS NULL EXEC('ALTER TABLE ScrapeJobs ADD FilterInstructions NVARCHAR(MAX) NULL')"
-                };
-
-                foreach (var sql in alterCommands)
+                // Execute each ALTER separately - using dynamic SQL to handle the IF correctly
+                var columns = new[] { "BuyingFormat", "Condition", "SearchType" };
+                foreach (var col in columns)
                 {
                     try
                     {
                         using var cmd = conn.CreateCommand();
-                        cmd.CommandText = sql;
+                        cmd.CommandText = $"ALTER TABLE ScrapeJobs ALTER COLUMN {col} NVARCHAR(MAX) NULL";
                         cmd.ExecuteNonQuery();
+                        Console.WriteLine($"Made {col} nullable");
                     }
                     catch (Exception cmdEx)
                     {
-                        Console.WriteLine($"Schema fix command skipped: {cmdEx.Message}");
+                        Console.WriteLine($"Schema fix for {col}: {cmdEx.Message}");
                     }
                 }
-                Console.WriteLine("Schema fix applied successfully");
+
+                // Add FilterInstructions if missing
+                try
+                {
+                    using var cmd = conn.CreateCommand();
+                    cmd.CommandText = "IF COL_LENGTH('ScrapeJobs', 'FilterInstructions') IS NULL ALTER TABLE ScrapeJobs ADD FilterInstructions NVARCHAR(MAX) NULL";
+                    cmd.ExecuteNonQuery();
+                    Console.WriteLine("Added FilterInstructions column");
+                }
+                catch (Exception cmdEx)
+                {
+                    Console.WriteLine($"FilterInstructions: {cmdEx.Message}");
+                }
+
+                Console.WriteLine("Schema fix completed");
             }
             catch (Exception ex)
             {
