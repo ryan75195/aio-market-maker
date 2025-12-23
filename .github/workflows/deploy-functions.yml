@@ -26,6 +26,13 @@ jobs:
         with:
           path: AIOMarketMaker
 
+      - name: Checkout AIOWebScraper
+        uses: actions/checkout@v4
+        with:
+          repository: private/EXTERNAL_SCRAPER_REPO
+          path: AIOWebScraper
+          token: ${{ secrets.GH_PAT }}
+
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
