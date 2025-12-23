@@ -94,11 +94,28 @@ jobs:
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
+      - name: List publish contents
+        run: |
+          echo "Publish directory contents:"
+          ls -la ./publish/
+          echo "---"
+          echo "functions.metadata:"
+          cat ./publish/functions.metadata || echo "No functions.metadata found"
+
       - name: Deploy to Azure Functions
         uses: azure/functions-action@v1
         with:
           app-name: ${{ needs.deploy-infrastructure.outputs.functionAppName }}
           package: ./publish
+
+      - name: Sync function triggers
+        run: |
+          az functionapp function list \
+            --name ${{ needs.deploy-infrastructure.outputs.functionAppName }} \
+            --resource-group ${{ env.RESOURCE_GROUP }}
+          az functionapp restart \
+            --name ${{ needs.deploy-infrastructure.outputs.functionAppName }} \
+            --resource-group ${{ env.RESOURCE_GROUP }}
 
       - name: Deployment Summary
         run: |
