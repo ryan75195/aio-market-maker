@@ -101,21 +101,42 @@ jobs:
           echo "---"
           echo "functions.metadata:"
           cat ./publish/functions.metadata || echo "No functions.metadata found"
+          echo "---"
+          echo "worker.config.json:"
+          cat ./publish/worker.config.json || echo "No worker.config.json found"
+          echo "---"
+          echo "extensions.json:"
+          cat ./publish/extensions.json || echo "No extensions.json found"
 
-      - name: Deploy to Azure Functions
-        uses: azure/functions-action@v1
-        with:
-          app-name: ${{ needs.deploy-infrastructure.outputs.functionAppName }}
-          package: ./publish
-
-      - name: Sync function triggers
+      - name: Create deployment package
         run: |
+          cd ./publish
+          zip -r ../deploy.zip .
+          cd ..
+          ls -la deploy.zip
+
+      - name: Deploy using Azure CLI
+        run: |
+          az functionapp deployment source config-zip \
+            --name ${{ needs.deploy-infrastructure.outputs.functionAppName }} \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --src deploy.zip
+
+      - name: Sync function triggers and restart
+        run: |
+          echo "Listing functions after deployment:"
           az functionapp function list \
             --name ${{ needs.deploy-infrastructure.outputs.functionAppName }} \
-            --resource-group ${{ env.RESOURCE_GROUP }}
+            --resource-group ${{ env.RESOURCE_GROUP }} || echo "No functions found"
+          echo "Restarting function app:"
           az functionapp restart \
             --name ${{ needs.deploy-infrastructure.outputs.functionAppName }} \
             --resource-group ${{ env.RESOURCE_GROUP }}
+          sleep 30
+          echo "Listing functions after restart:"
+          az functionapp function list \
+            --name ${{ needs.deploy-infrastructure.outputs.functionAppName }} \
+            --resource-group ${{ env.RESOURCE_GROUP }} || echo "No functions found"
 
       - name: Deployment Summary
         run: |
