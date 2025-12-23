@@ -167,6 +167,27 @@ public class MigrationRunner
             "INT IDENTITY(1,1) PRIMARY KEY",
             System.Text.RegularExpressions.RegexOptions.IgnoreCase);
 
+        // INTEGER -> INT (standalone INTEGER type not valid in SQL Server)
+        converted = System.Text.RegularExpressions.Regex.Replace(
+            converted,
+            @"\bINTEGER\b",
+            "INT",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+        // REAL -> FLOAT
+        converted = System.Text.RegularExpressions.Regex.Replace(
+            converted,
+            @"\bREAL\b",
+            "FLOAT",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+        // BLOB -> VARBINARY(MAX)
+        converted = System.Text.RegularExpressions.Regex.Replace(
+            converted,
+            @"\bBLOB\b",
+            "VARBINARY(MAX)",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
         // datetime('now') -> GETUTCDATE()
         converted = converted.Replace("datetime('now')", "GETUTCDATE()");
 
