@@ -205,6 +205,13 @@ public class MigrationRunner
         // datetime('now') -> GETUTCDATE()
         converted = converted.Replace("datetime('now')", "GETUTCDATE()");
 
+        // ALTER TABLE X RENAME TO Y -> EXEC sp_rename 'X', 'Y' (SQL Server syntax)
+        converted = System.Text.RegularExpressions.Regex.Replace(
+            converted,
+            @"ALTER\s+TABLE\s+(\w+)\s+RENAME\s+TO\s+(\w+)",
+            "EXEC sp_rename '$1', '$2'",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
         // TEXT -> NVARCHAR(450) for indexed columns, NVARCHAR(MAX) for others
         // Match column definitions: ColumnName TEXT
         converted = System.Text.RegularExpressions.Regex.Replace(
