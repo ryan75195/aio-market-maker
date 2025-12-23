@@ -156,8 +156,22 @@ public class MigrationRunner
     /// </summary>
     private static string ConvertToSqlServer(string sql)
     {
-        // Replace SQLite-specific syntax with SQL Server equivalents
         var converted = sql;
+
+        // First, find all columns used in indexes (can't be NVARCHAR(MAX))
+        var indexedColumns = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var indexMatches = System.Text.RegularExpressions.Regex.Matches(
+            sql,
+            @"CREATE\s+INDEX.*?\(([^)]+)\)",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        foreach (System.Text.RegularExpressions.Match match in indexMatches)
+        {
+            var columns = match.Groups[1].Value.Split(',');
+            foreach (var col in columns)
+            {
+                indexedColumns.Add(col.Trim());
+            }
+        }
 
         // INTEGER PRIMARY KEY AUTOINCREMENT -> INT IDENTITY(1,1) PRIMARY KEY
         converted = System.Text.RegularExpressions.Regex.Replace(
@@ -166,7 +180,7 @@ public class MigrationRunner
             "INT IDENTITY(1,1) PRIMARY KEY",
             System.Text.RegularExpressions.RegexOptions.IgnoreCase);
 
-        // INTEGER -> INT (standalone INTEGER type not valid in SQL Server)
+        // INTEGER -> INT
         converted = System.Text.RegularExpressions.Regex.Replace(
             converted,
             @"\bINTEGER\b",
@@ -190,12 +204,17 @@ public class MigrationRunner
         // datetime('now') -> GETUTCDATE()
         converted = converted.Replace("datetime('now')", "GETUTCDATE()");
 
-        // TEXT -> NVARCHAR(MAX) (general text fields)
-        // Be careful not to replace TEXT in other contexts
+        // TEXT -> NVARCHAR(450) for indexed columns, NVARCHAR(MAX) for others
+        // Match column definitions: ColumnName TEXT
         converted = System.Text.RegularExpressions.Regex.Replace(
             converted,
-            @"\bTEXT\b(?!\s+PRIMARY)",
-            "NVARCHAR(MAX)",
+            @"(\w+)\s+TEXT\b",
+            match =>
+            {
+                var colName = match.Groups[1].Value;
+                var nvarcharType = indexedColumns.Contains(colName) ? "NVARCHAR(450)" : "NVARCHAR(MAX)";
+                return $"{colName} {nvarcharType}";
+            },
             System.Text.RegularExpressions.RegexOptions.IgnoreCase);
 
         // CREATE TABLE IF NOT EXISTS -> IF NOT EXISTS pattern
