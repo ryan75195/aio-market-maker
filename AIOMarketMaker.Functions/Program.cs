@@ -40,9 +40,6 @@ var host = new HostBuilder()
 
             services.AddDbContext<EtlDbContext>(options =>
                 options.UseSqlServer(sqlConnectionString));
-
-            // Job runner (scoped for DbContext)
-            services.AddScoped<IJobRunner, JobRunner>();
         }
 
         // Azure Storage clients (optional)
@@ -79,6 +76,12 @@ var host = new HostBuilder()
 
             // eBay scraper (depends on web scraper client)
             services.AddSingleton<IEbayScraper, EbayScraper>();
+
+            // Job runner (only register when both DbContext AND EbayScraper are available)
+            if (!string.IsNullOrEmpty(sqlConnectionString))
+            {
+                services.AddScoped<IJobRunner, JobRunner>();
+            }
         }
 
         // Embedding service (optional)
