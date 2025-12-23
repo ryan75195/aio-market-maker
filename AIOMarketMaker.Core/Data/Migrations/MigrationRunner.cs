@@ -212,6 +212,13 @@ public class MigrationRunner
             "EXEC sp_rename '$1', '$2'",
             System.Text.RegularExpressions.RegexOptions.IgnoreCase);
 
+        // ALTER TABLE X ADD COLUMN Y -> ALTER TABLE X ADD Y (SQL Server doesn't use COLUMN keyword)
+        converted = System.Text.RegularExpressions.Regex.Replace(
+            converted,
+            @"ALTER\s+TABLE\s+(\w+)\s+ADD\s+COLUMN\s+",
+            "ALTER TABLE $1 ADD ",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
         // TEXT -> NVARCHAR(450) for indexed columns, NVARCHAR(MAX) for others
         // Match column definitions: ColumnName TEXT
         converted = System.Text.RegularExpressions.Regex.Replace(
@@ -244,6 +251,33 @@ public class MigrationRunner
                 return $"IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = '{indexName}' AND object_id = OBJECT_ID('{tableName}')) CREATE {unique}INDEX {indexName} ON {tableName}";
             },
             System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+        // DROP TABLE X -> IF OBJECT_ID('X', 'U') IS NOT NULL DROP TABLE X
+        // This handles plain DROP TABLE (not DROP TABLE IF EXISTS which SQLite doesn't support anyway)
+        converted = System.Text.RegularExpressions.Regex.Replace(
+            converted,
+            @"DROP\s+TABLE\s+(\w+)\s*;",
+            "IF OBJECT_ID('$1', 'U') IS NOT NULL DROP TABLE $1;",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+        // DROP INDEX X -> DROP INDEX IF EXISTS X (SQL Server 2016+)
+        converted = System.Text.RegularExpressions.Regex.Replace(
+            converted,
+            @"DROP\s+INDEX\s+(?!IF\s+EXISTS)(\w+)\s+ON\s+(\w+)",
+            "DROP INDEX IF EXISTS $1 ON $2",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+        // Handle INSERT INTO table_new ... SELECT ... FROM table patterns for table recreation
+        // These need IDENTITY_INSERT ON/OFF in SQL Server when copying Id column
+        converted = System.Text.RegularExpressions.Regex.Replace(
+            converted,
+            @"(INSERT\s+INTO\s+(\w+)\s*\([^)]*\bId\b[^)]*\)\s*\n?\s*SELECT[^;]+FROM\s+\w+\s*;)",
+            match =>
+            {
+                var tableName = match.Groups[2].Value;
+                return $"SET IDENTITY_INSERT {tableName} ON;\n{match.Groups[1].Value}\nSET IDENTITY_INSERT {tableName} OFF;";
+            },
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.Singleline);
 
         return converted;
     }
