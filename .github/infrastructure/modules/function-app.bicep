@@ -133,6 +133,14 @@ resource functionApp 'Microsoft.Web/sites@2022-09-01' = {
           name: 'ScraperApi__ApiKey'
           value: scraperApiKey
         }
+        {
+          name: 'WEBSITE_USE_PLACEHOLDER_DOTNETISOLATED'
+          value: '1'
+        }
+        {
+          name: 'DOTNET_ENVIRONMENT'
+          value: 'Production'
+        }
       ]
     }
   }
