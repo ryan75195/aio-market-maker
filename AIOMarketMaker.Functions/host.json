@@ -1,6 +1,5 @@
 {
   "version": "2.0",
-  "functionTimeout": "00:10:00",
   "logging": {
     "applicationInsights": {
       "samplingSettings": {
@@ -8,9 +7,18 @@
         "excludedTypes": "Request"
       },
       "enableLiveMetricsFilters": true
+    },
+    "logLevel": {
+      "default": "Information",
+      "Host.Results": "Error",
+      "Function": "Information",
+      "Host.Aggregator": "Trace"
     }
   },
   "extensions": {
+    "http": {
+      "routePrefix": "api"
+    },
     "durableTask": {
       "storageProvider": {
         "type": "AzureStorage"
