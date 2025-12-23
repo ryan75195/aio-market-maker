@@ -90,12 +90,28 @@ var host = new HostBuilder()
                             Console.WriteLine("Step 2: Copied data to temp column");
                         }
 
-                        // Step 3: Drop old column
+                        // Step 3a: Drop indexes on IsEnabled first
+                        using (var cmd = conn.CreateCommand())
+                        {
+                            cmd.CommandText = @"
+                                DECLARE @sql NVARCHAR(MAX) = '';
+                                SELECT @sql += 'DROP INDEX ' + i.name + ' ON ScrapeJobs;' + CHAR(13)
+                                FROM sys.indexes i
+                                INNER JOIN sys.index_columns ic ON i.object_id = ic.object_id AND i.index_id = ic.index_id
+                                INNER JOIN sys.columns c ON ic.object_id = c.object_id AND ic.column_id = c.column_id
+                                WHERE i.object_id = OBJECT_ID('ScrapeJobs') AND c.name = 'IsEnabled';
+                                IF @sql <> '' EXEC sp_executesql @sql;
+                            ";
+                            cmd.ExecuteNonQuery();
+                            Console.WriteLine("Step 3a: Dropped indexes on IsEnabled");
+                        }
+
+                        // Step 3b: Drop old column
                         using (var cmd = conn.CreateCommand())
                         {
                             cmd.CommandText = "ALTER TABLE ScrapeJobs DROP COLUMN IsEnabled";
                             cmd.ExecuteNonQuery();
-                            Console.WriteLine("Step 3: Dropped old IsEnabled column");
+                            Console.WriteLine("Step 3b: Dropped old IsEnabled column");
                         }
 
                         // Step 4: Rename temp to IsEnabled
