@@ -235,17 +235,11 @@ public class MigrationRunner
 
         foreach (var resourceName in resourceNames)
         {
-            // Extract migration name from resource (e.g., "AIOMarketMaker.Core.Data.Migrations.001_InitialCreate.sql" -> "001_InitialCreate")
-            var migrationName = Path.GetFileNameWithoutExtension(resourceName.Split('.').Last());
-            if (string.IsNullOrEmpty(migrationName))
-            {
-                // Try alternate extraction for resource names like "...Migrations.001_InitialCreate.sql"
-                var parts = resourceName.Split('.');
-                if (parts.Length >= 2)
-                {
-                    migrationName = parts[^2]; // Second to last part
-                }
-            }
+            // Extract migration name from resource
+            // e.g., "AIOMarketMaker.Core.Data.Migrations.001_InitialCreate.sql" -> "001_InitialCreate"
+            var parts = resourceName.Split('.');
+            // Format is: Namespace.Path.MigrationName.sql, so migration name is second to last
+            var migrationName = parts.Length >= 2 ? parts[^2] : resourceName;
 
             using var stream = assembly.GetManifestResourceStream(resourceName);
             if (stream == null)
