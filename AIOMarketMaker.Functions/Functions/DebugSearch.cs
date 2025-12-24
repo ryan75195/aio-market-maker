@@ -33,6 +33,27 @@ public class DebugSearch
         _logger = logger;
     }
 
+    /// <summary>
+    /// GET /api/debug/url - Just show the URL that would be built (no fetch)
+    /// </summary>
+    [Function("DebugUrl")]
+    public HttpResponseData GetUrl(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "debug/url")] HttpRequestData req)
+    {
+        var query = req.Query["q"] ?? "Playstation 5 Console";
+        var sold = req.Query["sold"] == "true";
+
+        var url = _urlBuilder.BuildSearchUrl(query, sold, 1, Condition.NULL, BuyingFormat.ALL);
+
+        var response = req.CreateResponse(HttpStatusCode.OK);
+        response.Headers.Add("Content-Type", "application/json");
+        response.WriteString(JsonSerializer.Serialize(new { query, sold, url }));
+        return response;
+    }
+
+    /// <summary>
+    /// GET /api/debug/search - Full search with fetch and parse (may timeout)
+    /// </summary>
     [Function("DebugSearch")]
     public async Task<HttpResponseData> Run(
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "debug/search")] HttpRequestData req)
