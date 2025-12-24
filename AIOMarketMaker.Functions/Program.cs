@@ -53,6 +53,7 @@ var host = new HostBuilder()
         var scraperApiKey = configuration.GetValue<string>("ScraperApi:ApiKey") ?? "";
         if (!string.IsNullOrEmpty(scraperBaseUrl))
         {
+            services.AddSingleton(new ScraperApiConfig(scraperBaseUrl, scraperApiKey));
             services.AddHttpClient<IWebscraperClient, WebscraperClient>(client =>
             {
                 client.BaseAddress = new Uri(scraperBaseUrl);
