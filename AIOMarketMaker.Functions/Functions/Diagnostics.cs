@@ -119,6 +119,16 @@ public class Diagnostics
             CheckService<IWebscraperClient>(scope, diagnostics.Services);
             CheckService<IEbayScraper>(scope, diagnostics.Services);
             CheckService<IJobRunner>(scope, diagnostics.Services);
+
+            // Check config values
+            var config = scope.ServiceProvider.GetService<Microsoft.Extensions.Configuration.IConfiguration>();
+            if (config != null)
+            {
+                diagnostics.Services["Config:ScraperApi__BaseUrl"] = config.GetValue<string>("ScraperApi__BaseUrl") ?? "(null)";
+                diagnostics.Services["Config:ScraperApi:BaseUrl"] = config.GetValue<string>("ScraperApi:BaseUrl") ?? "(null)";
+                diagnostics.Services["Config[ScraperApi__BaseUrl]"] = config["ScraperApi__BaseUrl"] ?? "(null)";
+                diagnostics.Services["Config[ScraperApi:BaseUrl]"] = config["ScraperApi:BaseUrl"] ?? "(null)";
+            }
         }
 
         var response = req.CreateResponse(HttpStatusCode.OK);
