@@ -8,12 +8,12 @@ on:
     paths:
       - 'AIOMarketMaker.Functions/**'
       - 'AIOMarketMaker.Core/**'
+      - 'AIOMarketMaker.MigrationCli/**'
       - '.github/workflows/deploy-functions.yml'
       - '.github/infrastructure/**'
   workflow_dispatch:
 
 env:
-  AZURE_FUNCTIONAPP_PACKAGE_PATH: 'AIOMarketMaker.Functions'
   DOTNET_VERSION: '8.0.x'
   RESOURCE_GROUP: 'rg-aiomarketmaker-dev'
 
@@ -39,13 +39,23 @@ jobs:
           dotnet-version: ${{ env.DOTNET_VERSION }}
 
       - name: Restore and publish Functions project
-        run: dotnet publish AIOMarketMaker/${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}/AIOMarketMaker.Functions.csproj --configuration Release --output ./publish
+        run: dotnet publish AIOMarketMaker/AIOMarketMaker.Functions/AIOMarketMaker.Functions.csproj --configuration Release --output ./publish-functions
 
-      - name: Upload artifact
+      - name: Restore and publish Migration CLI
+        run: dotnet publish AIOMarketMaker/AIOMarketMaker.MigrationCli/AIOMarketMaker.MigrationCli.csproj --configuration Release --output ./publish-migrations
+
+      - name: Upload Functions artifact
         uses: actions/upload-artifact@v4
         with:
           name: function-app
-          path: ./publish
+          path: ./publish-functions
+          if-no-files-found: error
+
+      - name: Upload Migration CLI artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: migration-cli
+          path: ./publish-migrations
           if-no-files-found: error
 
   deploy-infrastructure:
@@ -53,6 +63,8 @@ jobs:
     needs: build
     outputs:
       functionAppName: ${{ steps.deploy.outputs.functionAppName }}
+      sqlServerFqdn: ${{ steps.deploy.outputs.sqlServerFqdn }}
+      sqlDatabaseName: ${{ steps.deploy.outputs.sqlDatabaseName }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -86,9 +98,38 @@ jobs:
             scraperApiKey=${{ vars.SCRAPER_API_KEY }}
           failOnStdErr: false
 
-  deploy-code:
+  deploy-migrations:
     runs-on: ubuntu-latest
     needs: deploy-infrastructure
+    steps:
+      - name: Download Migration CLI artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: migration-cli
+          path: ./migration-cli
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Run Migrations
+        env:
+          SQL_CONNECTION_STRING: "Server=tcp:${{ needs.deploy-infrastructure.outputs.sqlServerFqdn }},1433;Initial Catalog=${{ needs.deploy-infrastructure.outputs.sqlDatabaseName }};Persist Security Info=False;User ID=sqladmin;Password=${{ secrets.SQL_ADMIN_PASSWORD }};MultipleActiveResultSets=False;Encrypt=True;TrustServerCertificate=False;Connection Timeout=30;"
+        run: |
+          echo "Running database migrations..."
+          dotnet ./migration-cli/AIOMarketMaker.MigrationCli.dll --connection "$SQL_CONNECTION_STRING"
+
+      - name: Migration Summary
+        run: |
+          echo "## Database Migrations" >> $GITHUB_STEP_SUMMARY
+          echo "- **Server:** ${{ needs.deploy-infrastructure.outputs.sqlServerFqdn }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Database:** ${{ needs.deploy-infrastructure.outputs.sqlDatabaseName }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Status:** Completed" >> $GITHUB_STEP_SUMMARY
+
+  deploy-code:
+    runs-on: ubuntu-latest
+    needs: [deploy-infrastructure, deploy-migrations]
     steps:
       - name: Download artifact
         uses: actions/download-artifact@v4
@@ -100,20 +141,6 @@ jobs:
         uses: azure/login@v2
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
-
-      - name: List publish contents
-        run: |
-          echo "Publish directory contents:"
-          ls -la ./publish/
-          echo "---"
-          echo "functions.metadata:"
-          cat ./publish/functions.metadata || echo "No functions.metadata found"
-          echo "---"
-          echo "worker.config.json:"
-          cat ./publish/worker.config.json || echo "No worker.config.json found"
-          echo "---"
-          echo "extensions.json:"
-          cat ./publish/extensions.json || echo "No extensions.json found"
 
       - name: Create deployment package
         run: |
@@ -129,21 +156,11 @@ jobs:
             --resource-group ${{ env.RESOURCE_GROUP }} \
             --src deploy.zip
 
-      - name: Sync function triggers and restart
+      - name: Restart Function App
         run: |
-          echo "Listing functions after deployment:"
-          az functionapp function list \
-            --name ${{ needs.deploy-infrastructure.outputs.functionAppName }} \
-            --resource-group ${{ env.RESOURCE_GROUP }} || echo "No functions found"
-          echo "Restarting function app:"
           az functionapp restart \
             --name ${{ needs.deploy-infrastructure.outputs.functionAppName }} \
             --resource-group ${{ env.RESOURCE_GROUP }}
-          sleep 30
-          echo "Listing functions after restart:"
-          az functionapp function list \
-            --name ${{ needs.deploy-infrastructure.outputs.functionAppName }} \
-            --resource-group ${{ env.RESOURCE_GROUP }} || echo "No functions found"
 
       - name: Deployment Summary
         run: |

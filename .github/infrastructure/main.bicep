@@ -96,3 +96,4 @@ output functionAppName string = functionApp.outputs.functionAppName
 output functionAppHostName string = functionApp.outputs.functionAppHostName
 output appInsightsConnectionString string = appInsights.outputs.connectionString
 output sqlServerFqdn string = sqlDatabase.outputs.serverFqdn
+output sqlDatabaseName string = sqlDatabaseName
