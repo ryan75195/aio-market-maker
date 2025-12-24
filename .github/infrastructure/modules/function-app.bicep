@@ -34,6 +34,10 @@ param scraperApiBaseUrl string
 @secure()
 param scraperApiKey string
 
+@description('Scraper Storage connection string (for blob access)')
+@secure()
+param scraperStorageConnectionString string
+
 // Storage Account for Function App
 resource storageAccount 'Microsoft.Storage/storageAccounts@2023-01-01' = {
   name: storageAccountName
@@ -111,7 +115,7 @@ resource functionApp 'Microsoft.Web/sites@2022-09-01' = {
         }
         {
           name: 'StorageConnectionString'
-          value: 'DefaultEndpointsProtocol=https;AccountName=${storageAccount.name};EndpointSuffix=${environment().suffixes.storage};AccountKey=${storageAccount.listKeys().keys[0].value}'
+          value: scraperStorageConnectionString
         }
         {
           name: 'OpenAi__ApiKey'

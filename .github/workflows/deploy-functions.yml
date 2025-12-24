@@ -96,6 +96,7 @@ jobs:
             pineconeIndexName=${{ vars.PINECONE_INDEX_NAME }}
             scraperApiBaseUrl=${{ vars.SCRAPER_API_BASE_URL }}
             scraperApiKey=${{ vars.SCRAPER_API_KEY }}
+            scraperStorageConnectionString=${{ secrets.SCRAPER_STORAGE_CONNECTION_STRING }}
           failOnStdErr: false
 
   deploy-migrations:
