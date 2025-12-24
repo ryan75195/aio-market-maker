@@ -47,11 +47,21 @@ public class ScrapeOrchestrator
         var totalListings = results.Sum(r => r.ListingsFound);
         var duration = context.CurrentUtcDateTime - startTime;
 
+        // Log errors from failed jobs
+        foreach (var result in results.Where(r => !r.Success))
+        {
+            logger.LogError("Job {JobId} failed: {Error}", result.JobId, result.Error ?? "Unknown error");
+        }
+
         logger.LogInformation(
             "Orchestration complete: {Succeeded}/{Total} jobs succeeded, {Listings} listings found, duration: {Duration}",
             succeeded, jobs.Count, totalListings, duration);
 
-        return new OrchestratorResult(succeeded, failed, totalListings, duration);
+        var errors = results.Where(r => !r.Success)
+            .Select(r => $"Job {r.JobId}: {r.Error ?? "Unknown"}")
+            .ToList();
+
+        return new OrchestratorResult(succeeded, failed, totalListings, duration, errors);
     }
 }
 
@@ -59,7 +69,8 @@ public record OrchestratorResult(
     int SucceededJobs,
     int FailedJobs,
     int TotalListingsFound,
-    TimeSpan Duration);
+    TimeSpan Duration,
+    List<string> Errors);
 
 public record ScrapeJobInfo(int Id, string SearchTerm);
 
