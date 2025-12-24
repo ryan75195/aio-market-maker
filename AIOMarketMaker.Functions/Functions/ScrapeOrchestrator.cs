@@ -28,7 +28,7 @@ public class ScrapeOrchestrator
         if (jobs.Count == 0)
         {
             logger.LogInformation("No enabled jobs found");
-            return new OrchestratorResult(0, 0, 0, TimeSpan.Zero);
+            return new OrchestratorResult(0, 0, 0, TimeSpan.Zero, new List<string>());
         }
 
         logger.LogInformation("Found {Count} enabled jobs to process", jobs.Count);
