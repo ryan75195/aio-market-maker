@@ -21,7 +21,7 @@ public class ManualScrapeTrigger
     /// </summary>
     [Function("ManualScrapeTrigger")]
     public async Task<HttpResponseData> Run(
-        [HttpTrigger(AuthorizationLevel.Function, "post", Route = "scrape/start")] HttpRequestData req,
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "scrape/start")] HttpRequestData req,
         [DurableClient] DurableTaskClient client,
         FunctionContext context)
     {
