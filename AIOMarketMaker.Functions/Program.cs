@@ -74,6 +74,14 @@ var host = new HostBuilder()
                     {
                         Console.WriteLine("Converting IsEnabled from INT to BIT...");
 
+                        // Step 0: Clean up any leftover temp column from failed previous runs
+                        using (var cmd = conn.CreateCommand())
+                        {
+                            cmd.CommandText = "IF COL_LENGTH('ScrapeJobs', 'IsEnabled_Temp') IS NOT NULL ALTER TABLE ScrapeJobs DROP COLUMN IsEnabled_Temp";
+                            cmd.ExecuteNonQuery();
+                            Console.WriteLine("Step 0: Cleaned up any existing temp column");
+                        }
+
                         // Step 1: Add temp column
                         using (var cmd = conn.CreateCommand())
                         {
