@@ -30,7 +30,7 @@ public class Diagnostics
 
     [Function("Diagnostics")]
     public async Task<HttpResponseData> Run(
-        [HttpTrigger(AuthorizationLevel.Function, "get", Route = "diagnostics")] HttpRequestData req)
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "diagnostics")] HttpRequestData req)
     {
         var diagnostics = new DiagnosticsResult();
 
