@@ -11,6 +11,16 @@ IF EXISTS (
 )
 BEGIN
     -- Clean up any leftover temp column from failed previous runs
+    -- Must drop default constraint first before dropping column
+    DECLARE @constraintName NVARCHAR(128);
+    SELECT @constraintName = dc.name
+    FROM sys.default_constraints dc
+    INNER JOIN sys.columns c ON dc.parent_object_id = c.object_id AND dc.parent_column_id = c.column_id
+    WHERE dc.parent_object_id = OBJECT_ID('ScrapeJobs') AND c.name = 'IsEnabled_Temp';
+
+    IF @constraintName IS NOT NULL
+        EXEC('ALTER TABLE ScrapeJobs DROP CONSTRAINT ' + @constraintName);
+
     IF COL_LENGTH('ScrapeJobs', 'IsEnabled_Temp') IS NOT NULL
         ALTER TABLE ScrapeJobs DROP COLUMN IsEnabled_Temp;
 
