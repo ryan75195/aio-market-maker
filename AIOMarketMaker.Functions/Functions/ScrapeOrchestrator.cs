@@ -33,10 +33,11 @@ public class ScrapeOrchestrator
 
         logger.LogInformation("Found {Count} enabled jobs to process", jobs.Count);
 
-        // Fan-out: process each job in parallel
+        // Fan-out: process each job using sub-orchestrations
+        // This allows each job to break down into smaller activities that won't timeout
         var tasks = jobs.Select(job =>
-            context.CallActivityAsync<JobResult>(
-                nameof(ProcessJobActivity),
+            context.CallSubOrchestratorAsync<JobResult>(
+                nameof(JobOrchestrator),
                 job.Id));
 
         var results = await Task.WhenAll(tasks);
