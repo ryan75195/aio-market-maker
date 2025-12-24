@@ -31,7 +31,7 @@ public class OrchestrationStatus
         // Get recent orchestrations
         var query = new OrchestrationQuery
         {
-            PageSize = 10,
+            PageSize = 20,
             CreatedFrom = DateTime.UtcNow.AddHours(-24)
         };
 
@@ -65,6 +65,42 @@ public class OrchestrationStatus
             timestamp = DateTime.UtcNow,
             orchestrations,
             jobs
+        };
+
+        var response = req.CreateResponse(HttpStatusCode.OK);
+        response.Headers.Add("Content-Type", "application/json");
+        await response.WriteStringAsync(JsonSerializer.Serialize(result, new JsonSerializerOptions { WriteIndented = true }));
+        return response;
+    }
+
+    /// <summary>
+    /// GET /api/status/{instanceId} - Get orchestration history with outputs
+    /// </summary>
+    [Function("OrchestrationHistory")]
+    public async Task<HttpResponseData> GetHistory(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "status/{instanceId}")] HttpRequestData req,
+        [DurableClient] DurableTaskClient client,
+        string instanceId)
+    {
+        var metadata = await client.GetInstanceAsync(instanceId, getInputsAndOutputs: true);
+
+        if (metadata == null)
+        {
+            var notFound = req.CreateResponse(HttpStatusCode.NotFound);
+            await notFound.WriteAsJsonAsync(new { error = "Instance not found" });
+            return notFound;
+        }
+
+        var result = new
+        {
+            instanceId = metadata.InstanceId,
+            name = metadata.Name,
+            status = metadata.RuntimeStatus.ToString(),
+            createdAt = metadata.CreatedAt,
+            lastUpdatedAt = metadata.LastUpdatedAt,
+            input = metadata.SerializedInput,
+            output = metadata.SerializedOutput,
+            failureDetails = metadata.FailureDetails?.ToString()
         };
 
         var response = req.CreateResponse(HttpStatusCode.OK);
