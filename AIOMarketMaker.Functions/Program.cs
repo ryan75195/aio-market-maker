@@ -48,8 +48,9 @@ var host = new HostBuilder()
         services.AddSingleton<IListingParser, EbayListingParser>();
 
         // Web scraper client (optional)
-        var scraperBaseUrl = configuration.GetValue<string>("ScraperApi__BaseUrl") ?? "";
-        var scraperApiKey = configuration.GetValue<string>("ScraperApi__ApiKey") ?? "";
+        // Note: Azure uses __ in app settings which maps to : in config hierarchy
+        var scraperBaseUrl = configuration.GetValue<string>("ScraperApi:BaseUrl") ?? "";
+        var scraperApiKey = configuration.GetValue<string>("ScraperApi:ApiKey") ?? "";
         if (!string.IsNullOrEmpty(scraperBaseUrl))
         {
             services.AddHttpClient<IWebscraperClient, WebscraperClient>(client =>
@@ -72,31 +73,31 @@ var host = new HostBuilder()
         }
 
         // Embedding service (optional)
-        var openAiKey = configuration.GetValue<string>("OpenAi__ApiKey") ?? "";
+        var openAiKey = configuration.GetValue<string>("OpenAi:ApiKey") ?? "";
         if (!string.IsNullOrEmpty(openAiKey))
         {
-            var embeddingModel = configuration.GetValue<string>("Embedding__Model") ?? "text-embedding-3-large";
-            var embeddingDimensions = configuration.GetValue<int>("Embedding__Dimensions", 3072);
+            var embeddingModel = configuration.GetValue<string>("Embedding:Model") ?? "text-embedding-3-large";
+            var embeddingDimensions = configuration.GetValue<int>("Embedding:Dimensions", 3072);
             services.AddSingleton(new EmbeddingConfig(openAiKey, embeddingModel, embeddingDimensions));
             services.AddSingleton<IEmbeddingService, EmbeddingService>();
         }
 
         // Clustering service
         var clusteringConfig = new ClusteringConfig(
-            configuration.GetValue<int>("Clustering__MinClusterSize", 8),
-            configuration.GetValue<int>("Clustering__MinPoints", 4));
+            configuration.GetValue<int>("Clustering:MinClusterSize", 8),
+            configuration.GetValue<int>("Clustering:MinPoints", 4));
         services.AddSingleton(clusteringConfig);
         services.AddSingleton<IClusteringService, ClusteringService>();
 
         // Semantic search service (Pinecone) - optional
-        var pineconeApiKey = configuration.GetValue<string>("Pinecone__ApiKey") ?? "";
+        var pineconeApiKey = configuration.GetValue<string>("Pinecone:ApiKey") ?? "";
         if (!string.IsNullOrEmpty(pineconeApiKey))
         {
             var pineconeConfig = new PineconeConfig(
                 ApiKey: pineconeApiKey,
-                IndexName: configuration.GetValue<string>("Pinecone__IndexName") ?? "arbitrage",
-                TopK: configuration.GetValue<int>("Pinecone__TopK", 30),
-                SimilarityThreshold: configuration.GetValue<float>("Pinecone__SimilarityThreshold", 0.80f));
+                IndexName: configuration.GetValue<string>("Pinecone:IndexName") ?? "arbitrage",
+                TopK: configuration.GetValue<int>("Pinecone:TopK", 30),
+                SimilarityThreshold: configuration.GetValue<float>("Pinecone:SimilarityThreshold", 0.80f));
             services.AddSingleton(pineconeConfig);
             services.AddSingleton<IPineconeIndexClient>(sp =>
             {
