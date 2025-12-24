@@ -90,7 +90,7 @@ jobs:
           template: ./.github/infrastructure/main.bicep
           parameters: >
             environment=dev
-            sqlAdminPassword=${{ secrets.SQL_ADMIN_PASSWORD }}
+            sqlAdminPassword=${{ vars.SQL_ADMIN_PASSWORD }}
             openAiApiKey=${{ vars.OPENAI_API_KEY }}
             pineconeApiKey=${{ vars.PINECONE_API_KEY }}
             pineconeIndexName=${{ vars.PINECONE_INDEX_NAME }}
@@ -116,7 +116,7 @@ jobs:
 
       - name: Run Migrations
         env:
-          SQL_CONNECTION_STRING: "Server=tcp:${{ needs.deploy-infrastructure.outputs.sqlServerFqdn }},1433;Initial Catalog=${{ needs.deploy-infrastructure.outputs.sqlDatabaseName }};Persist Security Info=False;User ID=sqladmin;Password=${{ secrets.SQL_ADMIN_PASSWORD }};MultipleActiveResultSets=False;Encrypt=True;TrustServerCertificate=False;Connection Timeout=30;"
+          SQL_CONNECTION_STRING: "Server=tcp:${{ needs.deploy-infrastructure.outputs.sqlServerFqdn }},1433;Initial Catalog=${{ needs.deploy-infrastructure.outputs.sqlDatabaseName }};Persist Security Info=False;User ID=sqladmin;Password=${{ vars.SQL_ADMIN_PASSWORD }};MultipleActiveResultSets=False;Encrypt=True;TrustServerCertificate=False;Connection Timeout=30;"
         run: |
           echo "Running database migrations..."
           dotnet ./migration-cli/AIOMarketMaker.MigrationCli.dll --connection "$SQL_CONNECTION_STRING"
