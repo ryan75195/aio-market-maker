@@ -1,8 +1,11 @@
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using AIOMarketMaker.Core.Data;
+using AIOMarketMaker.Core.Services;
+using ScraperWorker.Services;
 using System.Net;
 using System.Text.Json;
 
@@ -15,11 +18,13 @@ public class Diagnostics
 {
     private readonly EtlDbContext _dbContext;
     private readonly ILogger<Diagnostics> _logger;
+    private readonly IServiceProvider _serviceProvider;
 
-    public Diagnostics(EtlDbContext dbContext, ILogger<Diagnostics> logger)
+    public Diagnostics(EtlDbContext dbContext, ILogger<Diagnostics> logger, IServiceProvider serviceProvider)
     {
         _dbContext = dbContext;
         _logger = logger;
+        _serviceProvider = serviceProvider;
     }
 
     [Function("Diagnostics")]
@@ -106,10 +111,34 @@ public class Diagnostics
             diagnostics.ConnectionError = ex.ToString();
         }
 
+        // Check service registrations
+        diagnostics.Services = new Dictionary<string, string>();
+        using (var scope = _serviceProvider.CreateScope())
+        {
+            CheckService<IJobRepository>(scope, diagnostics.Services);
+            CheckService<IWebscraperClient>(scope, diagnostics.Services);
+            CheckService<IEbayScraper>(scope, diagnostics.Services);
+            CheckService<IJobRunner>(scope, diagnostics.Services);
+        }
+
         var response = req.CreateResponse(HttpStatusCode.OK);
         response.Headers.Add("Content-Type", "application/json");
         await response.WriteStringAsync(JsonSerializer.Serialize(diagnostics, new JsonSerializerOptions { WriteIndented = true }));
         return response;
+    }
+
+    private void CheckService<T>(IServiceScope scope, Dictionary<string, string> results) where T : class
+    {
+        var name = typeof(T).Name;
+        try
+        {
+            var service = scope.ServiceProvider.GetService<T>();
+            results[name] = service != null ? "OK" : "Not registered";
+        }
+        catch (Exception ex)
+        {
+            results[name] = $"Error: {ex.Message}";
+        }
     }
 }
 
@@ -129,4 +158,5 @@ public class DiagnosticsResult
     public string? JobSelectError { get; set; }
     public List<string>? AppliedMigrations { get; set; }
     public string? MigrationsError { get; set; }
+    public Dictionary<string, string>? Services { get; set; }
 }
