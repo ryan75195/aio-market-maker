@@ -39,6 +39,16 @@ BEGIN
     WHERE i.object_id = OBJECT_ID('ScrapeJobs') AND c.name = 'IsEnabled';
     IF @sql <> '' EXEC sp_executesql @sql;
 
+    -- Drop default constraint on IsEnabled before dropping column
+    DECLARE @oldConstraintName NVARCHAR(128);
+    SELECT @oldConstraintName = dc.name
+    FROM sys.default_constraints dc
+    INNER JOIN sys.columns c ON dc.parent_object_id = c.object_id AND dc.parent_column_id = c.column_id
+    WHERE dc.parent_object_id = OBJECT_ID('ScrapeJobs') AND c.name = 'IsEnabled';
+
+    IF @oldConstraintName IS NOT NULL
+        EXEC('ALTER TABLE ScrapeJobs DROP CONSTRAINT ' + @oldConstraintName);
+
     -- Drop old column
     ALTER TABLE ScrapeJobs DROP COLUMN IsEnabled;
 
