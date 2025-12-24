@@ -33,33 +33,51 @@ public class JobOrchestrator
 
             logger.LogInformation("Job {JobId}: '{SearchTerm}'", jobId, jobDetails.SearchTerm);
 
-            // Step 2: Fan out to search pages (both active and sold)
-            var searchTasks = new List<Task<SearchPageResult>>();
+            var seenIds = new HashSet<string>();
+            var allListingIds = new List<string>();
 
-            // Search sold listings - up to 10 pages
-            for (int page = 1; page <= 10; page++)
+            // Step 2a: Search SOLD listings page by page until no results in date range
+            logger.LogInformation("Job {JobId}: Searching sold listings...", jobId);
+            for (int page = 1; ; page++)
             {
-                searchTasks.Add(context.CallActivityAsync<SearchPageResult>(
+                var result = await context.CallActivityAsync<SearchPageResult>(
                     nameof(SearchPageActivity),
-                    new SearchPageInput(jobDetails.SearchTerm, page, IsSold: true, jobDetails.LookbackDays)));
+                    new SearchPageInput(jobDetails.SearchTerm, page, IsSold: true, jobDetails.LookbackDays));
+
+                if (!result.Success || result.ListingIds.Count == 0)
+                    break;
+
+                var newIds = result.ListingIds.Where(id => seenIds.Add(id)).ToList();
+                allListingIds.AddRange(newIds);
+
+                logger.LogInformation("Job {JobId}: Sold page {Page} found {Count} listings (total: {Total})",
+                    jobId, page, newIds.Count, allListingIds.Count);
+
+                if (newIds.Count == 0)
+                    break;
             }
 
-            // Search active listings - up to 10 pages
-            for (int page = 1; page <= 10; page++)
+            // Step 2b: Search ACTIVE listings page by page until no results (limit 10000)
+            const int activeItemLimit = 10000;
+            logger.LogInformation("Job {JobId}: Searching active listings...", jobId);
+            for (int page = 1; allListingIds.Count < activeItemLimit; page++)
             {
-                searchTasks.Add(context.CallActivityAsync<SearchPageResult>(
+                var result = await context.CallActivityAsync<SearchPageResult>(
                     nameof(SearchPageActivity),
-                    new SearchPageInput(jobDetails.SearchTerm, page, IsSold: false, LookbackDays: null)));
+                    new SearchPageInput(jobDetails.SearchTerm, page, IsSold: false, LookbackDays: null));
+
+                if (!result.Success || result.ListingIds.Count == 0)
+                    break;
+
+                var newIds = result.ListingIds.Where(id => seenIds.Add(id)).ToList();
+                allListingIds.AddRange(newIds);
+
+                logger.LogInformation("Job {JobId}: Active page {Page} found {Count} listings (total: {Total})",
+                    jobId, page, newIds.Count, allListingIds.Count);
+
+                if (newIds.Count == 0)
+                    break;
             }
-
-            var searchResults = await Task.WhenAll(searchTasks);
-
-            // Step 3: Aggregate and dedupe results
-            var allListingIds = searchResults
-                .Where(r => r.Success)
-                .SelectMany(r => r.ListingIds)
-                .Distinct()
-                .ToList();
 
             logger.LogInformation("Job {JobId}: Found {Count} unique listings from search", jobId, allListingIds.Count);
 
