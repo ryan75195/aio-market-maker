@@ -32,6 +32,10 @@ param scraperApiBaseUrl string = ''
 @description('Scraper API key')
 param scraperApiKey string = ''
 
+@secure()
+@description('Scraper Storage connection string')
+param scraperStorageConnectionString string = ''
+
 // Resource naming
 var resourceSuffix = '${baseName}-${environment}'
 var uniqueSuffix = uniqueString(resourceGroup().id, baseName, environment)
@@ -88,6 +92,7 @@ module functionApp 'modules/function-app.bicep' = {
     pineconeIndexName: pineconeIndexName
     scraperApiBaseUrl: scraperApiBaseUrl
     scraperApiKey: scraperApiKey
+    scraperStorageConnectionString: scraperStorageConnectionString
   }
 }
 
