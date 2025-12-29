@@ -101,33 +101,45 @@ public class JobOrchestrator
                 context.CallActivityAsync<string>(nameof(BuildUrlsActivity.BuildListingUrlActivity), listingId));
             var listingUrls = await Task.WhenAll(urlTasks);
 
-            // Step 5: Fan out to fetch each listing using sub-orchestrators
-            // Each FetchListingOrchestrator handles the listing page + description with durable timers
-            // Wrap each call to handle individual failures without failing the whole batch
-            var fetchTasks = newListingIds.Select(async (listingId, i) =>
+            // Step 5: Fetch listings in batches to avoid overwhelming the orchestrator
+            // Processing all listings at once creates too many sub-orchestrators (gRPC limit)
+            const int batchSize = 50;
+            var allListings = new List<ListingData>();
+
+            for (int batchStart = 0; batchStart < newListingIds.Count; batchStart += batchSize)
             {
-                try
+                var batchIds = newListingIds.Skip(batchStart).Take(batchSize).ToList();
+                var batchUrls = listingUrls.Skip(batchStart).Take(batchSize).ToList();
+
+                logger.LogInformation("Job {JobId}: Fetching batch {BatchNum}/{TotalBatches} ({Count} listings)",
+                    jobId, (batchStart / batchSize) + 1, (newListingIds.Count + batchSize - 1) / batchSize, batchIds.Count);
+
+                // Fan out within the batch - wrap each call to handle individual failures
+                var fetchTasks = batchIds.Select(async (listingId, i) =>
                 {
-                    return await context.CallSubOrchestratorAsync<ListingData?>(
-                        nameof(FetchListingOrchestrator),
-                        new FetchListingInput(listingId, listingUrls[i]));
-                }
-                catch (Exception ex)
-                {
-                    logger.LogWarning(ex, "Job {JobId}: Failed to fetch listing {ListingId}", jobId, listingId);
-                    return null;
-                }
-            });
+                    try
+                    {
+                        return await context.CallSubOrchestratorAsync<ListingData?>(
+                            nameof(FetchListingOrchestrator),
+                            new FetchListingInput(listingId, batchUrls[i]));
+                    }
+                    catch (Exception ex)
+                    {
+                        logger.LogWarning(ex, "Job {JobId}: Failed to fetch listing {ListingId}", jobId, listingId);
+                        return null;
+                    }
+                });
 
-            var fetchResults = await Task.WhenAll(fetchTasks);
+                var batchResults = await Task.WhenAll(fetchTasks);
 
-            // Step 6: Collect successful results (nulls are failed/skipped listings)
-            var allListings = fetchResults
-                .Where(r => r != null)
-                .Cast<ListingData>()
-                .ToList();
+                // Collect successful results from this batch
+                allListings.AddRange(batchResults.Where(r => r != null).Cast<ListingData>());
 
-            logger.LogInformation("Job {JobId}: Fetched {Count} listing details", jobId, allListings.Count);
+                logger.LogInformation("Job {JobId}: Batch complete, {Count} listings fetched so far",
+                    jobId, allListings.Count);
+            }
+
+            logger.LogInformation("Job {JobId}: Fetched {Count} listing details total", jobId, allListings.Count);
 
             if (allListings.Count > 0)
             {
@@ -136,7 +148,7 @@ public class JobOrchestrator
                     new SaveListingsInput(jobId, allListings));
             }
 
-            // Step 7: Update job timestamp
+            // Step 6: Update job timestamp
             await context.CallActivityAsync(nameof(UpdateJobTimestampActivity), jobId);
 
             logger.LogInformation("Job {JobId} completed: {TotalFound} found, {NewFetched} new",
