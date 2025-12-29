@@ -100,24 +100,26 @@ public class JobOrchestrator
                 return new JobResult(jobId, true, allListingIds.Count, null);
             }
 
-            // Step 5: Fan out to fetch listing details in batches of 20
-            const int batchSize = 20;
-            var fetchTasks = new List<Task<FetchListingsBatchResult>>();
-
-            for (int i = 0; i < newListingIds.Count; i += batchSize)
+            // Step 5: Fan out to fetch each listing independently (max parallelism, fault isolation)
+            var retryPolicy = new TaskOptions
             {
-                var batch = newListingIds.Skip(i).Take(batchSize).ToList();
-                fetchTasks.Add(context.CallActivityAsync<FetchListingsBatchResult>(
-                    nameof(FetchListingsBatchActivity),
-                    new FetchListingsBatchInput(batch)));
-            }
+                Retry = new RetryPolicy(
+                    maxNumberOfAttempts: 3,
+                    firstRetryInterval: TimeSpan.FromSeconds(30))
+            };
+
+            var fetchTasks = newListingIds.Select(listingId =>
+                context.CallActivityAsync<ListingData?>(
+                    nameof(FetchSingleListingActivity),
+                    listingId,
+                    retryPolicy));
 
             var fetchResults = await Task.WhenAll(fetchTasks);
 
-            // Step 6: Save all fetched listings
+            // Step 6: Collect successful results (nulls are failed/skipped listings)
             var allListings = fetchResults
-                .Where(r => r.Success)
-                .SelectMany(r => r.Listings)
+                .Where(r => r != null)
+                .Cast<ListingData>()
                 .ToList();
 
             logger.LogInformation("Job {JobId}: Fetched {Count} listing details", jobId, allListings.Count);
@@ -150,8 +152,6 @@ public record JobDetails(int Id, string SearchTerm, int LookbackDays);
 public record SearchPageInput(string SearchTerm, int Page, bool IsSold, int? LookbackDays);
 public record SearchPageResult(bool Success, List<string> ListingIds, string? Error);
 public record FilterNewListingsInput(int JobId, List<string> ListingIds);
-public record FetchListingsBatchInput(List<string> ListingIds);
-public record FetchListingsBatchResult(bool Success, List<ListingData> Listings, string? Error);
 public record SaveListingsInput(int JobId, List<ListingData> Listings);
 
 public record ListingData(
