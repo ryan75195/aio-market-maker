@@ -103,10 +103,21 @@ public class JobOrchestrator
 
             // Step 5: Fan out to fetch each listing using sub-orchestrators
             // Each FetchListingOrchestrator handles the listing page + description with durable timers
-            var fetchTasks = newListingIds.Select((listingId, i) =>
-                context.CallSubOrchestratorAsync<ListingData?>(
-                    nameof(FetchListingOrchestrator),
-                    new FetchListingInput(listingId, listingUrls[i])));
+            // Wrap each call to handle individual failures without failing the whole batch
+            var fetchTasks = newListingIds.Select(async (listingId, i) =>
+            {
+                try
+                {
+                    return await context.CallSubOrchestratorAsync<ListingData?>(
+                        nameof(FetchListingOrchestrator),
+                        new FetchListingInput(listingId, listingUrls[i]));
+                }
+                catch (Exception ex)
+                {
+                    logger.LogWarning(ex, "Job {JobId}: Failed to fetch listing {ListingId}", jobId, listingId);
+                    return null;
+                }
+            });
 
             var fetchResults = await Task.WhenAll(fetchTasks);
 
