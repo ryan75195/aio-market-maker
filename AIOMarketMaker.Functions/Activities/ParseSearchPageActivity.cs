@@ -1,61 +1,47 @@
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Extensions.Logging;
-using AIOMarketMaker.Core.Services;
 using AIOMarketMaker.Core.Parsers;
 using AIOMarketMaker.Functions.Functions;
 using AIOMarketMaker.Models.Ebay;
 using AngleSharp;
-using ScraperWorker.Services;
 
 namespace AIOMarketMaker.Functions.Activities;
 
-public class SearchPageActivity
+/// <summary>
+/// Parses search page HTML and returns listing IDs.
+/// This activity only parses - it does NOT fetch any HTML.
+/// </summary>
+public class ParseSearchPageActivity
 {
-    private readonly IEbayUrlBuilder _urlBuilder;
-    private readonly IWebscraperClient _webScraper;
     private readonly ISearchParser _searchParser;
-    private readonly ILogger<SearchPageActivity> _logger;
+    private readonly ILogger<ParseSearchPageActivity> _logger;
 
-    public SearchPageActivity(
-        IEbayUrlBuilder urlBuilder,
-        IWebscraperClient webScraper,
+    public ParseSearchPageActivity(
         ISearchParser searchParser,
-        ILogger<SearchPageActivity> logger)
+        ILogger<ParseSearchPageActivity> logger)
     {
-        _urlBuilder = urlBuilder;
-        _webScraper = webScraper;
         _searchParser = searchParser;
         _logger = logger;
     }
 
-    [Function(nameof(SearchPageActivity))]
+    [Function(nameof(ParseSearchPageActivity))]
     public async Task<SearchPageResult> Run(
-        [ActivityTrigger] SearchPageInput input,
+        [ActivityTrigger] ParseSearchPageInput input,
         FunctionContext context)
     {
         var searchType = input.IsSold ? "sold" : "active";
-        _logger.LogInformation("Searching {Type} page {Page} for '{Query}'",
-            searchType, input.Page, input.SearchTerm);
+        _logger.LogInformation("Parsing {Type} search page {Page}", searchType, input.Page);
 
         try
         {
-            var url = _urlBuilder.BuildSearchUrl(
-                input.SearchTerm,
-                input.IsSold,
-                input.Page,
-                Condition.NULL,
-                BuyingFormat.ALL);
-
-            var html = await _webScraper.GetPageHtmlAsync(url);
-
-            if (string.IsNullOrEmpty(html))
+            if (string.IsNullOrEmpty(input.Html))
             {
-                _logger.LogWarning("Empty page for {Type} page {Page}", searchType, input.Page);
+                _logger.LogWarning("Empty HTML for {Type} page {Page}", searchType, input.Page);
                 return new SearchPageResult(true, new List<string>(), null);
             }
 
             var browsingContext = BrowsingContext.New(Configuration.Default);
-            var doc = await browsingContext.OpenAsync(req => req.Content(html));
+            var doc = await browsingContext.OpenAsync(req => req.Content(input.Html));
 
             var products = _searchParser.ParseSearchResults(doc)
                 .OfType<EbayProductSummary>()
@@ -82,8 +68,14 @@ public class SearchPageActivity
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error searching {Type} page {Page}", searchType, input.Page);
+            _logger.LogError(ex, "Error parsing {Type} page {Page}", searchType, input.Page);
             return new SearchPageResult(false, new List<string>(), ex.Message);
         }
     }
 }
+
+public record ParseSearchPageInput(
+    string Html,
+    int Page,
+    bool IsSold,
+    int? LookbackDays);

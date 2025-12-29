@@ -7,7 +7,7 @@ namespace AIOMarketMaker.Functions.Functions;
 
 /// <summary>
 /// Sub-orchestrator that handles a single scrape job.
-/// Breaks down the work into page-level activities to avoid timeouts.
+/// Uses durable timers for polling instead of blocking waits in activities.
 /// </summary>
 public class JobOrchestrator
 {
@@ -40,9 +40,7 @@ public class JobOrchestrator
             logger.LogInformation("Job {JobId}: Searching sold listings...", jobId);
             for (int page = 1; ; page++)
             {
-                var result = await context.CallActivityAsync<SearchPageResult>(
-                    nameof(SearchPageActivity),
-                    new SearchPageInput(jobDetails.SearchTerm, page, IsSold: true, jobDetails.LookbackDays));
+                var result = await SearchPageAsync(context, jobDetails.SearchTerm, page, true, jobDetails.LookbackDays);
 
                 if (!result.Success || result.ListingIds.Count == 0)
                     break;
@@ -62,9 +60,7 @@ public class JobOrchestrator
             logger.LogInformation("Job {JobId}: Searching active listings...", jobId);
             for (int page = 1; allListingIds.Count < activeItemLimit; page++)
             {
-                var result = await context.CallActivityAsync<SearchPageResult>(
-                    nameof(SearchPageActivity),
-                    new SearchPageInput(jobDetails.SearchTerm, page, IsSold: false, LookbackDays: null));
+                var result = await SearchPageAsync(context, jobDetails.SearchTerm, page, false, null);
 
                 if (!result.Success || result.ListingIds.Count == 0)
                     break;
@@ -87,7 +83,7 @@ public class JobOrchestrator
                 return new JobResult(jobId, true, 0, null);
             }
 
-            // Step 4: Filter out existing listings
+            // Step 3: Filter out existing listings
             var newListingIds = await context.CallActivityAsync<List<string>>(
                 nameof(FilterNewListingsActivity),
                 new FilterNewListingsInput(jobId, allListingIds));
@@ -100,19 +96,17 @@ public class JobOrchestrator
                 return new JobResult(jobId, true, allListingIds.Count, null);
             }
 
-            // Step 5: Fan out to fetch each listing independently (max parallelism, fault isolation)
-            var retryPolicy = new TaskOptions
-            {
-                Retry = new RetryPolicy(
-                    maxNumberOfAttempts: 3,
-                    firstRetryInterval: TimeSpan.FromSeconds(30))
-            };
+            // Step 4: Build listing URLs (fan out)
+            var urlTasks = newListingIds.Select(listingId =>
+                context.CallActivityAsync<string>(nameof(BuildUrlsActivity.BuildListingUrlActivity), listingId));
+            var listingUrls = await Task.WhenAll(urlTasks);
 
-            var fetchTasks = newListingIds.Select(listingId =>
-                context.CallActivityAsync<ListingData?>(
-                    nameof(FetchSingleListingActivity),
-                    listingId,
-                    retryPolicy));
+            // Step 5: Fan out to fetch each listing using sub-orchestrators
+            // Each FetchListingOrchestrator handles the listing page + description with durable timers
+            var fetchTasks = newListingIds.Select((listingId, i) =>
+                context.CallSubOrchestratorAsync<ListingData?>(
+                    nameof(FetchListingOrchestrator),
+                    new FetchListingInput(listingId, listingUrls[i])));
 
             var fetchResults = await Task.WhenAll(fetchTasks);
 
@@ -145,11 +139,43 @@ public class JobOrchestrator
             return new JobResult(jobId, false, 0, ex.Message);
         }
     }
+
+    /// <summary>
+    /// Searches a single page using the durable timer pattern.
+    /// Builds URL -> Scrapes with ScrapeUrlOrchestrator -> Parses results
+    /// </summary>
+    private async Task<SearchPageResult> SearchPageAsync(
+        TaskOrchestrationContext context,
+        string searchTerm,
+        int page,
+        bool isSold,
+        int? lookbackDays)
+    {
+        // Build the search URL
+        var url = await context.CallActivityAsync<string>(
+            nameof(BuildUrlsActivity.BuildSearchUrlActivity),
+            new BuildSearchUrlInput(searchTerm, isSold, page));
+
+        // Scrape the page using durable timer pattern (no blocking)
+        var html = await context.CallSubOrchestratorAsync<string?>(
+            nameof(ScrapeUrlOrchestrator), url);
+
+        if (string.IsNullOrEmpty(html))
+        {
+            return new SearchPageResult(false, new List<string>(), "Failed to scrape page");
+        }
+
+        // Parse the HTML
+        var result = await context.CallActivityAsync<SearchPageResult>(
+            nameof(ParseSearchPageActivity),
+            new ParseSearchPageInput(html, page, isSold, lookbackDays));
+
+        return result;
+    }
 }
 
 // DTOs for the orchestrator
 public record JobDetails(int Id, string SearchTerm, int LookbackDays);
-public record SearchPageInput(string SearchTerm, int Page, bool IsSold, int? LookbackDays);
 public record SearchPageResult(bool Success, List<string> ListingIds, string? Error);
 public record FilterNewListingsInput(int JobId, List<string> ListingIds);
 public record SaveListingsInput(int JobId, List<ListingData> Listings);
