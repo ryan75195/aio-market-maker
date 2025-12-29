@@ -16,7 +16,23 @@ public class FetchListingOrchestrator
         [OrchestrationTrigger] TaskOrchestrationContext context)
     {
         var logger = context.CreateReplaySafeLogger<FetchListingOrchestrator>();
-        var input = context.GetInput<FetchListingInput>()!;
+
+        FetchListingInput? input = null;
+        try
+        {
+            input = context.GetInput<FetchListingInput>();
+            if (input == null)
+            {
+                logger.LogError("FetchListingOrchestrator: Input is null");
+                return null;
+            }
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "FetchListingOrchestrator: Failed to deserialize input. Type: {ExType}, Message: {ExMessage}",
+                ex.GetType().Name, ex.Message);
+            return null;
+        }
 
         logger.LogInformation("Fetching listing {ListingId}", input.ListingId);
 
@@ -86,7 +102,14 @@ public class FetchListingOrchestrator
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Failed to fetch listing {ListingId}", input.ListingId);
+            // Log detailed exception info for debugging
+            logger.LogError(ex,
+                "FetchListingOrchestrator: Failed to fetch listing {ListingId}. " +
+                "ExceptionType: {ExType}, Message: {ExMessage}, InnerException: {InnerEx}",
+                input.ListingId,
+                ex.GetType().FullName,
+                ex.Message,
+                ex.InnerException?.Message ?? "none");
             return null;
         }
     }
