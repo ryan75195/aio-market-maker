@@ -82,29 +82,53 @@ public class ManualScrapeTrigger
         try
         {
             // Terminate all running/pending orchestrations first
+            // Use smaller page size to avoid gRPC message size limits
             var query = new OrchestrationQuery
             {
-                CreatedFrom = DateTime.UtcNow.AddDays(-7)
+                CreatedFrom = DateTime.UtcNow.AddDays(-7),
+                PageSize = 50  // Small page to avoid gRPC limits
             };
 
             var terminated = 0;
-            await foreach (var metadata in client.GetAllInstancesAsync(query))
+            var totalProcessed = 0;
+            var maxIterations = 100; // Safety limit
+
+            for (int i = 0; i < maxIterations; i++)
             {
-                if (metadata.RuntimeStatus == OrchestrationRuntimeStatus.Running ||
-                    metadata.RuntimeStatus == OrchestrationRuntimeStatus.Pending ||
-                    metadata.RuntimeStatus == OrchestrationRuntimeStatus.Suspended)
+                var batchTerminated = 0;
+                try
                 {
-                    try
+                    await foreach (var metadata in client.GetAllInstancesAsync(query))
                     {
-                        await client.TerminateInstanceAsync(metadata.InstanceId, "Purged via API");
-                        terminated++;
-                        _logger.LogInformation("Terminated: {InstanceId} ({Name})", metadata.InstanceId, metadata.Name);
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogWarning(ex, "Failed to terminate: {InstanceId}", metadata.InstanceId);
+                        totalProcessed++;
+                        if (metadata.RuntimeStatus == OrchestrationRuntimeStatus.Running ||
+                            metadata.RuntimeStatus == OrchestrationRuntimeStatus.Pending ||
+                            metadata.RuntimeStatus == OrchestrationRuntimeStatus.Suspended)
+                        {
+                            try
+                            {
+                                await client.TerminateInstanceAsync(metadata.InstanceId, "Purged via API");
+                                terminated++;
+                                batchTerminated++;
+                                _logger.LogInformation("Terminated: {InstanceId} ({Name})", metadata.InstanceId, metadata.Name);
+                            }
+                            catch (Exception ex)
+                            {
+                                _logger.LogWarning(ex, "Failed to terminate: {InstanceId}", metadata.InstanceId);
+                            }
+                        }
                     }
                 }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Batch {Batch} failed, continuing...", i + 1);
+                }
+
+                // If we didn't terminate anything this batch, we're done
+                if (batchTerminated == 0)
+                    break;
+
+                _logger.LogInformation("Batch {Batch}: terminated {Count} orchestrations", i + 1, batchTerminated);
             }
 
             // Purge completed/failed/terminated orchestrations
@@ -119,14 +143,15 @@ public class ManualScrapeTrigger
                         OrchestrationRuntimeStatus.Terminated
                     }));
 
-            _logger.LogInformation("Purge completed: {Terminated} terminated, {Purged} purged",
-                terminated, purgeResult.PurgedInstanceCount);
+            _logger.LogInformation("Purge completed: {Terminated} terminated, {Purged} purged, {Processed} processed",
+                terminated, purgeResult.PurgedInstanceCount, totalProcessed);
 
             var response = req.CreateResponse(HttpStatusCode.OK);
             await response.WriteAsJsonAsync(new
             {
                 terminated,
                 purged = purgeResult.PurgedInstanceCount,
+                processed = totalProcessed,
                 status = "Purge completed"
             });
             return response;

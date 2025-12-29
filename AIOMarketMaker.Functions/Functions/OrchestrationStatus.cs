@@ -28,10 +28,10 @@ public class OrchestrationStatus
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "status")] HttpRequestData req,
         [DurableClient] DurableTaskClient client)
     {
-        // Get recent orchestrations
+        // Get recent orchestrations (small page size to avoid gRPC limits)
         var query = new OrchestrationQuery
         {
-            PageSize = 20,
+            PageSize = 10,  // Reduced to avoid gRPC message size limits
             CreatedFrom = DateTime.UtcNow.AddHours(-24)
         };
 
