@@ -22,30 +22,49 @@ public class ScrapeUrlOrchestrator
         var logger = context.CreateReplaySafeLogger<ScrapeUrlOrchestrator>();
         var url = context.GetInput<string>();
 
-        logger.LogInformation("Starting scrape for URL: {Url}", url);
+        logger.LogInformation("ScrapeUrlOrchestrator: Starting for URL: {Url}", url);
 
         // Step 1: Submit the scrape job (returns immediately with jobId)
-        var jobId = await context.CallActivityAsync<string>(
-            nameof(SubmitScrapeJobActivity), url);
-
-        logger.LogDebug("Submitted job {JobId} for URL: {Url}", jobId, url);
+        string jobId;
+        try
+        {
+            jobId = await context.CallActivityAsync<string>(
+                nameof(SubmitScrapeJobActivity), url);
+            logger.LogInformation("ScrapeUrlOrchestrator: Job {JobId} submitted for URL: {Url}", jobId, url);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "ScrapeUrlOrchestrator: Failed to submit job for URL: {Url}", url);
+            return null;
+        }
 
         // Step 2: Poll for completion using durable timers
         // This is the key difference - orchestrator sleeps (free) instead of activity blocking (costs $)
         ScrapeJobStatusResult? status = null;
         for (int attempt = 0; attempt < MaxPollAttempts; attempt++)
         {
-            status = await context.CallActivityAsync<ScrapeJobStatusResult>(
-                nameof(CheckScrapeJobStatusActivity), jobId);
-
-            if (status.IsComplete)
+            try
             {
-                logger.LogDebug("Job {JobId} completed with status: {Status}", jobId, status.Status);
-                break;
+                status = await context.CallActivityAsync<ScrapeJobStatusResult>(
+                    nameof(CheckScrapeJobStatusActivity), jobId);
+
+                logger.LogInformation("ScrapeUrlOrchestrator: Job {JobId} attempt {Attempt} status: {Status} (isComplete: {IsComplete})",
+                    jobId, attempt + 1, status.Status, status.IsComplete);
+
+                if (status.IsComplete)
+                {
+                    break;
+                }
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "ScrapeUrlOrchestrator: Failed to check status for job {JobId}", jobId);
+                return null;
             }
 
             // Durable timer - orchestrator checkpoints and resumes after delay
             // No compute resources consumed during this wait
+            logger.LogInformation("ScrapeUrlOrchestrator: Job {JobId} waiting {Seconds}s before next poll", jobId, PollIntervalSeconds);
             await context.CreateTimer(
                 context.CurrentUtcDateTime.AddSeconds(PollIntervalSeconds),
                 CancellationToken.None);

@@ -26,12 +26,18 @@ public class SubmitScrapeJobActivity
         [ActivityTrigger] string url,
         FunctionContext context)
     {
-        _logger.LogInformation("Submitting scrape job for URL: {Url}", url);
+        _logger.LogInformation("SubmitScrapeJobActivity: Starting for URL: {Url}", url);
 
-        var response = await _webScraper.NewJobAsync(new[] { url });
-
-        _logger.LogInformation("Scrape job submitted: {JobId}", response.JobId);
-
-        return response.JobId;
+        try
+        {
+            var response = await _webScraper.NewJobAsync(new[] { url });
+            _logger.LogInformation("SubmitScrapeJobActivity: Job {JobId} created for URL: {Url}", response.JobId, url);
+            return response.JobId;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "SubmitScrapeJobActivity: Failed to submit job for URL: {Url}", url);
+            throw;
+        }
     }
 }
