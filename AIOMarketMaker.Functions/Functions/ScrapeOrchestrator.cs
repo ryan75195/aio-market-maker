@@ -33,14 +33,29 @@ public class ScrapeOrchestrator
 
         logger.LogInformation("Found {Count} enabled jobs to process", jobs.Count);
 
-        // Fan-out: process each job using sub-orchestrations
-        // This allows each job to break down into smaller activities that won't timeout
-        var tasks = jobs.Select(job =>
-            context.CallSubOrchestratorAsync<JobResult>(
-                nameof(JobOrchestrator),
-                job.Id));
+        // Process jobs sequentially to avoid creating too many concurrent sub-orchestrators
+        // Each job can create many FetchListingOrchestrators which create ScrapeUrlOrchestrators
+        // Running jobs in parallel would overwhelm the system with thousands of orchestrations
+        var results = new List<JobResult>();
+        foreach (var job in jobs)
+        {
+            logger.LogInformation("Starting job {JobId}: {SearchTerm}", job.Id, job.SearchTerm);
 
-        var results = await Task.WhenAll(tasks);
+            try
+            {
+                var result = await context.CallSubOrchestratorAsync<JobResult>(
+                    nameof(JobOrchestrator),
+                    job.Id);
+                results.Add(result);
+                logger.LogInformation("Job {JobId} completed: {Success}, {ListingsFound} listings",
+                    job.Id, result.Success, result.ListingsFound);
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Job {JobId} failed with exception", job.Id);
+                results.Add(new JobResult(job.Id, false, 0, ex.Message));
+            }
+        }
 
         // Fan-in: aggregate results
         var succeeded = results.Count(r => r.Success);
