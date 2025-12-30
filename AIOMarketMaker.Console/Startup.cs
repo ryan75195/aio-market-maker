@@ -85,6 +85,7 @@ public static class HostHelper
                 services.AddTask<SearchTestTask>();
                 services.AddTask<PricingTask>();
                 services.AddTask<TerminateOrchestrationsTask>();
+                services.AddTask<MigrateTask>();
             })
             .Build();
     }
