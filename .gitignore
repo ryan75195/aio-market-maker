@@ -376,3 +376,11 @@ clusters.txt
 output.txt
 output_*.txt
 search-test-results.txt
+
+# Azure Functions deployment artifacts
+temp-publish/
+app-logs/
+deploy.zip
+publish.zip
+*.zip
+!.github/**/*.zip

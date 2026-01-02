@@ -1,8 +1,0 @@
-<step title="BackgroundTrace" date="2025-12-22T17:34:36.299" instance="ae320f" url="synctriggers-operation" method="POST" >
-  <step title="Updating shutdown sentinel last write time" date="2025-12-22T17:34:36.330" SemaphoreCount="6" /><!-- duration: 16ms -->
-  <step title="Delaying &apos;00:01:00&apos; for Functions site to restart." date="2025-12-22T17:34:36.377" /><!-- duration: 31ms -->
-  <step title="Begin HttpPost https://func-aiomarketmaker-dev.azurewebsites.net/admin/host/synctriggers, x-ms-request-id: e2898731-2c89-4ade-9f8a-228732382d1e" date="2025-12-22T17:35:36.445" /><!-- duration: 47ms -->
-  <step title="End HttpPost, status: OK" date="2025-12-22T17:35:37.351" /><!-- duration: 47ms -->
-  <step title="Syncing function triggers by calling the functions runtime site successful." date="2025-12-22T17:35:37.414" /><!-- duration: 47ms -->
-  <step title="Deleting shutdown sentinel file" date="2025-12-22T17:35:37.492" SemaphoreCount="8" /><!-- duration: 16ms -->
-</step><!-- duration: 61240ms -->
