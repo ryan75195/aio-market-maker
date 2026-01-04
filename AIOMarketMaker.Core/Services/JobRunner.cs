@@ -13,6 +13,7 @@ public record JobRunResult(
     bool Success,
     int ListingsFound,
     int NewListingsFetched,
+    int StatusUpdates,
     string? Error
 );
 
@@ -49,7 +50,7 @@ public class JobRunner : IJobRunner
         var job = await _dbContext.ScrapeJobs.FindAsync(new object[] { jobId }, ct);
         if (job == null)
         {
-            return new JobRunResult(jobId, false, 0, 0, $"Job {jobId} not found");
+            return new JobRunResult(jobId, false, 0, 0, 0, $"Job {jobId} not found");
         }
 
         return await RunJob(job, ct);
@@ -62,14 +63,18 @@ public class JobRunner : IJobRunner
 
         try
         {
-            var searchResults = await SearchEbay(job, ct);
-            var newSearchResultIds = await FilterNewListings(job.Id, searchResults, ct);
+            var (allResults, soldResultIds) = await SearchEbay(job, ct);
+
+            // Detect and update Active→Sold transitions
+            var statusUpdates = await DetectAndUpdateSoldListings(job.Id, soldResultIds, ct);
+
+            var newSearchResultIds = await FilterNewListings(job.Id, allResults, ct);
 
             if (newSearchResultIds.Length == 0)
             {
                 _logger.LogInformation("No new listings for job {JobId}, skipping fetch", job.Id);
                 await UpdateJobTimestamp(job, ct);
-                return new JobRunResult(job.Id, true, searchResults.Count(), 0, null);
+                return new JobRunResult(job.Id, true, allResults.Count(), 0, statusUpdates, null);
             }
 
             var ebayProducts = await FetchEbayProducts(newSearchResultIds);
@@ -78,19 +83,20 @@ public class JobRunner : IJobRunner
             await SaveInitialStatusHistory(listings, ct);
             await UpdateJobTimestamp(job, ct);
 
-            return new JobRunResult(job.Id, true, searchResults.Count(), newSearchResultIds.Length, null);
+            return new JobRunResult(job.Id, true, allResults.Count(), newSearchResultIds.Length, statusUpdates, null);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error processing job {JobId}: {Message}", job.Id, ex.Message);
-            return new JobRunResult(job.Id, false, 0, 0, ex.Message);
+            return new JobRunResult(job.Id, false, 0, 0, 0, ex.Message);
         }
     }
 
-    private async Task<IEnumerable<IEbayProductSummary>> SearchEbay(ScrapeJob job, CancellationToken ct)
+    private async Task<(List<IEbayProductSummary> AllResults, HashSet<string> SoldResultIds)> SearchEbay(ScrapeJob job, CancellationToken ct)
     {
         var allResults = new List<IEbayProductSummary>();
         var seenIds = new HashSet<string>();
+        var soldResultIds = new HashSet<string>();
 
         var buyingFormat = BuyingFormat.ALL;
         var condition = Condition.NULL;
@@ -114,6 +120,7 @@ public class JobRunner : IJobRunner
             if (result.ListingId != null && seenIds.Add(result.ListingId))
             {
                 allResults.Add(result);
+                soldResultIds.Add(result.ListingId);
             }
         }
 
@@ -134,9 +141,10 @@ public class JobRunner : IJobRunner
             }
         }
 
-        _logger.LogInformation("Search complete: {TotalCount} unique listings found", allResults.Count);
+        _logger.LogInformation("Search complete: {TotalCount} unique listings found ({SoldCount} sold)",
+            allResults.Count, soldResultIds.Count);
 
-        return allResults;
+        return (allResults, soldResultIds);
     }
 
     private int CalculateLookbackDays(DateTime? lastRunUtc)
@@ -148,6 +156,81 @@ public class JobRunner : IJobRunner
 
         var daysSinceLastRun = (int)Math.Ceiling((DateTime.UtcNow - lastRunUtc.Value).TotalDays);
         return Math.Max(1, daysSinceLastRun + 1); // +1 day buffer
+    }
+
+    private async Task<int> DetectAndUpdateSoldListings(
+        int jobId,
+        HashSet<string> soldResultIds,
+        CancellationToken ct)
+    {
+        // Get all active listings for this job from the database
+        var activeListings = await _dbContext.Listings
+            .Where(l => l.ScrapeJobId == jobId && l.ListingStatus == "Active")
+            .Select(l => new { l.Id, l.ListingId })
+            .ToListAsync(ct);
+
+        if (activeListings.Count == 0)
+        {
+            return 0;
+        }
+
+        // Find listings that are Active in DB but appear in sold search results
+        var transitionedListingIds = activeListings
+            .Where(l => soldResultIds.Contains(l.ListingId))
+            .Select(l => l.ListingId)
+            .ToArray();
+
+        if (transitionedListingIds.Length == 0)
+        {
+            _logger.LogInformation("No Active→Sold transitions detected for job {JobId}", jobId);
+            return 0;
+        }
+
+        _logger.LogInformation("Detected {Count} Active→Sold transitions for job {JobId}, re-scraping...",
+            transitionedListingIds.Length, jobId);
+
+        // Re-scrape those listings to get accurate sold price and date
+        var soldProducts = await _ebayScraper.GetItemsFromListings(transitionedListingIds);
+
+        var updatedCount = 0;
+        foreach (var product in soldProducts)
+        {
+            if (product.ListingId == null) continue;
+
+            var listing = await _dbContext.Listings
+                .FirstOrDefaultAsync(l => l.ScrapeJobId == jobId && l.ListingId == product.ListingId, ct);
+
+            if (listing == null) continue;
+
+            // Update listing with sold data
+            listing.ListingStatus = product.ListingStatus?.ToString() ?? "Sold";
+            listing.Price = product.Price;
+            listing.EndDateUtc = product.EndDateUtc;
+            listing.UpdatedUtc = DateTime.UtcNow;
+
+            // Add status history record
+            _dbContext.ListingStatusHistory.Add(new ListingStatusHistory
+            {
+                ListingId = listing.Id,
+                ListingStatus = listing.ListingStatus,
+                Price = product.Price,
+                SoldDateUtc = product.EndDateUtc,
+                RecordedUtc = DateTime.UtcNow,
+                Source = "JobScrape"
+            });
+
+            updatedCount++;
+
+            _logger.LogInformation("Updated listing {ListingId}: Active → {NewStatus}, Price: {Price}, SoldDate: {SoldDate}",
+                product.ListingId, listing.ListingStatus, product.Price, product.EndDateUtc);
+        }
+
+        await _dbContext.SaveChangesAsync(ct);
+
+        _logger.LogInformation("Updated {Count} listings from Active to Sold for job {JobId}",
+            updatedCount, jobId);
+
+        return updatedCount;
     }
 
     private async Task<string[]> FilterNewListings(
