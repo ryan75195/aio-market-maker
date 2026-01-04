@@ -35,6 +35,7 @@ public class JobOrchestrator
 
             var seenIds = new HashSet<string>();
             var allListingIds = new List<string>();
+            var soldListingIds = new HashSet<string>();
 
             // Step 2a: Search SOLD listings page by page until no results in date range
             logger.LogInformation("Job {JobId}: Searching sold listings...", jobId);
@@ -47,6 +48,7 @@ public class JobOrchestrator
 
                 var newIds = result.ListingIds.Where(id => seenIds.Add(id)).ToList();
                 allListingIds.AddRange(newIds);
+                foreach (var id in newIds) soldListingIds.Add(id);
 
                 logger.LogInformation("Job {JobId}: Sold page {Page} found {Count} listings (total: {Total})",
                     jobId, page, newIds.Count, allListingIds.Count);
@@ -55,7 +57,10 @@ public class JobOrchestrator
                     break;
             }
 
-            // Step 2b: Search ACTIVE listings page by page until no results (limit 10000)
+            // Step 2b: Detect and update Active→Sold transitions
+            var statusUpdates = await DetectAndUpdateSoldListingsAsync(context, jobId, soldListingIds, logger);
+
+            // Step 2c: Search ACTIVE listings page by page until no results (limit 10000)
             const int activeItemLimit = 10000;
             logger.LogInformation("Job {JobId}: Searching active listings...", jobId);
             for (int page = 1; allListingIds.Count < activeItemLimit; page++)
@@ -75,7 +80,8 @@ public class JobOrchestrator
                     break;
             }
 
-            logger.LogInformation("Job {JobId}: Found {Count} unique listings from search", jobId, allListingIds.Count);
+            logger.LogInformation("Job {JobId}: Found {Count} unique listings from search ({SoldCount} sold)",
+                jobId, allListingIds.Count, soldListingIds.Count);
 
             if (allListingIds.Count == 0)
             {
@@ -194,6 +200,83 @@ public class JobOrchestrator
             new ParseSearchPageInput(html, page, isSold, lookbackDays));
 
         return result;
+    }
+
+    /// <summary>
+    /// Detects listings that were Active in DB but appear in sold search results,
+    /// re-scrapes them to get accurate sold price/date, and updates the database.
+    /// </summary>
+    private async Task<int> DetectAndUpdateSoldListingsAsync(
+        TaskOrchestrationContext context,
+        int jobId,
+        HashSet<string> soldListingIds,
+        ILogger logger)
+    {
+        if (soldListingIds.Count == 0)
+            return 0;
+
+        // Get all active listings for this job from the database
+        var activeListings = await context.CallActivityAsync<List<ActiveListingInfo>>(
+            nameof(GetActiveListingsActivity),
+            new GetActiveListingsInput(jobId));
+
+        if (activeListings.Count == 0)
+            return 0;
+
+        // Find listings that are Active in DB but appear in sold search results
+        var transitionedListingIds = activeListings
+            .Where(l => soldListingIds.Contains(l.ListingId))
+            .Select(l => l.ListingId)
+            .ToList();
+
+        if (transitionedListingIds.Count == 0)
+        {
+            logger.LogInformation("Job {JobId}: No Active→Sold transitions detected", jobId);
+            return 0;
+        }
+
+        logger.LogInformation("Job {JobId}: Detected {Count} Active→Sold transitions, re-scraping...",
+            jobId, transitionedListingIds.Count);
+
+        // Build URLs for transitioned listings
+        var urlTasks = transitionedListingIds.Select(listingId =>
+            context.CallActivityAsync<string>(nameof(BuildUrlsActivity.BuildListingUrlActivity), listingId));
+        var listingUrls = await Task.WhenAll(urlTasks);
+
+        // Re-scrape those listings to get accurate sold price and date
+        var soldListings = new List<ListingData>();
+        for (int i = 0; i < transitionedListingIds.Count; i++)
+        {
+            try
+            {
+                var listingData = await context.CallSubOrchestratorAsync<ListingData?>(
+                    nameof(FetchListingOrchestrator),
+                    new FetchListingInput(transitionedListingIds[i], listingUrls[i]));
+
+                if (listingData != null)
+                {
+                    soldListings.Add(listingData);
+                }
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "Job {JobId}: Failed to re-scrape sold listing {ListingId}",
+                    jobId, transitionedListingIds[i]);
+            }
+        }
+
+        if (soldListings.Count == 0)
+            return 0;
+
+        // Update the database with sold status
+        var updatedCount = await context.CallActivityAsync<int>(
+            nameof(UpdateSoldListingsActivity),
+            new UpdateSoldListingsInput(jobId, soldListings));
+
+        logger.LogInformation("Job {JobId}: Updated {Count} listings from Active to Sold",
+            jobId, updatedCount);
+
+        return updatedCount;
     }
 }
 
