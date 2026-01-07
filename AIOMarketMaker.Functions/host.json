@@ -10,10 +10,12 @@
       "enableLiveMetricsFilters": true
     },
     "logLevel": {
-      "default": "Information",
+      "default": "Warning",
       "Host.Results": "Error",
-      "Function": "Information",
-      "Host.Aggregator": "Trace"
+      "Function": "Warning",
+      "Host.Aggregator": "Warning",
+      "DurableTask.AzureStorage": "Warning",
+      "DurableTask.Core": "Warning"
     }
   },
   "extensions": {
