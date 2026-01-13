@@ -1,7 +1,7 @@
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Extensions.Logging;
 using AIOMarketMaker.Core.Parsers;
-using AIOMarketMaker.Functions.Functions;
+using AIOMarketMaker.Functions.Contracts;
 using AIOMarketMaker.Models.Ebay;
 using AngleSharp;
 
@@ -73,9 +73,3 @@ public class ParseSearchPageActivity
         }
     }
 }
-
-public record ParseSearchPageInput(
-    string Html,
-    int Page,
-    bool IsSold,
-    int? LookbackDays);

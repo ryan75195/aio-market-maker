@@ -1,10 +1,10 @@
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.DurableTask;
 using Microsoft.Extensions.Logging;
-using AIOMarketMaker.Core.Data.Models;
 using AIOMarketMaker.Functions.Activities;
+using AIOMarketMaker.Functions.Contracts;
 
-namespace AIOMarketMaker.Functions.Functions;
+namespace AIOMarketMaker.Functions.Functions.Orchestrators;
 
 public class ScrapeOrchestrator
 {
@@ -80,14 +80,3 @@ public class ScrapeOrchestrator
         return new OrchestratorResult(succeeded, failed, totalListings, duration, errors);
     }
 }
-
-public record OrchestratorResult(
-    int SucceededJobs,
-    int FailedJobs,
-    int TotalListingsFound,
-    TimeSpan Duration,
-    List<string> Errors);
-
-public record ScrapeJobInfo(int Id, string SearchTerm);
-
-public record JobResult(int JobId, bool Success, int ListingsFound, string? Error);

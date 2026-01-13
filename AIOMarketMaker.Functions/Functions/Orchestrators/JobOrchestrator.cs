@@ -2,8 +2,9 @@ using Microsoft.Azure.Functions.Worker;
 using Microsoft.DurableTask;
 using Microsoft.Extensions.Logging;
 using AIOMarketMaker.Functions.Activities;
+using AIOMarketMaker.Functions.Contracts;
 
-namespace AIOMarketMaker.Functions.Functions;
+namespace AIOMarketMaker.Functions.Functions.Orchestrators;
 
 /// <summary>
 /// Sub-orchestrator that handles a single scrape job.
@@ -279,26 +280,3 @@ public class JobOrchestrator
         return updatedCount;
     }
 }
-
-// DTOs for the orchestrator
-public record JobDetails(int Id, string SearchTerm, int LookbackDays);
-public record SearchPageResult(bool Success, List<string> ListingIds, string? Error);
-public record FilterNewListingsInput(int JobId, List<string> ListingIds);
-public record SaveListingsInput(int JobId, List<ListingData> Listings);
-
-public record ListingData(
-    string ListingId,
-    string? Title,
-    decimal? Price,
-    string? Currency,
-    decimal? ShippingCost,
-    string? Condition,
-    string? ListingStatus,
-    string? PurchaseFormat,
-    string? Description,
-    string? Url,
-    DateTime? EndDateUtc,
-    string? Location,
-    string? ItemSpecifics,
-    List<string>? Images
-);

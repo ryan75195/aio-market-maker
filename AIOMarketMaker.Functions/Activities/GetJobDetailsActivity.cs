@@ -2,7 +2,7 @@ using Microsoft.Azure.Functions.Worker;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using AIOMarketMaker.Core.Data;
-using AIOMarketMaker.Functions.Functions;
+using AIOMarketMaker.Functions.Contracts;
 
 namespace AIOMarketMaker.Functions.Activities;
 

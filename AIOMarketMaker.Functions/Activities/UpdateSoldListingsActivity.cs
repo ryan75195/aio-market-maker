@@ -3,11 +3,9 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using AIOMarketMaker.Core.Data;
 using AIOMarketMaker.Core.Data.Models;
-using AIOMarketMaker.Functions.Functions;
+using AIOMarketMaker.Functions.Contracts;
 
 namespace AIOMarketMaker.Functions.Activities;
-
-public record UpdateSoldListingsInput(int JobId, List<ListingData> SoldListings);
 
 public class UpdateSoldListingsActivity
 {

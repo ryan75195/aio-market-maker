@@ -1,6 +1,7 @@
 using Microsoft.Azure.Functions.Worker;
 using AIOMarketMaker.Core.Services;
 using AIOMarketMaker.Models.Ebay;
+using AIOMarketMaker.Functions.Contracts;
 
 namespace AIOMarketMaker.Functions.Activities;
 
@@ -38,5 +39,3 @@ public class BuildUrlsActivity
         return _urlBuilder.BuildListingUrl(listingId);
     }
 }
-
-public record BuildSearchUrlInput(string SearchTerm, bool IsSold, int Page);

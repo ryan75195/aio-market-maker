@@ -2,8 +2,9 @@ using Microsoft.Azure.Functions.Worker;
 using Microsoft.DurableTask;
 using Microsoft.Extensions.Logging;
 using AIOMarketMaker.Functions.Activities;
+using AIOMarketMaker.Functions.Contracts;
 
-namespace AIOMarketMaker.Functions.Functions;
+namespace AIOMarketMaker.Functions.Functions.Orchestrators;
 
 /// <summary>
 /// Sub-orchestrator that fetches a single listing and its description.
@@ -114,5 +115,3 @@ public class FetchListingOrchestrator
         }
     }
 }
-
-public record FetchListingInput(string ListingId, string ListingUrl);

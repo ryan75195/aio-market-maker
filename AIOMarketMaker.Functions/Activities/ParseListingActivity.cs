@@ -1,7 +1,7 @@
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Extensions.Logging;
 using AIOMarketMaker.Core.Parsers;
-using AIOMarketMaker.Functions.Functions;
+using AIOMarketMaker.Functions.Contracts;
 using AngleSharp;
 
 namespace AIOMarketMaker.Functions.Activities;
