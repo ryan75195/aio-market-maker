@@ -2,11 +2,9 @@ using Microsoft.Azure.Functions.Worker;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using AIOMarketMaker.Core.Data;
+using AIOMarketMaker.Functions.Contracts;
 
 namespace AIOMarketMaker.Functions.Activities;
-
-public record ActiveListingInfo(int Id, string ListingId);
-public record GetActiveListingsInput(int JobId);
 
 public class GetActiveListingsActivity
 {

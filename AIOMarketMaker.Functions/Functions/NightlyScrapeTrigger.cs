@@ -1,6 +1,7 @@
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.DurableTask.Client;
 using Microsoft.Extensions.Logging;
+using AIOMarketMaker.Functions.Functions.Orchestrators;
 
 namespace AIOMarketMaker.Functions.Functions;
 
