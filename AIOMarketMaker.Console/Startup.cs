@@ -80,7 +80,6 @@ public static class HostHelper
 
                 // Task system
                 services.AddTaskRunner();
-                services.AddTask<ExampleTask>();
                 services.AddTask<SearchTask>();
                 services.AddTask<SearchTestTask>();
                 services.AddTask<PricingTask>();

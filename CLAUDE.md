@@ -36,7 +36,7 @@ The solution consists of 5 main projects:
 ### AIOMarketMaker.Tests
 - NUnit test project with Moq
 - Test categories:
-  - Unit tests: `UnitTests\` (parser logic, scraper logic)
+  - Unit tests: `Unit\` (parser logic, scraper logic)
   - Contract tests: `ContractTests\` (HTML structure validation)
   - Integration tests: `Integration\` (end-to-end scraping)
 - Test data: Saved HTML files in `Data\Listings\` for contract testing
@@ -88,7 +88,7 @@ dotnet build AIOMarketMaker.sln
 dotnet test AIOMarketMaker.Tests/AIOMarketMaker.Tests.csproj
 
 # Run a specific test
-dotnet test AIOMarketMaker.Tests/AIOMarketMaker.Tests.csproj --filter "FullyQualifiedName~SearchParserUnitTests"
+dotnet test AIOMarketMaker.Tests/AIOMarketMaker.Tests.csproj --filter "FullyQualifiedName~SearchParserUnit"
 ```
 
 ### Run the ETL console app
@@ -136,7 +136,7 @@ Both `AIOMarketMaker.Api` and `AIOMarketMaker.Etl` require `local.settings.json`
 ### Test Organization
 ```
 AIOMarketMaker.Tests/
-├── UnitTests/           # Isolated unit tests with mocks
+├── Unit/           # Isolated unit tests with mocks
 ├── ContractTests/       # Tests against saved HTML snapshots
 ├── Integration/         # End-to-end tests with real services
 ├── Utils/               # Test helpers (PageBuilder, Assertions)

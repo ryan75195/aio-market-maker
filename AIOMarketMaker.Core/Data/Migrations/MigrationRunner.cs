@@ -48,6 +48,15 @@ public class MigrationRunner
                 continue;
             }
 
+            // Skip SQL Server-only migrations when running SQLite
+            if (!_useSqlServer && IsSqlServerOnlyMigration(sql))
+            {
+                _logger?.LogInformation("Skipping SQL Server-only migration for SQLite: {Migration}", migrationName);
+                // Mark as applied so we don't keep trying
+                MarkMigrationApplied(connection, migrationName);
+                continue;
+            }
+
             _logger?.LogInformation("Applying migration: {Migration}", migrationName);
 
             var convertedSql = sql;

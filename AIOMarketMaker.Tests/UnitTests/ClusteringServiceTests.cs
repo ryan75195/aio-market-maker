@@ -2,7 +2,7 @@ using AIOMarketMaker.Core.Services;
 using Microsoft.Extensions.Logging;
 using Moq;
 
-namespace AIOMarketMaker.Tests.UnitTests;
+namespace AIOMarketMaker.Tests.Unit;
 
 [TestFixture]
 public class ClusteringServiceTests

@@ -4,7 +4,7 @@ using Microsoft.Extensions.Logging;
 using Moq;
 using Pinecone;
 
-namespace AIOMarketMaker.Tests.UnitTests;
+namespace AIOMarketMaker.Tests.Unit;
 
 [TestFixture]
 public class SemanticSearchServiceTests
