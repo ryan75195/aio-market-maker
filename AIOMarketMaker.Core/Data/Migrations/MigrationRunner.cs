@@ -161,6 +161,52 @@ public class MigrationRunner
     }
 
     /// <summary>
+    /// Checks if a migration contains SQL Server-only syntax that can't run on SQLite.
+    /// </summary>
+    private static bool IsSqlServerOnlyMigration(string sql)
+    {
+        // Check for SQL Server-specific syntax that doesn't have SQLite equivalents
+        var sqlServerPatterns = new[]
+        {
+            @"\bSP_RENAME\b",
+            @"\bALTER\s+TABLE\b.*\bALTER\s+COLUMN\b",
+            @"\bSYS\.",
+            @"\bEXEC\s+",
+            @"\bNVARCHAR\s*\(\s*MAX\s*\)"
+        };
+
+        foreach (var pattern in sqlServerPatterns)
+        {
+            if (System.Text.RegularExpressions.Regex.IsMatch(sql, pattern,
+                System.Text.RegularExpressions.RegexOptions.IgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Marks a migration as applied without executing it.
+    /// Used when skipping SQL Server-only migrations on SQLite.
+    /// </summary>
+    private void MarkMigrationApplied(DbConnection connection, string migrationName)
+    {
+        using var command = connection.CreateCommand();
+        command.CommandText = _useSqlServer
+            ? "INSERT INTO __MigrationHistory (MigrationId) VALUES (@migrationId)"
+            : "INSERT INTO __MigrationHistory (MigrationId) VALUES (@migrationId)";
+
+        var param = command.CreateParameter();
+        param.ParameterName = "@migrationId";
+        param.Value = migrationName;
+        command.Parameters.Add(param);
+
+        command.ExecuteNonQuery();
+    }
+
+    /// <summary>
     /// Converts SQLite-specific SQL syntax to SQL Server syntax.
     /// </summary>
     private static string ConvertToSqlServer(string sql)
