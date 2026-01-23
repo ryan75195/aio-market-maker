@@ -67,4 +67,20 @@ public class ScrapePipeline_E2ETests : E2ETestFixture
         Assert.That(listing.Title, Is.Not.Null.And.Not.Empty, "Should have a title");
         Assert.That(listing.Price, Is.GreaterThan(0), "Should have a price");
     }
+
+    [Test]
+    public async Task Should_handle_nonexistent_listing_gracefully()
+    {
+        // Arrange - use listing ID that doesn't exist in mock
+        var nonexistentId = "999999999999";
+
+        // Act
+        var results = await EbayScraper.GetItemsFromListings(new[] { nonexistentId });
+
+        // Assert - should return empty or handle gracefully, not throw
+        var resultList = results.ToList();
+        Assert.That(resultList, Is.Empty.Or.All.Matches<AIOMarketMaker.Models.Ebay.EbayProduct>(
+            p => p.ListingId == nonexistentId),
+            "Should either return empty or return item with ID but possibly null fields");
+    }
 }
