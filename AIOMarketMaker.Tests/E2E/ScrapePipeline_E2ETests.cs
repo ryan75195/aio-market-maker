@@ -48,4 +48,23 @@ public class ScrapePipeline_E2ETests : E2ETestFixture
         Assert.That(resultList.All(r => r.EndDateUtc >= startDate && r.EndDateUtc <= endDate), Is.True,
             "All results should be within date range");
     }
+
+    [Test]
+    public async Task Should_fetch_full_listing_details()
+    {
+        // Arrange - use listing ID that maps to our mock HTML
+        var listingId = "306278488042"; // Maps to ActiveBuyItNowListing.htm
+
+        // Act
+        var results = await EbayScraper.GetItemsFromListings(new[] { listingId });
+
+        // Assert
+        var resultList = results.ToList();
+        Assert.That(resultList, Has.Count.EqualTo(1), "Should return exactly one listing");
+
+        var listing = resultList.First();
+        Assert.That(listing.ListingId, Is.EqualTo(listingId), "ListingId should match");
+        Assert.That(listing.Title, Is.Not.Null.And.Not.Empty, "Should have a title");
+        Assert.That(listing.Price, Is.GreaterThan(0), "Should have a price");
+    }
 }
