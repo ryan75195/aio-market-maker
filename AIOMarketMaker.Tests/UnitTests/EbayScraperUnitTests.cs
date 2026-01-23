@@ -124,7 +124,7 @@ namespace AIOMarketMaker.Tests.Unit
             //Stub_ReturnsAsync(html, url);
 
             this._mockFetcher
-                .Setup(x => x.GetPageHtmlAsync(It.IsAny<string>(), It.IsAny<IEnumerable<object>?>(), It.IsAny<TimeSpan?>(), It.IsAny<CancellationToken>()))
+                .Setup(x => x.GetPageHtmlAsync(It.IsAny<string>(), It.IsAny<IEnumerable<object>?>(), It.IsAny<string?>(), It.IsAny<TimeSpan?>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync(html);
 
             this._mockFetcher

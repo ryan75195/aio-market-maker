@@ -139,5 +139,78 @@ namespace AIOMarketMaker.Tests.Unit
                 Is.False,
                 "Request should NOT contain X-Correlation-Id header when empty string");
         }
+
+        [Test]
+        public async Task GetPageHtmlAsync_should_pass_correlation_id_to_NewJobAsync()
+        {
+            // Arrange
+            HttpRequestMessage? capturedRequest = null;
+            var correlationId = "getpage-correlation-456";
+            var jobId = "job-456";
+
+            var mockHandler = new Mock<HttpMessageHandler>();
+
+            // Setup sequence: NewJob -> GetStatus (success) -> GetResults
+            var callCount = 0;
+            mockHandler
+                .Protected()
+                .Setup<Task<HttpResponseMessage>>(
+                    "SendAsync",
+                    ItExpr.IsAny<HttpRequestMessage>(),
+                    ItExpr.IsAny<CancellationToken>())
+                .ReturnsAsync((HttpRequestMessage req, CancellationToken _) =>
+                {
+                    callCount++;
+                    if (req.RequestUri!.PathAndQuery.Contains("NewJob"))
+                    {
+                        capturedRequest = req;
+                        return new HttpResponseMessage(HttpStatusCode.OK)
+                        {
+                            Content = JsonContent.Create(new StartResponse(jobId))
+                        };
+                    }
+                    else if (req.RequestUri.PathAndQuery.Contains("GetStatus"))
+                    {
+                        return new HttpResponseMessage(HttpStatusCode.OK)
+                        {
+                            Content = JsonContent.Create(new { job = new { jobId = jobId, status = "Success", totalItems = 1, completedItems = 1, failedItems = 0 } })
+                        };
+                    }
+                    else if (req.RequestUri.PathAndQuery.Contains("GetResults"))
+                    {
+                        return new HttpResponseMessage(HttpStatusCode.OK)
+                        {
+                            Content = JsonContent.Create(new[] { new { url = "http://example.com", status = "Success" } })
+                        };
+                    }
+                    return new HttpResponseMessage(HttpStatusCode.NotFound);
+                });
+
+            var httpClient = new HttpClient(mockHandler.Object)
+            {
+                BaseAddress = new Uri("http://localhost:7126/")
+            };
+
+            _mockJobRepository
+                .Setup(x => x.GetFileContentsAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync("<html>test</html>");
+
+            var config = new ScraperApiConfig("http://localhost:7126/", "test-api-key");
+            var client = new WebscraperClient(httpClient, config, _mockJobRepository.Object, _mockLogger.Object);
+
+            // Act
+            await client.GetPageHtmlAsync("http://example.com", correlationId: correlationId);
+
+            // Assert
+            Assert.That(capturedRequest, Is.Not.Null, "NewJob request should have been captured");
+            Assert.That(
+                capturedRequest!.Headers.Contains("X-Correlation-Id"),
+                Is.True,
+                "NewJob request should contain X-Correlation-Id header");
+            Assert.That(
+                capturedRequest.Headers.GetValues("X-Correlation-Id").First(),
+                Is.EqualTo(correlationId),
+                "X-Correlation-Id header value should match");
+        }
     }
 }
