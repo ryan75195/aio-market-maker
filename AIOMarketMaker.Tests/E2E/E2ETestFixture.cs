@@ -48,32 +48,42 @@ public abstract class E2ETestFixture
         // If not all running, start what's missing via LocalTestInfrastructure
         Infrastructure = new LocalTestInfrastructure();
 
-        if (!azuriteRunning)
+        try
         {
-            await Infrastructure.StartAzuriteAsync();
+            if (!azuriteRunning)
+            {
+                await Infrastructure.StartAzuriteAsync();
+            }
+
+            if (!functionsRunning)
+            {
+                // Paths relative to test output directory
+                var testDir = TestContext.CurrentContext.TestDirectory;
+                var repoRoot = Path.GetFullPath(Path.Combine(testDir, "..", "..", "..", "..", ".."));
+                var functionsProject = Path.Combine(repoRoot, "AIOWebScraper", "AIOWebScraper");
+
+                if (!Directory.Exists(functionsProject))
+                {
+                    Assert.Ignore($"AIOWebScraper Functions project not found at: {functionsProject}. " +
+                        "Start infrastructure manually or verify project paths.");
+                }
+
+                await Infrastructure.StartFunctionsApiAsync(functionsProject);
+
+                // Also start the worker
+                var workerProject = Path.Combine(repoRoot, "AIOWebScraper", "ScraperWorker");
+                if (Directory.Exists(workerProject))
+                {
+                    await Infrastructure.StartWorkerAsync(workerProject);
+                }
+            }
         }
-
-        if (!functionsRunning)
+        catch (Exception ex) when (ex is TimeoutException or InvalidOperationException)
         {
-            // Paths relative to test output directory
-            var testDir = TestContext.CurrentContext.TestDirectory;
-            var repoRoot = Path.GetFullPath(Path.Combine(testDir, "..", "..", "..", "..", ".."));
-            var functionsProject = Path.Combine(repoRoot, "AIOWebScraper", "AIOWebScraper");
-
-            if (!Directory.Exists(functionsProject))
-            {
-                Assert.Ignore($"AIOWebScraper Functions project not found at: {functionsProject}. " +
-                    "Start infrastructure manually or verify project paths.");
-            }
-
-            await Infrastructure.StartFunctionsApiAsync(functionsProject);
-
-            // Also start the worker
-            var workerProject = Path.Combine(repoRoot, "AIOWebScraper", "ScraperWorker");
-            if (Directory.Exists(workerProject))
-            {
-                await Infrastructure.StartWorkerAsync(workerProject);
-            }
+            Infrastructure?.Dispose();
+            Infrastructure = null;
+            Assert.Ignore($"E2E infrastructure not available: {ex.Message}. " +
+                "Start Azurite and infrastructure manually, or run: docker run -p 10000-10002:10000-10002 mcr.microsoft.com/azure-storage/azurite");
         }
     }
 
