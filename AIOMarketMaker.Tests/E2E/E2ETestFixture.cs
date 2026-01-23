@@ -20,6 +20,10 @@ public abstract class E2ETestFixture
     protected IEbayScraper EbayScraper = null!;
     protected SqliteConnection Connection = null!;
 
+    private ServiceProvider? _serviceProvider;
+    private HttpClient? _httpClient;
+    private ILoggerFactory? _loggerFactory;
+
     private const string AzuriteConnectionString = "UseDevelopmentStorage=true";
     private const string FunctionsApiUrl = "http://localhost:7071/";
     private const int MockEbayPort = 9999;
@@ -100,7 +104,10 @@ public abstract class E2ETestFixture
 
         // Build services using production code paths
         var services = new ServiceCollection();
-        services.AddLogging(b => b.AddConsole().SetMinimumLevel(LogLevel.Warning));
+
+        // Create a shared logger factory (disposed in TearDown)
+        _loggerFactory = LoggerFactory.Create(b => b.AddConsole().SetMinimumLevel(LogLevel.Warning));
+        services.AddSingleton(_loggerFactory);
 
         // Use testable URL builder pointing to mock server
         services.AddSingleton<IEbayUrlBuilder>(new TestableEbayUrlBuilder(MockServer!.BaseUrl));
@@ -110,22 +117,20 @@ public abstract class E2ETestFixture
         services.AddSingleton<IListingParser, EbayListingParser>();
 
         // Production WebscraperClient pointing to Azure Functions API
-        var httpClient = new HttpClient { BaseAddress = new Uri(FunctionsApiUrl) };
+        _httpClient = new HttpClient { BaseAddress = new Uri(FunctionsApiUrl) };
         var config = new ScraperApiConfig(FunctionsApiUrl, "");
 
         // Production AzureJobRepository pointing to Azurite
         var tableServiceClient = new TableServiceClient(AzuriteConnectionString);
         var blobServiceClient = new BlobServiceClient(AzuriteConnectionString);
-        var jobRepoLogger = LoggerFactory.Create(b => b.AddConsole().SetMinimumLevel(LogLevel.Warning))
-            .CreateLogger<AzureJobRepository>();
+        var jobRepoLogger = _loggerFactory.CreateLogger<AzureJobRepository>();
         var jobRepository = new AzureJobRepository(tableServiceClient, blobServiceClient, jobRepoLogger);
         services.AddSingleton<IJobRepository>(jobRepository);
 
         // Production WebscraperClient
-        var webscraperLogger = LoggerFactory.Create(b => b.AddConsole().SetMinimumLevel(LogLevel.Warning))
-            .CreateLogger<WebscraperClient>();
+        var webscraperLogger = _loggerFactory.CreateLogger<WebscraperClient>();
         services.AddSingleton<IWebscraperClient>(
-            new WebscraperClient(httpClient, config, jobRepository, webscraperLogger));
+            new WebscraperClient(_httpClient, config, jobRepository, webscraperLogger));
 
         // Real EbayScraper
         services.AddSingleton<IEbayScraper, EbayScraper>();
@@ -133,13 +138,23 @@ public abstract class E2ETestFixture
         // Database context
         services.AddSingleton(DbContext);
 
-        var provider = services.BuildServiceProvider();
-        EbayScraper = provider.GetRequiredService<IEbayScraper>();
+        _serviceProvider = services.BuildServiceProvider();
+        EbayScraper = _serviceProvider.GetRequiredService<IEbayScraper>();
     }
 
     [TearDown]
     public async Task TearDown()
     {
+        // Dispose in reverse order of creation
+        _serviceProvider?.Dispose();
+        _serviceProvider = null;
+
+        _httpClient?.Dispose();
+        _httpClient = null;
+
+        _loggerFactory?.Dispose();
+        _loggerFactory = null;
+
         await DbContext.DisposeAsync();
         await Connection.DisposeAsync();
     }
