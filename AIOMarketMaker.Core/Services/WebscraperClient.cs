@@ -14,6 +14,7 @@ namespace AIOMarketMaker.Core.Services
         Task<StartResponse> NewJobAsync(
            IEnumerable<string> urls,
            IEnumerable<object>? proxies = null,
+           string? correlationId = null,
            CancellationToken ct = default);
 
         Task<string> GetPageHtmlAsync(
@@ -83,10 +84,22 @@ namespace AIOMarketMaker.Core.Services
         public async Task<StartResponse> NewJobAsync(
             IEnumerable<string> urls,
             IEnumerable<object>? proxies = null,
+            string? correlationId = null,
             CancellationToken ct = default)
         {
             var req = new StartRequest(urls.ToArray(), null);
-            var resp = await _http.PostAsJsonAsync(AppendApiKey("api/NewJob"), req, ct);
+
+            var request = new HttpRequestMessage(HttpMethod.Post, AppendApiKey("api/NewJob"))
+            {
+                Content = JsonContent.Create(req)
+            };
+
+            if (!string.IsNullOrEmpty(correlationId))
+            {
+                request.Headers.Add("X-Correlation-Id", correlationId);
+            }
+
+            var resp = await _http.SendAsync(request, ct);
             resp.EnsureSuccessStatusCode();
 
             var body = await resp.Content.ReadFromJsonAsync<StartResponse>(cancellationToken: ct);
@@ -103,7 +116,7 @@ namespace AIOMarketMaker.Core.Services
             CancellationToken ct = default)
         {
             var startTime = DateTime.UtcNow;
-            var job = await NewJobAsync(new[] { url }, proxies, ct);
+            var job = await NewJobAsync(new[] { url }, proxies, correlationId: null, ct);
 
             // Poll until complete (every 2s, but only log every 60s)
             var jobStatus = JobStatusType.Pending;
