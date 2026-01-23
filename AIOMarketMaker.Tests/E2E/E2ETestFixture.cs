@@ -1,11 +1,12 @@
 using AIOMarketMaker.Core.Data;
 using AIOMarketMaker.Core.Parsers;
 using AIOMarketMaker.Core.Services;
+using Azure.Data.Tables;
+using Azure.Storage.Blobs;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using Moq;
 using ScraperWorker.Services;
 using System.Net.Sockets;
 
@@ -14,24 +15,61 @@ namespace AIOMarketMaker.Tests.E2E;
 public abstract class E2ETestFixture
 {
     protected static MockEbayServer? MockServer;
+    protected static LocalTestInfrastructure? Infrastructure;
     protected EtlDbContext DbContext = null!;
     protected IEbayScraper EbayScraper = null!;
     protected SqliteConnection Connection = null!;
 
-    private const string ScraperApiUrl = "http://localhost:7126/";
+    private const string AzuriteConnectionString = "UseDevelopmentStorage=true";
+    private const string FunctionsApiUrl = "http://localhost:7071/";
     private const int MockEbayPort = 9999;
 
     [OneTimeSetUp]
-    public void OneTimeSetUp()
+    public async Task OneTimeSetUp()
     {
         // Start mock eBay server (shared across all tests in fixture)
         MockServer = new MockEbayServer(MockEbayPort);
         MockServer.Start();
 
-        // Verify AIOWebScraper is running
-        if (!IsScraperApiAvailable())
+        // Check if infrastructure is already running (e.g., started manually)
+        var azuriteRunning = IsPortInUse(LocalTestInfrastructure.AzuritePort);
+        var functionsRunning = IsPortInUse(LocalTestInfrastructure.FunctionsPort);
+
+        if (azuriteRunning && functionsRunning)
         {
-            Assert.Ignore("AIOWebScraper not running on localhost:7126. Start with: dotnet run -- --dedicated-mode");
+            Console.WriteLine("Infrastructure already running (Azurite and Functions detected)");
+            return;
+        }
+
+        // If not all running, start what's missing via LocalTestInfrastructure
+        Infrastructure = new LocalTestInfrastructure();
+
+        if (!azuriteRunning)
+        {
+            await Infrastructure.StartAzuriteAsync();
+        }
+
+        if (!functionsRunning)
+        {
+            // Paths relative to test output directory
+            var testDir = TestContext.CurrentContext.TestDirectory;
+            var repoRoot = Path.GetFullPath(Path.Combine(testDir, "..", "..", "..", "..", ".."));
+            var functionsProject = Path.Combine(repoRoot, "AIOWebScraper", "AIOWebScraper");
+
+            if (!Directory.Exists(functionsProject))
+            {
+                Assert.Ignore($"AIOWebScraper Functions project not found at: {functionsProject}. " +
+                    "Start infrastructure manually or verify project paths.");
+            }
+
+            await Infrastructure.StartFunctionsApiAsync(functionsProject);
+
+            // Also start the worker
+            var workerProject = Path.Combine(repoRoot, "AIOWebScraper", "ScraperWorker");
+            if (Directory.Exists(workerProject))
+            {
+                await Infrastructure.StartWorkerAsync(workerProject);
+            }
         }
     }
 
@@ -40,6 +78,10 @@ public abstract class E2ETestFixture
     {
         MockServer?.Dispose();
         MockServer = null;
+
+        // Only dispose infrastructure we started
+        Infrastructure?.Dispose();
+        Infrastructure = null;
     }
 
     [SetUp]
@@ -56,7 +98,7 @@ public abstract class E2ETestFixture
         DbContext = new EtlDbContext(options);
         await DbContext.Database.EnsureCreatedAsync();
 
-        // Build services with mock URL builder pointing to our mock server
+        // Build services using production code paths
         var services = new ServiceCollection();
         services.AddLogging(b => b.AddConsole().SetMinimumLevel(LogLevel.Warning));
 
@@ -67,16 +109,23 @@ public abstract class E2ETestFixture
         services.AddSingleton<ISearchParser, EbaySearchParser>();
         services.AddSingleton<IListingParser, EbayListingParser>();
 
-        // Real WebscraperClient pointing to real AIOWebScraper
-        services.AddHttpClient<IWebscraperClient, WebscraperClient>(client =>
-        {
-            client.BaseAddress = new Uri(ScraperApiUrl);
-        });
-        services.AddSingleton(new ScraperApiConfig(ScraperApiUrl, ""));
+        // Production WebscraperClient pointing to Azure Functions API
+        var httpClient = new HttpClient { BaseAddress = new Uri(FunctionsApiUrl) };
+        var config = new ScraperApiConfig(FunctionsApiUrl, "");
 
-        // Mock job repository (we don't need Azure Storage for E2E tests)
-        var mockJobRepo = new Mock<IJobRepository>();
-        services.AddSingleton(mockJobRepo.Object);
+        // Production AzureJobRepository pointing to Azurite
+        var tableServiceClient = new TableServiceClient(AzuriteConnectionString);
+        var blobServiceClient = new BlobServiceClient(AzuriteConnectionString);
+        var jobRepoLogger = LoggerFactory.Create(b => b.AddConsole().SetMinimumLevel(LogLevel.Warning))
+            .CreateLogger<AzureJobRepository>();
+        var jobRepository = new AzureJobRepository(tableServiceClient, blobServiceClient, jobRepoLogger);
+        services.AddSingleton<IJobRepository>(jobRepository);
+
+        // Production WebscraperClient
+        var webscraperLogger = LoggerFactory.Create(b => b.AddConsole().SetMinimumLevel(LogLevel.Warning))
+            .CreateLogger<WebscraperClient>();
+        services.AddSingleton<IWebscraperClient>(
+            new WebscraperClient(httpClient, config, jobRepository, webscraperLogger));
 
         // Real EbayScraper
         services.AddSingleton<IEbayScraper, EbayScraper>();
@@ -95,15 +144,21 @@ public abstract class E2ETestFixture
         await Connection.DisposeAsync();
     }
 
-    private static bool IsScraperApiAvailable()
+    private static bool IsPortInUse(int port)
     {
         try
         {
             using var client = new TcpClient();
-            client.Connect("localhost", 7126);
-            return true;
+            var result = client.BeginConnect("localhost", port, null, null);
+            var success = result.AsyncWaitHandle.WaitOne(TimeSpan.FromSeconds(1));
+            if (success)
+            {
+                client.EndConnect(result);
+                return true;
+            }
+            return false;
         }
-        catch
+        catch (SocketException)
         {
             return false;
         }
