@@ -369,6 +369,7 @@ FodyWeavers.xsd
 
 # Local settings (contains connection strings)
 local.settings.json
+local.settings.local.json
 appsettings.Development.json
 clusters.txt
 
