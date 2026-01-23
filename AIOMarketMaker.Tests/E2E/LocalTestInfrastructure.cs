@@ -36,7 +36,7 @@ public class LocalTestInfrastructure : IDisposable
             UseShellExecute = false,
             RedirectStandardOutput = true,
             RedirectStandardError = true
-        });
+        }) ?? throw new InvalidOperationException("Failed to start Docker process for Azurite");
 
         // Wait for Azurite to be ready
         await WaitForPortAsync(AzuritePort, TimeSpan.FromSeconds(30));
@@ -72,7 +72,7 @@ public class LocalTestInfrastructure : IDisposable
             UseShellExecute = false,
             RedirectStandardOutput = true,
             RedirectStandardError = true
-        });
+        }) ?? throw new InvalidOperationException("Failed to start Azure Functions process");
 
         await WaitForPortAsync(FunctionsPort, TimeSpan.FromSeconds(60));
         Console.WriteLine("Azure Functions API started");
@@ -95,7 +95,7 @@ public class LocalTestInfrastructure : IDisposable
             {
                 ["ASPNETCORE_ENVIRONMENT"] = "Local"
             }
-        });
+        }) ?? throw new InvalidOperationException("Failed to start ScraperWorker process");
 
         // Give worker time to start and connect to queue
         await Task.Delay(5000);
@@ -124,10 +124,16 @@ public class LocalTestInfrastructure : IDisposable
         try
         {
             using var client = new TcpClient();
-            client.Connect("localhost", port);
-            return true;
+            var result = client.BeginConnect("localhost", port, null, null);
+            var success = result.AsyncWaitHandle.WaitOne(TimeSpan.FromSeconds(1));
+            if (success)
+            {
+                client.EndConnect(result);
+                return true;
+            }
+            return false;
         }
-        catch
+        catch (SocketException)
         {
             return false;
         }
