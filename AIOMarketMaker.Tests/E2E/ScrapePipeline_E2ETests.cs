@@ -24,4 +24,28 @@ public class ScrapePipeline_E2ETests : E2ETestFixture
         Assert.That(resultList.All(r => r.Price > 0), Is.True,
             "All results should have a price > 0");
     }
+
+    [Test]
+    public async Task Should_search_sold_listings_with_date_filter()
+    {
+        // Arrange - use date range that matches the mock HTML data
+        var startDate = new DateTime(2025, 4, 1);
+        var endDate = new DateTime(2025, 5, 15);
+
+        // Act
+        var results = await EbayScraper.SearchSoldListings(
+            "test",
+            BuyingFormat.BUY_NOW,
+            Condition.USED,
+            startDate,
+            endDate);
+
+        // Assert
+        var resultList = results.ToList();
+        Assert.That(resultList, Is.Not.Empty, "Should return sold listings from mock HTML");
+        Assert.That(resultList.All(r => !string.IsNullOrEmpty(r.ListingId)), Is.True,
+            "All results should have a ListingId");
+        Assert.That(resultList.All(r => r.EndDateUtc >= startDate && r.EndDateUtc <= endDate), Is.True,
+            "All results should be within date range");
+    }
 }
