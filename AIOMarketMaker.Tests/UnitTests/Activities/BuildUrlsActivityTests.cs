@@ -29,7 +29,7 @@ public class BuildUrlsActivityTests
         // Assert
         Assert.Multiple(() =>
         {
-            Assert.That(url, Does.Contain("ebay.com"));
+            Assert.That(url, Does.Contain("ebay.co.uk"));
             Assert.That(url, Does.Contain("PlayStation"));
             Assert.That(url, Does.Not.Contain("LH_Sold=1"));
         });
@@ -47,7 +47,7 @@ public class BuildUrlsActivityTests
         // Assert
         Assert.Multiple(() =>
         {
-            Assert.That(url, Does.Contain("ebay.com"));
+            Assert.That(url, Does.Contain("ebay.co.uk"));
             Assert.That(url, Does.Contain("LH_Sold=1"));
             Assert.That(url, Does.Contain("LH_Complete=1"));
         });
@@ -78,7 +78,7 @@ public class BuildUrlsActivityTests
         // Assert
         Assert.Multiple(() =>
         {
-            Assert.That(url, Does.Contain("ebay.com/itm/"));
+            Assert.That(url, Does.Contain("ebay.co.uk/itm/"));
             Assert.That(url, Does.Contain(listingId));
         });
     }
