@@ -28,6 +28,7 @@
     <ProjectReference Include="..\..\AIOWebScraper\AIOWebScraper.Storage.Azure\AIOWebScraper.Storage.Azure.csproj" />
     <ProjectReference Include="..\AIOMarketMaker.Core\AIOMarketMaker.Core.csproj" />
     <ProjectReference Include="..\AIOMarketMaker.Etl\AIOMarketMaker.Etl.csproj" />
+    <ProjectReference Include="..\AIOMarketMaker.Functions\AIOMarketMaker.Functions.csproj" />
   </ItemGroup>
 
   <ItemGroup>
