@@ -39,6 +39,8 @@ public abstract class E2ETestFixture
         var azuriteRunning = IsPortInUse(LocalTestInfrastructure.AzuritePort);
         var functionsRunning = IsPortInUse(LocalTestInfrastructure.FunctionsPort);
 
+        Console.WriteLine($"Port check - Azurite ({LocalTestInfrastructure.AzuritePort}): {azuriteRunning}, Functions ({LocalTestInfrastructure.FunctionsPort}): {functionsRunning}");
+
         if (azuriteRunning && functionsRunning)
         {
             Console.WriteLine("Infrastructure already running (Azurite and Functions detected)");
@@ -118,6 +120,7 @@ public abstract class E2ETestFixture
         // Create a shared logger factory (disposed in TearDown)
         _loggerFactory = LoggerFactory.Create(b => b.AddConsole().SetMinimumLevel(LogLevel.Warning));
         services.AddSingleton(_loggerFactory);
+        services.AddSingleton(typeof(ILogger<>), typeof(Logger<>));
 
         // Use testable URL builder pointing to mock server
         services.AddSingleton<IEbayUrlBuilder>(new TestableEbayUrlBuilder(MockServer!.BaseUrl));
@@ -174,17 +177,27 @@ public abstract class E2ETestFixture
         try
         {
             using var client = new TcpClient();
-            var result = client.BeginConnect("localhost", port, null, null);
-            var success = result.AsyncWaitHandle.WaitOne(TimeSpan.FromSeconds(1));
+            // Use 127.0.0.1 instead of localhost for more reliable Windows behavior
+            var result = client.BeginConnect("127.0.0.1", port, null, null);
+            var success = result.AsyncWaitHandle.WaitOne(TimeSpan.FromSeconds(2));
             if (success)
             {
-                client.EndConnect(result);
-                return true;
+                try
+                {
+                    client.EndConnect(result);
+                    return true;
+                }
+                catch
+                {
+                    // EndConnect can throw if connection was refused
+                    return false;
+                }
             }
             return false;
         }
-        catch (SocketException)
+        catch
         {
+            // Any connection error means port is not available
             return false;
         }
     }

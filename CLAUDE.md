@@ -122,6 +122,23 @@ Both `AIOMarketMaker.Api` and `AIOMarketMaker.Etl` require `local.settings.json`
 - The external web scraper service must be running on `http://localhost:7126`
 - Azure Storage Emulator or real Azure Storage account for job persistence
 
+### Running the Scraper Dependency
+AIOMarketMaker depends on AIOWebScraper for HTML fetching. Start it before running ETL:
+
+```bash
+# From the AIOWebScraper folder
+cd ../AIOWebScraper/ScraperWorker
+dotnet run -- --dedicated-mode
+# Runs on http://localhost:5000, proxied via Azure Functions on 7126
+```
+
+### Debugging Failed Scrapes
+When scrapes return small/invalid HTML:
+1. **Check response size**: Real eBay pages are ~1.6MB, consent/bot pages are 50-70KB
+2. **Look for bot detection keywords**: `captcha`, `blocked`, `cookie consent`, `gdpr`
+3. **Verify proxy is configured**: Check scraper startup logs for "Proxy configuration: CONFIGURED"
+4. **Human delays matter**: Delays under 1 second trigger bot detection
+
 ## Testing Strategy
 
 ### Test Conventions

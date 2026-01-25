@@ -124,17 +124,27 @@ public class LocalTestInfrastructure : IDisposable
         try
         {
             using var client = new TcpClient();
-            var result = client.BeginConnect("localhost", port, null, null);
-            var success = result.AsyncWaitHandle.WaitOne(TimeSpan.FromSeconds(1));
+            // Use 127.0.0.1 instead of localhost for more reliable Windows behavior
+            var result = client.BeginConnect("127.0.0.1", port, null, null);
+            var success = result.AsyncWaitHandle.WaitOne(TimeSpan.FromSeconds(2));
             if (success)
             {
-                client.EndConnect(result);
-                return true;
+                try
+                {
+                    client.EndConnect(result);
+                    return true;
+                }
+                catch
+                {
+                    // EndConnect can throw if connection was refused
+                    return false;
+                }
             }
             return false;
         }
-        catch (SocketException)
+        catch
         {
+            // Any connection error means port is not available
             return false;
         }
     }
