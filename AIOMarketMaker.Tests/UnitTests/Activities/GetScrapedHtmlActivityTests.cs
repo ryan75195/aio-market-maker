@@ -1,5 +1,6 @@
 using AIOMarketMaker.Core.Services;
 using AIOMarketMaker.Functions.Activities;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using ScraperWorker.Services;
@@ -12,6 +13,7 @@ public class GetScrapedHtmlActivityTests
 {
     private Mock<IWebscraperClient> _mockWebScraper = null!;
     private Mock<IJobRepository> _mockJobRepository = null!;
+    private Mock<ILogger<GetScrapedHtmlActivity>> _mockLogger = null!;
     private GetScrapedHtmlActivity _activity = null!;
 
     [SetUp]
@@ -19,10 +21,11 @@ public class GetScrapedHtmlActivityTests
     {
         _mockWebScraper = new Mock<IWebscraperClient>();
         _mockJobRepository = new Mock<IJobRepository>();
+        _mockLogger = new Mock<ILogger<GetScrapedHtmlActivity>>();
         _activity = new GetScrapedHtmlActivity(
             _mockWebScraper.Object,
             _mockJobRepository.Object,
-            NullLogger<GetScrapedHtmlActivity>.Instance);
+            _mockLogger.Object);
     }
 
     [Test]
@@ -153,5 +156,125 @@ public class GetScrapedHtmlActivityTests
 
         // Assert
         Assert.That(result, Is.Null);
+    }
+
+    [Test]
+    public async Task Should_not_log_bot_detection_warning_for_description_urls()
+    {
+        // Arrange - description URL with small HTML (normal for descriptions)
+        var jobId = "job-123";
+        var descriptionUrl = "https://itm.ebaydesc.com/itmdesc/123456789?t=1234567890";
+        var smallHtml = new string('x', 5000); // 5KB - normal for description pages
+
+        var jobItem = new JobItemEntity(
+            jobId,
+            JobStatusType.Success,
+            descriptionUrl,
+            DateTimeOffset.UtcNow,
+            blobUri: "https://blob.storage/job-123/html",
+            error: null);
+
+        _mockWebScraper
+            .Setup(x => x.GetResultsAsync(jobId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<JobItemEntity> { jobItem });
+
+        _mockJobRepository
+            .Setup(x => x.GetFileContentsAsync(jobId, descriptionUrl, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(smallHtml);
+
+        // Act
+        var result = await _activity.Run(new GetScrapedHtmlInput(jobId), null!);
+
+        // Assert - should return HTML but NOT log warning for description URLs
+        Assert.That(result, Is.EqualTo(smallHtml));
+        _mockLogger.Verify(
+            x => x.Log(
+                LogLevel.Warning,
+                It.IsAny<EventId>(),
+                It.Is<It.IsAnyType>((v, t) => v.ToString()!.Contains("bot detection")),
+                It.IsAny<Exception?>(),
+                It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
+            Times.Never,
+            "Should not log bot detection warning for description URLs");
+    }
+
+    [Test]
+    public async Task Should_log_bot_detection_warning_for_small_listing_page_html()
+    {
+        // Arrange - listing page URL with suspiciously small HTML
+        var jobId = "job-123";
+        var listingUrl = "https://www.ebay.com/itm/123456789";
+        var smallHtml = new string('x', 50000); // 50KB - suspiciously small for listing page
+
+        var jobItem = new JobItemEntity(
+            jobId,
+            JobStatusType.Success,
+            listingUrl,
+            DateTimeOffset.UtcNow,
+            blobUri: "https://blob.storage/job-123/html",
+            error: null);
+
+        _mockWebScraper
+            .Setup(x => x.GetResultsAsync(jobId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<JobItemEntity> { jobItem });
+
+        _mockJobRepository
+            .Setup(x => x.GetFileContentsAsync(jobId, listingUrl, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(smallHtml);
+
+        // Act
+        var result = await _activity.Run(new GetScrapedHtmlInput(jobId), null!);
+
+        // Assert - should return HTML AND log warning for listing URLs
+        Assert.That(result, Is.EqualTo(smallHtml));
+        _mockLogger.Verify(
+            x => x.Log(
+                LogLevel.Warning,
+                It.IsAny<EventId>(),
+                It.Is<It.IsAnyType>((v, t) => v.ToString()!.Contains("bot detection")),
+                It.IsAny<Exception?>(),
+                It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
+            Times.Once,
+            "Should log bot detection warning for small listing page HTML");
+    }
+
+    [Test]
+    public async Task Should_not_log_bot_detection_warning_for_large_listing_page_html()
+    {
+        // Arrange - listing page URL with normal size HTML
+        var jobId = "job-123";
+        var listingUrl = "https://www.ebay.com/itm/123456789";
+        var normalHtml = new string('x', 500000); // 500KB - normal for listing page
+
+        var jobItem = new JobItemEntity(
+            jobId,
+            JobStatusType.Success,
+            listingUrl,
+            DateTimeOffset.UtcNow,
+            blobUri: "https://blob.storage/job-123/html",
+            error: null);
+
+        _mockWebScraper
+            .Setup(x => x.GetResultsAsync(jobId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<JobItemEntity> { jobItem });
+
+        _mockJobRepository
+            .Setup(x => x.GetFileContentsAsync(jobId, listingUrl, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(normalHtml);
+
+        // Act
+        var result = await _activity.Run(new GetScrapedHtmlInput(jobId), null!);
+
+        // Assert - should return HTML and NOT log warning for normal size
+        Assert.That(result, Is.EqualTo(normalHtml));
+        _mockLogger.Verify(
+            x => x.Log(
+                LogLevel.Warning,
+                It.IsAny<EventId>(),
+                It.Is<It.IsAnyType>((v, t) => v.ToString()!.Contains("bot detection")),
+                It.IsAny<Exception?>(),
+                It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
+            Times.Never,
+            "Should not log bot detection warning for normal size HTML");
     }
 }
