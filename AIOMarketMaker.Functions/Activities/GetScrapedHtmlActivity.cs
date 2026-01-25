@@ -53,6 +53,14 @@ public class GetScrapedHtmlActivity
 
         _logger.LogInformation("Retrieved {Length} chars of HTML for job {JobId}", html.Length, input.JobId);
 
+        // Detect potential bot detection - real eBay pages are typically 500KB+
+        // Consent/CAPTCHA pages are usually under 100KB
+        if (html.Length < 100_000)
+        {
+            _logger.LogWarning("Suspiciously small HTML ({Length} chars) for job {JobId} - possible bot detection",
+                html.Length, input.JobId);
+        }
+
         return html;
     }
 }

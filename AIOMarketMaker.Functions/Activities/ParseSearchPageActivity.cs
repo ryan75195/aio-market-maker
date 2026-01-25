@@ -47,6 +47,13 @@ public class ParseSearchPageActivity
                 .OfType<EbayProductSummary>()
                 .ToList();
 
+            // Log warning if HTML was large but no products found - indicates bot detection or selector change
+            if (products.Count == 0 && input.Html.Length > 10_000)
+            {
+                _logger.LogWarning("No products parsed from {Length} chars of HTML on {Type} page {Page} - possible bot detection or selector change",
+                    input.Html.Length, searchType, input.Page);
+            }
+
             // Filter by date if this is a sold search with lookback
             if (input.IsSold && input.LookbackDays.HasValue)
             {

@@ -4,18 +4,19 @@
   "logging": {
     "applicationInsights": {
       "samplingSettings": {
-        "isEnabled": true,
-        "excludedTypes": "Request"
+        "isEnabled": true
       },
       "enableLiveMetricsFilters": true
     },
     "logLevel": {
-      "default": "Warning",
-      "Host.Results": "Error",
-      "Function": "Warning",
+      "default": "Information",
+      "Host.Results": "Warning",
+      "Function": "Information",
       "Host.Aggregator": "Warning",
       "DurableTask.AzureStorage": "Warning",
-      "DurableTask.Core": "Warning"
+      "DurableTask.Core": "Warning",
+      "Microsoft.EntityFrameworkCore": "Warning",
+      "System.Net.Http.HttpClient": "Warning"
     }
   },
   "extensions": {
