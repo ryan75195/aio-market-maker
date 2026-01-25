@@ -40,6 +40,13 @@ jobs:
       - name: Restore and publish Functions project
         run: dotnet publish AIOMarketMaker/AIOMarketMaker.Functions/AIOMarketMaker.Functions.csproj --configuration Release --output ./publish-functions
 
+      - name: Verify Functions build output
+        run: |
+          echo "=== Build output ==="
+          ls -la ./publish-functions/
+          echo "=== .azurefunctions folder ==="
+          ls -la ./publish-functions/.azurefunctions/ || echo "ERROR: .azurefunctions not created during build!"
+
       - name: Restore and publish Migrations project
         run: dotnet publish AIOMarketMaker/AIOMarketMaker.Migrations/AIOMarketMaker.Migrations.csproj --configuration Release --output ./publish-migrations
 
@@ -49,6 +56,7 @@ jobs:
           name: function-app
           path: ./publish-functions
           if-no-files-found: error
+          include-hidden-files: true
 
       - name: Upload Migrations artifact
         uses: actions/upload-artifact@v4
@@ -164,6 +172,13 @@ jobs:
           name: function-app
           path: ./publish
 
+      - name: Verify artifact contents
+        run: |
+          echo "=== Artifact contents ==="
+          ls -la ./publish/
+          echo "=== Checking for .azurefunctions ==="
+          ls -la ./publish/.azurefunctions/ || echo "Warning: .azurefunctions not found in artifact"
+
       - name: Azure Login
         uses: azure/login@v2
         with:
@@ -172,9 +187,21 @@ jobs:
       - name: Create deployment package
         run: |
           cd ./publish
-          zip -r ../deploy.zip .
+          # Verify .azurefunctions folder exists (required for isolated functions)
+          if [ -d ".azurefunctions" ]; then
+            echo "✓ .azurefunctions folder found"
+            ls -la .azurefunctions/
+          else
+            echo "✗ ERROR: .azurefunctions folder missing!"
+            exit 1
+          fi
+          # Create zip including all hidden files/folders
+          zip -r ../deploy.zip . -x '*.git*'
           cd ..
           ls -la deploy.zip
+          # Verify zip contents
+          echo "Verifying .azurefunctions in zip:"
+          unzip -l deploy.zip | grep azurefunctions | head -5
 
       - name: Deploy using Azure CLI
         run: |
