@@ -4,11 +4,10 @@ on:
   push:
     branches:
       - master
-      - azure-functions-migration
     paths:
       - 'AIOMarketMaker.Functions/**'
       - 'AIOMarketMaker.Core/**'
-      - 'AIOMarketMaker.MigrationCli/**'
+      - 'AIOMarketMaker.Console/**'
       - '.github/workflows/deploy-functions.yml'
       - '.github/infrastructure/**'
   workflow_dispatch:
@@ -41,8 +40,8 @@ jobs:
       - name: Restore and publish Functions project
         run: dotnet publish AIOMarketMaker/AIOMarketMaker.Functions/AIOMarketMaker.Functions.csproj --configuration Release --output ./publish-functions
 
-      - name: Restore and publish Migration CLI
-        run: dotnet publish AIOMarketMaker/AIOMarketMaker.MigrationCli/AIOMarketMaker.MigrationCli.csproj --configuration Release --output ./publish-migrations
+      - name: Restore and publish Console app (includes migrations)
+        run: dotnet publish AIOMarketMaker/AIOMarketMaker.Console/AIOMarketMaker.Console.csproj --configuration Release --output ./publish-console
 
       - name: Upload Functions artifact
         uses: actions/upload-artifact@v4
@@ -51,16 +50,43 @@ jobs:
           path: ./publish-functions
           if-no-files-found: error
 
-      - name: Upload Migration CLI artifact
+      - name: Upload Console app artifact
         uses: actions/upload-artifact@v4
         with:
-          name: migration-cli
-          path: ./publish-migrations
+          name: console-app
+          path: ./publish-console
           if-no-files-found: error
+
+  # ─────────────────────────────────────────────────────────────────
+  # Job: Run Tests
+  # ─────────────────────────────────────────────────────────────────
+  test:
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          path: AIOMarketMaker
+
+      - name: Checkout AIOWebScraper
+        uses: actions/checkout@v4
+        with:
+          repository: private/EXTERNAL_SCRAPER_REPO
+          path: AIOWebScraper
+          token: ${{ secrets.GH_PAT }}
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Run unit tests
+        run: dotnet test AIOMarketMaker/AIOMarketMaker.Tests/AIOMarketMaker.Tests.csproj --filter "Category=Unit" --configuration Release --verbosity normal
 
   deploy-infrastructure:
     runs-on: ubuntu-latest
-    needs: build
+    needs: [build, test]
     outputs:
       functionAppName: ${{ steps.deploy.outputs.functionAppName }}
       sqlServerFqdn: ${{ steps.deploy.outputs.sqlServerFqdn }}
@@ -103,11 +129,11 @@ jobs:
     runs-on: ubuntu-latest
     needs: deploy-infrastructure
     steps:
-      - name: Download Migration CLI artifact
+      - name: Download Console app artifact
         uses: actions/download-artifact@v4
         with:
-          name: migration-cli
-          path: ./migration-cli
+          name: console-app
+          path: ./console-app
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
@@ -119,7 +145,7 @@ jobs:
           SQL_CONNECTION_STRING: "Server=tcp:${{ needs.deploy-infrastructure.outputs.sqlServerFqdn }},1433;Initial Catalog=${{ needs.deploy-infrastructure.outputs.sqlDatabaseName }};Persist Security Info=False;User ID=sqladmin;Password=${{ vars.SQL_ADMIN_PASSWORD }};MultipleActiveResultSets=False;Encrypt=True;TrustServerCertificate=False;Connection Timeout=30;"
         run: |
           echo "Running database migrations..."
-          dotnet ./migration-cli/AIOMarketMaker.MigrationCli.dll --connection "$SQL_CONNECTION_STRING"
+          dotnet ./console-app/AIOMarketMaker.Console.dll migrate "$SQL_CONNECTION_STRING"
 
       - name: Migration Summary
         run: |
