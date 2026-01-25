@@ -199,6 +199,67 @@ Focus on parser logic (`EbaySearchParser`, `EbayListingParser`) with AngleSharp 
 - Use `local.settings.json` to configure connection strings for local development
 - The Functions project can connect to the real Azure SQL database locally for testing
 
+### Durable Functions Orchestration Debugging
+
+**Key Orchestrators:**
+- `ScrapeOrchestrator` - Main entry point, coordinates search + listing scraping
+- `JobOrchestrator` - Manages individual scrape jobs
+- `ScrapeUrlOrchestrator` - Handles single URL scraping with retry
+
+**Poison Message Debugging:**
+When orchestrations fail repeatedly, messages move to poison queues:
+```bash
+# Check for poison messages in the storage account
+az storage message peek \
+  --queue-name funcaiomarketmakerdev-control-02-poison \
+  --connection-string "$STORAGE_CONNECTION_STRING" \
+  --num-messages 5
+```
+
+**Common Failure Points:**
+1. `GetScrapedHtmlActivity` - Bot detection (small HTML < 100KB)
+2. `ParseSearchPageActivity` - Selector changes (0 products from large HTML)
+3. `FilterNewListingsActivity` - All listings filtered as duplicates (normal behavior)
+
+**App Insights Queries for Debugging:**
+```kusto
+// Find orchestration failures
+traces
+| where message contains "Error" or severityLevel >= 3
+| where cloud_RoleName contains "aiomarketmaker"
+| order by timestamp desc
+
+// Check for bot detection warnings
+traces
+| where message contains "bot detection" or message contains "small HTML"
+| order by timestamp desc
+
+// Count listings found per orchestration run
+traces
+| where message contains "Found" and message contains "listings"
+| project timestamp, message
+| order by timestamp desc
+```
+
+### host.json Logging Configuration
+
+**Critical Settings** (in `AIOMarketMaker.Functions/host.json`):
+```json
+{
+  "logging": {
+    "logLevel": {
+      "default": "Information",  // NOT "Warning" - you'll miss activity logs
+      "DurableTask.AzureStorage": "Warning",  // Reduce noise
+      "DurableTask.Core": "Warning"
+    },
+    "applicationInsights": {
+      "samplingSettings": { "isEnabled": true }
+      // Do NOT set "excludedTypes": "Request"
+    }
+  }
+}
+```
+
 ## Database Management
 
 ### CRITICAL: Never Delete the Database
