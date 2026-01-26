@@ -514,5 +514,26 @@ namespace AIOMarketMaker.Tests.Unit
                 Assert.That(title, Does.Contain("825GB"), "Title should contain 825GB");
             });
         }
+
+        [Test]
+        public void Should_parse_so4_ps5_bluray_disc_edition()
+        {
+            // Listing 397530543947 - "(SO4) Sony PlayStation 5 Blu-Ray Disc Edition Console 825GB White"
+            // This is the listing user asked about from Azurite blob storage
+            var doc = PageBuilder.LoadVerificationHtmlDocument("397530543947");
+            var parser = (EbayListingParser)_serviceUnderTest;
+
+            var price = parser.GetProductPrice(doc);
+            var currency = parser.GetCurrency(doc);
+            var title = parser.GetProductTitle(doc);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(price, Is.EqualTo(295.00m), "Price should be 295.00");
+                Assert.That(currency, Is.EqualTo("GBP"), "Currency should be GBP");
+                Assert.That(title, Does.Contain("PlayStation 5"), "Title should contain PlayStation 5");
+                Assert.That(title, Does.Contain("Blu-Ray"), "Title should contain Blu-Ray");
+            });
+        }
     }
 }
