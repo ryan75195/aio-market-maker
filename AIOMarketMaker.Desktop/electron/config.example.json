@@ -3,7 +3,22 @@
     "baseUrl": "https://YOUR-FUNCTION-APP.azurewebsites.net/api",
     "functionKey": "your-function-key-here"
   },
-  "webScraperApi": {
-    "baseUrl": "http://localhost:7126/api"
+  "scraperApi": {
+    "baseUrl": "http://localhost:7126"
+  },
+  "scraping": {
+    "maxListingsToFetch": null,
+    "defaultLookbackDays": 180
+  },
+  "storage": {
+    "connectionString": ""
+  },
+  "openAi": {
+    "apiKey": "",
+    "model": "gpt-4o-mini"
+  },
+  "pinecone": {
+    "apiKey": "",
+    "indexName": "arbitrage"
   }
 }
