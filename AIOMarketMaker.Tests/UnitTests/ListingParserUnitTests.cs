@@ -454,5 +454,65 @@ namespace AIOMarketMaker.Tests.Unit
                 Assert.That(title, Is.Null, "Error page should have null title");
             });
         }
+
+        [Test]
+        public void Should_parse_canadian_dollar_price()
+        {
+            // Listing 136937525651 has price "C $30.00" (Canadian dollars)
+            var doc = PageBuilder.LoadVerificationHtmlDocument("136937525651");
+            var parser = (EbayListingParser)_serviceUnderTest;
+
+            var price = parser.GetProductPrice(doc);
+            var currency = parser.GetCurrency(doc);
+            var title = parser.GetProductTitle(doc);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(price, Is.EqualTo(30.00m), "Price should be 30.00");
+                Assert.That(currency, Is.EqualTo("CAD"), "Currency should be CAD");
+                Assert.That(title, Does.Contain("Scooby-Doo"), "Title should contain Scooby-Doo");
+            });
+        }
+
+        [Test]
+        public void Should_parse_ps5_bluray_disc_edition()
+        {
+            // Listing 317613560809 - "Sony PS5 Blu-Ray Disc Edition Console Only"
+            var doc = PageBuilder.LoadVerificationHtmlDocument("317613560809");
+            var parser = (EbayListingParser)_serviceUnderTest;
+
+            var price = parser.GetProductPrice(doc);
+            var currency = parser.GetCurrency(doc);
+            var title = parser.GetProductTitle(doc);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(price, Is.EqualTo(315.14m), "Price should be 315.14");
+                Assert.That(currency, Is.EqualTo("GBP"), "Currency should be GBP");
+                Assert.That(title, Does.Contain("PS5"), "Title should contain PS5");
+                Assert.That(title, Does.Contain("Blu-Ray"), "Title should contain Blu-Ray");
+            });
+        }
+
+        [Test]
+        public void Should_parse_ps5_825gb_from_azurite()
+        {
+            // Listing 366147913567 - "Sony PlayStation 5 Blu-ray Edition 825GB Console"
+            // This is the "(SO4)" listing from Azurite blob storage
+            var doc = PageBuilder.LoadVerificationHtmlDocument("366147913567");
+            var parser = (EbayListingParser)_serviceUnderTest;
+
+            var price = parser.GetProductPrice(doc);
+            var currency = parser.GetCurrency(doc);
+            var title = parser.GetProductTitle(doc);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(price, Is.EqualTo(208.70m), "Price should be 208.70");
+                Assert.That(currency, Is.EqualTo("GBP"), "Currency should be GBP");
+                Assert.That(title, Does.Contain("PlayStation 5"), "Title should contain PlayStation 5");
+                Assert.That(title, Does.Contain("825GB"), "Title should contain 825GB");
+            });
+        }
     }
 }
