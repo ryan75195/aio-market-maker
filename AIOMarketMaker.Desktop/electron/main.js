@@ -18,10 +18,8 @@ function createWindow() {
 
   mainWindow.loadFile(path.join(__dirname, 'src', 'index.html'));
 
-  // Open DevTools in development
-  if (process.argv.includes('--dev')) {
-    mainWindow.webContents.openDevTools();
-  }
+  // Open DevTools for debugging
+  mainWindow.webContents.openDevTools();
 }
 
 // IPC handler to get config
@@ -40,6 +38,16 @@ ipcMain.handle('get-config', async () => {
 
 ipcMain.handle('get-config-path', () => {
   return path.join(__dirname, 'config.json');
+});
+
+ipcMain.handle('save-config', async (event, newConfig) => {
+  try {
+    const configPath = path.join(__dirname, 'config.json');
+    fs.writeFileSync(configPath, JSON.stringify(newConfig, null, 2));
+    return { success: true };
+  } catch (err) {
+    return { error: err.message };
+  }
 });
 
 app.whenReady().then(createWindow);
