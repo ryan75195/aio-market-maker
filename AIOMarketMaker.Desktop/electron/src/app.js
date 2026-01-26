@@ -7,6 +7,7 @@ createApp({
       config: null,
       configError: null,
       jobs: [],
+      history: [],
       loading: false,
       toast: null,
       showJobForm: false,
@@ -16,7 +17,24 @@ createApp({
         filterInstructions: '',
         isEnabled: true
       },
-      lastInstanceId: localStorage.getItem('lastInstanceId') || null
+      lastInstanceId: localStorage.getItem('lastInstanceId') || null,
+      refreshInterval: null,
+      settings: {
+        marketMakerApi: { baseUrl: '', functionKey: '' },
+        scraperApi: { baseUrl: '' },
+        scraping: { maxListingsToFetch: null, defaultLookbackDays: 180 },
+        storage: { connectionString: '' },
+        openAi: { apiKey: '', model: '' },
+        pinecone: { apiKey: '', indexName: '' }
+      },
+      collapsedSections: {
+        api: false,
+        scraping: false,
+        storage: true,
+        openAi: true,
+        pinecone: true
+      },
+      savingSettings: false
     };
   },
 
@@ -34,6 +52,11 @@ createApp({
     if (!this.configError) {
       await this.loadJobs();
     }
+    this.startAutoRefresh();
+  },
+
+  beforeUnmount() {
+    this.stopAutoRefresh();
   },
 
   methods: {
@@ -45,6 +68,8 @@ createApp({
           this.showToast(result.error, 'error');
         } else {
           this.config = result;
+          // Populate settings from config (deep copy)
+          this.settings = JSON.parse(JSON.stringify(result));
         }
       } catch (err) {
         this.configError = err.message;
@@ -77,11 +102,36 @@ createApp({
       return response.json();
     },
 
+    // Convert PascalCase keys from .NET API to camelCase for JavaScript
+    toCamelCase(obj) {
+      if (Array.isArray(obj)) {
+        return obj.map(item => this.toCamelCase(item));
+      }
+      if (obj !== null && typeof obj === 'object') {
+        return Object.keys(obj).reduce((result, key) => {
+          const camelKey = key.charAt(0).toLowerCase() + key.slice(1);
+          result[camelKey] = this.toCamelCase(obj[key]);
+          return result;
+        }, {});
+      }
+      return obj;
+    },
+
     async loadJobs() {
       try {
-        this.jobs = await this.apiCall('/jobs');
+        const data = await this.apiCall('/jobs');
+        this.jobs = this.toCamelCase(data);
       } catch (err) {
         this.showToast(`Failed to load jobs: ${err.message}`, 'error');
+      }
+    },
+
+    async loadHistory() {
+      try {
+        const data = await this.apiCall('/history');
+        this.history = this.toCamelCase(data);
+      } catch (err) {
+        this.showToast(`Failed to load history: ${err.message}`, 'error');
       }
     },
 
@@ -121,18 +171,20 @@ createApp({
     async saveJob() {
       try {
         if (this.editingJob) {
-          const updated = await this.apiCall(`/jobs/${this.editingJob.id}`, {
+          const data = await this.apiCall(`/jobs/${this.editingJob.id}`, {
             method: 'PUT',
             body: JSON.stringify(this.jobForm)
           });
+          const updated = this.toCamelCase(data);
           const index = this.jobs.findIndex(j => j.id === this.editingJob.id);
           if (index !== -1) this.jobs[index] = updated;
           this.showToast('Job updated', 'success');
         } else {
-          const created = await this.apiCall('/jobs', {
+          const data = await this.apiCall('/jobs', {
             method: 'POST',
             body: JSON.stringify(this.jobForm)
           });
+          const created = this.toCamelCase(data);
           this.jobs.push(created);
           this.showToast('Job created', 'success');
         }
@@ -151,7 +203,8 @@ createApp({
     async startScrape() {
       this.loading = true;
       try {
-        const result = await this.apiCall('/scrape/start', { method: 'POST' });
+        const data = await this.apiCall('/scrape/start', { method: 'POST' });
+        const result = this.toCamelCase(data);
         this.lastInstanceId = result.instanceId;
         localStorage.setItem('lastInstanceId', result.instanceId);
         this.showToast(`Scrape started: ${result.instanceId}`, 'success');
@@ -180,7 +233,8 @@ createApp({
       if (!confirm('Purge all orchestrations from the last 7 days?')) return;
 
       try {
-        const result = await this.apiCall('/orchestration/purge', { method: 'POST' });
+        const data = await this.apiCall('/orchestration/purge', { method: 'POST' });
+        const result = this.toCamelCase(data);
         this.showToast(`Purged ${result.purged} orchestrations`, 'success');
       } catch (err) {
         this.showToast(`Failed to purge: ${err.message}`, 'error');
@@ -193,11 +247,52 @@ createApp({
       return date.toLocaleString();
     },
 
+    progressPercent(run) {
+      if (!run.totalListingsFound || run.totalListingsFound === 0) return 0;
+      return Math.round((run.listingsProcessed / run.totalListingsFound) * 100);
+    },
+
+    startAutoRefresh() {
+      this.refreshInterval = setInterval(() => {
+        if (this.currentView === 'history' && this.history.some(r => r.status === 'Running')) {
+          this.loadHistory();
+        }
+      }, 5000);
+    },
+
+    stopAutoRefresh() {
+      if (this.refreshInterval) {
+        clearInterval(this.refreshInterval);
+        this.refreshInterval = null;
+      }
+    },
+
     showToast(message, type = 'info') {
       this.toast = { message, type };
       setTimeout(() => {
         this.toast = null;
       }, 4000);
+    },
+
+    toggleSection(section) {
+      this.collapsedSections[section] = !this.collapsedSections[section];
+    },
+
+    async saveSettings() {
+      this.savingSettings = true;
+      try {
+        const result = await window.electronAPI.saveConfig(this.settings);
+        if (result.error) {
+          this.showToast(`Failed to save: ${result.error}`, 'error');
+        } else {
+          this.config = JSON.parse(JSON.stringify(this.settings)); // Update active config
+          this.showToast('Settings saved', 'success');
+        }
+      } catch (err) {
+        this.showToast(`Failed to save: ${err.message}`, 'error');
+      } finally {
+        this.savingSettings = false;
+      }
     }
   }
 }).mount('#app');
