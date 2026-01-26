@@ -17,15 +17,18 @@ public class JobOrchestrator
         [OrchestrationTrigger] TaskOrchestrationContext context)
     {
         var logger = context.CreateReplaySafeLogger<JobOrchestrator>();
-        var jobId = context.GetInput<int>();
+        var input = context.GetInput<JobOrchestratorInput>()!;
+        var jobId = input.JobId;
+        var scrapeInstanceId = input.ScrapeInstanceId;
 
         logger.LogInformation("Starting job orchestration for job {JobId}", jobId);
 
         try
         {
-            // Step 1: Get job details
+            // Step 1: Get job details (with runtime overrides if provided)
             var jobDetails = await context.CallActivityAsync<JobDetails>(
-                nameof(GetJobDetailsActivity), jobId);
+                nameof(GetJobDetailsActivity),
+                new GetJobDetailsInput(jobId, input.MaxListingsToFetch, input.LookbackDays));
 
             if (jobDetails == null)
             {
@@ -37,6 +40,11 @@ public class JobOrchestrator
             var seenIds = new HashSet<string>();
             var allListingIds = new List<string>();
             var soldListingIds = new HashSet<string>();
+
+            // Report progress: Searching Sold
+            await context.CallActivityAsync(
+                nameof(UpdateScrapeRunProgressActivity),
+                new UpdateProgressInput(scrapeInstanceId, CurrentPhase: "Searching Sold"));
 
             // Step 2a: Search SOLD listings page by page until no results in date range
             logger.LogInformation("Job {JobId}: Searching sold listings...", jobId);
@@ -60,6 +68,11 @@ public class JobOrchestrator
 
             // Step 2b: Detect and update Active→Sold transitions
             var statusUpdates = await DetectAndUpdateSoldListingsAsync(context, jobId, soldListingIds, logger);
+
+            // Report progress: Searching Active
+            await context.CallActivityAsync(
+                nameof(UpdateScrapeRunProgressActivity),
+                new UpdateProgressInput(scrapeInstanceId, CurrentPhase: "Searching Active"));
 
             // Step 2c: Search ACTIVE listings page by page until no results (limit 10000)
             const int activeItemLimit = 10000;
@@ -87,8 +100,16 @@ public class JobOrchestrator
             if (allListingIds.Count == 0)
             {
                 await context.CallActivityAsync(nameof(UpdateJobTimestampActivity), jobId);
+                await context.CallActivityAsync(
+                    nameof(UpdateScrapeRunProgressActivity),
+                    new UpdateProgressInput(scrapeInstanceId, CurrentPhase: "Completed"));
                 return new JobResult(jobId, true, 0, null);
             }
+
+            // Report progress: Filtering
+            await context.CallActivityAsync(
+                nameof(UpdateScrapeRunProgressActivity),
+                new UpdateProgressInput(scrapeInstanceId, CurrentPhase: "Filtering"));
 
             // Step 3: Filter out existing listings
             var newListingIds = await context.CallActivityAsync<List<string>>(
@@ -97,11 +118,30 @@ public class JobOrchestrator
 
             logger.LogInformation("Job {JobId}: {NewCount} new listings to fetch", jobId, newListingIds.Count);
 
+            // Apply max listings limit if configured (useful for dev/testing)
+            if (jobDetails.MaxListingsToFetch.HasValue && newListingIds.Count > jobDetails.MaxListingsToFetch.Value)
+            {
+                logger.LogInformation("Job {JobId}: Limiting to {Max} listings (MaxListingsToFetch config)",
+                    jobId, jobDetails.MaxListingsToFetch.Value);
+                newListingIds = newListingIds.Take(jobDetails.MaxListingsToFetch.Value).ToList();
+            }
+
             if (newListingIds.Count == 0)
             {
                 await context.CallActivityAsync(nameof(UpdateJobTimestampActivity), jobId);
+                await context.CallActivityAsync(
+                    nameof(UpdateScrapeRunProgressActivity),
+                    new UpdateProgressInput(scrapeInstanceId, CurrentPhase: "Completed"));
                 return new JobResult(jobId, true, allListingIds.Count, null);
             }
+
+            // Report progress: Fetching with total count
+            await context.CallActivityAsync(
+                nameof(UpdateScrapeRunProgressActivity),
+                new UpdateProgressInput(scrapeInstanceId,
+                    TotalListingsFound: newListingIds.Count,
+                    ListingsProcessed: 0,
+                    CurrentPhase: "Fetching"));
 
             // Step 4: Build listing URLs (fan out)
             var urlTasks = newListingIds.Select(listingId =>
@@ -144,12 +184,22 @@ public class JobOrchestrator
 
                 logger.LogInformation("Job {JobId}: Batch complete, {Count} listings fetched so far",
                     jobId, allListings.Count);
+
+                // Report progress after each batch
+                await context.CallActivityAsync(
+                    nameof(UpdateScrapeRunProgressActivity),
+                    new UpdateProgressInput(scrapeInstanceId, ListingsProcessed: allListings.Count));
             }
 
             logger.LogInformation("Job {JobId}: Fetched {Count} listing details total", jobId, allListings.Count);
 
             if (allListings.Count > 0)
             {
+                // Report progress: Saving
+                await context.CallActivityAsync(
+                    nameof(UpdateScrapeRunProgressActivity),
+                    new UpdateProgressInput(scrapeInstanceId, CurrentPhase: "Saving"));
+
                 await context.CallActivityAsync(
                     nameof(SaveListingsActivity),
                     new SaveListingsInput(jobId, allListings));
@@ -157,6 +207,11 @@ public class JobOrchestrator
 
             // Step 6: Update job timestamp
             await context.CallActivityAsync(nameof(UpdateJobTimestampActivity), jobId);
+
+            // Report progress: Completed
+            await context.CallActivityAsync(
+                nameof(UpdateScrapeRunProgressActivity),
+                new UpdateProgressInput(scrapeInstanceId, CurrentPhase: "Completed"));
 
             logger.LogInformation("Job {JobId} completed: {TotalFound} found, {NewFetched} new",
                 jobId, allListingIds.Count, allListings.Count);

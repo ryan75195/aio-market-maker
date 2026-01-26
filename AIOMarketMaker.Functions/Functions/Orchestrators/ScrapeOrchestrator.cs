@@ -3,6 +3,7 @@ using Microsoft.DurableTask;
 using Microsoft.Extensions.Logging;
 using AIOMarketMaker.Functions.Activities;
 using AIOMarketMaker.Functions.Contracts;
+using static AIOMarketMaker.Functions.Activities.UpdateScrapeRunActivity;
 
 namespace AIOMarketMaker.Functions.Functions.Orchestrators;
 
@@ -18,6 +19,14 @@ public class ScrapeOrchestrator
     {
         var logger = context.CreateReplaySafeLogger<ScrapeOrchestrator>();
         var startTime = context.CurrentUtcDateTime;
+
+        // Get optional input for runtime overrides
+        var input = context.GetInput<ScrapeOrchestratorInput>();
+        if (input?.MaxListingsToFetch.HasValue == true || input?.LookbackDays.HasValue == true)
+        {
+            logger.LogInformation("Scrape with overrides: MaxListings={Max}, LookbackDays={Days}",
+                input?.MaxListingsToFetch, input?.LookbackDays);
+        }
 
         logger.LogInformation("Starting scrape orchestration at {Time}", startTime);
 
@@ -45,7 +54,7 @@ public class ScrapeOrchestrator
             {
                 var result = await context.CallSubOrchestratorAsync<JobResult>(
                     nameof(JobOrchestrator),
-                    job.Id);
+                    new JobOrchestratorInput(job.Id, context.InstanceId, input?.MaxListingsToFetch, input?.LookbackDays));
                 results.Add(result);
                 logger.LogInformation("Job {JobId} completed: {Success}, {ListingsFound} listings",
                     job.Id, result.Success, result.ListingsFound);
@@ -76,6 +85,17 @@ public class ScrapeOrchestrator
         var errors = results.Where(r => !r.Success)
             .Select(r => $"Job {r.JobId}: {r.Error ?? "Unknown"}")
             .ToList();
+
+        // Update the ScrapeRun record with results
+        var instanceId = context.InstanceId;
+        await context.CallActivityAsync(
+            nameof(UpdateScrapeRunActivity),
+            new UpdateScrapeRunInput(
+                instanceId,
+                failed == 0,
+                totalListings,
+                0, // We don't currently track skipped at orchestrator level
+                errors.Count > 0 ? string.Join("; ", errors) : null));
 
         return new OrchestratorResult(succeeded, failed, totalListings, duration, errors);
     }

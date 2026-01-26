@@ -10,7 +10,8 @@ public record ScrapeOrchestratorInput(int? MaxListingsToFetch, int? LookbackDays
 public record JobDetails(int Id, string SearchTerm, int LookbackDays, int? MaxListingsToFetch);
 public record JobResult(int JobId, bool Success, int ListingsFound, string? Error);
 public record ScrapeJobInfo(int Id, string SearchTerm);
-public record JobOrchestratorInput(int JobId, string ScrapeInstanceId);
+public record JobOrchestratorInput(int JobId, string ScrapeInstanceId, int? MaxListingsToFetch = null, int? LookbackDays = null);
+public record GetJobDetailsInput(int JobId, int? MaxListingsToFetch = null, int? LookbackDays = null);
 
 // Search DTOs
 public record SearchPageResult(bool Success, List<string> ListingIds, string? Error);
