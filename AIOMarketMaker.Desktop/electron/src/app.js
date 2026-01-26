@@ -203,7 +203,18 @@ createApp({
     async startScrape() {
       this.loading = true;
       try {
-        const data = await this.apiCall('/scrape/start', { method: 'POST' });
+        const body = {};
+        if (this.settings.scraping?.maxListingsToFetch) {
+          body.maxListingsToFetch = this.settings.scraping.maxListingsToFetch;
+        }
+        if (this.settings.scraping?.defaultLookbackDays) {
+          body.lookbackDays = this.settings.scraping.defaultLookbackDays;
+        }
+
+        const data = await this.apiCall('/scrape/start', {
+          method: 'POST',
+          body: Object.keys(body).length > 0 ? JSON.stringify(body) : undefined
+        });
         const result = this.toCamelCase(data);
         this.lastInstanceId = result.instanceId;
         localStorage.setItem('lastInstanceId', result.instanceId);
