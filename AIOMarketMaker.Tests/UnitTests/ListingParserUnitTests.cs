@@ -430,6 +430,29 @@ namespace AIOMarketMaker.Tests.Unit
                 .SetDescription("PS5 Slim Disc Edition");
             yield return new TestCaseData("267550125910", 14.33m, "GBP", "Prada")
                 .SetDescription("Prada Sunglasses Case");
+            // Additional blob-downloaded pages
+            yield return new TestCaseData("168092499496", 751.37m, "GBP", "Sony PS5")
+                .SetDescription("PS5 Blu-Ray US Version");
+            yield return new TestCaseData("147110593124", 516.70m, "GBP", "PlayStation 5")
+                .SetDescription("PS5 Bundle with strikethrough price");
+        }
+
+        [Test]
+        public void Should_return_unknown_status_for_error_page()
+        {
+            var doc = PageBuilder.LoadVerificationHtmlDocument("406636133621");
+            var parser = (EbayListingParser)_serviceUnderTest;
+
+            var status = parser.GetListingStatus(doc);
+            var price = parser.GetProductPrice(doc);
+            var title = parser.GetProductTitle(doc);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(status, Is.EqualTo(EbayListingStatus.Unknown), "Error page should have Unknown status");
+                Assert.That(price, Is.Null, "Error page should have null price");
+                Assert.That(title, Is.Null, "Error page should have null title");
+            });
         }
     }
 }
