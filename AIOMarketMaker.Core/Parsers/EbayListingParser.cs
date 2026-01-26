@@ -114,7 +114,7 @@ namespace AIOMarketMaker.Core.Parsers
                 }
                 return EbayListingStatus.Active;
             }
-            else if (node.Contains("Bidding ended on "))
+            else if (node.Contains("Bidding ended on ") || node.Contains("This listing was ended"))
             {
                 return EbayListingStatus.Ended;
             }
