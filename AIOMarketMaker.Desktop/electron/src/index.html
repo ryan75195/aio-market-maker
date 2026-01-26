@@ -15,6 +15,7 @@
         <div class="logo">AIOMarketMaker</div>
         <div class="nav-items">
           <button :class="{ active: currentView === 'jobs' }" @click="currentView = 'jobs'">Jobs</button>
+          <button :class="{ active: currentView === 'opportunities' }" @click="currentView = 'opportunities'; loadOpportunities()">Opportunities</button>
           <button :class="{ active: currentView === 'operations' }" @click="currentView = 'operations'">Operations</button>
           <button :class="{ active: currentView === 'history' }" @click="currentView = 'history'; loadHistory()">History</button>
           <button :class="{ active: currentView === 'settings' }" @click="currentView = 'settings'">Settings</button>
@@ -67,6 +68,48 @@
               </tr>
               <tr v-if="jobs.length === 0">
                 <td colspan="6" class="empty">No jobs configured</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Opportunities View -->
+        <div v-if="currentView === 'opportunities'" class="view">
+          <div class="view-header">
+            <h1>Opportunities</h1>
+            <span class="count-badge">{{ opportunities.length }} active listings</span>
+            <button class="btn" @click="loadOpportunities">Refresh</button>
+          </div>
+
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Image</th>
+                <th>Title</th>
+                <th>Price</th>
+                <th>Condition</th>
+                <th>Search Term</th>
+                <th>Discovered</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="listing in opportunities" :key="listing.id">
+                <td class="image-cell">
+                  <img v-if="getFirstImage(listing.firstImage)" :src="getFirstImage(listing.firstImage)" class="listing-thumb" />
+                  <span v-else class="no-image">-</span>
+                </td>
+                <td class="title-cell" :title="listing.title">{{ truncate(listing.title, 50) }}</td>
+                <td class="price-cell">{{ formatPrice(listing.price, listing.currency) }}</td>
+                <td>{{ listing.condition || '-' }}</td>
+                <td>{{ listing.searchTerm || '-' }}</td>
+                <td>{{ formatDate(listing.createdUtc) }}</td>
+                <td>
+                  <a v-if="listing.url" :href="listing.url" target="_blank" class="btn small">View</a>
+                </td>
+              </tr>
+              <tr v-if="opportunities.length === 0">
+                <td colspan="7" class="empty">No active listings found</td>
               </tr>
             </tbody>
           </table>
@@ -258,7 +301,7 @@
             <form @submit.prevent="saveJob">
               <div class="form-group">
                 <label>Search Term</label>
-                <input v-model="jobForm.searchTerm" required placeholder="e.g., ps5 console">
+                <input v-model="jobForm.searchTerm" required placeholder="e.g., ps5 console" autofocus>
               </div>
               <div class="form-group">
                 <label>Filter Instructions (optional)</label>

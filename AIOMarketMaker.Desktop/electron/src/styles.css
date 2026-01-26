@@ -484,3 +484,49 @@ body {
   font-size: 12px;
   font-weight: normal;
 }
+
+/* Opportunities */
+.count-badge {
+  background: #3c3c3c;
+  padding: 4px 12px;
+  border-radius: 12px;
+  font-size: 13px;
+  color: #b0b0b0;
+  margin-left: 15px;
+}
+
+.listing-thumb {
+  width: 50px;
+  height: 50px;
+  object-fit: cover;
+  border-radius: 4px;
+  background: #333;
+}
+
+.image-cell {
+  width: 60px;
+  padding: 8px 10px !important;
+}
+
+.no-image {
+  display: inline-block;
+  width: 50px;
+  height: 50px;
+  line-height: 50px;
+  text-align: center;
+  background: #333;
+  border-radius: 4px;
+  color: #666;
+}
+
+.title-cell {
+  max-width: 300px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.price-cell {
+  font-weight: 500;
+  color: #4ade80;
+}

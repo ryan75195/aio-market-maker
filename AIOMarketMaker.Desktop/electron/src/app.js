@@ -7,6 +7,7 @@ createApp({
       config: null,
       configError: null,
       jobs: [],
+      opportunities: [],
       history: [],
       loading: false,
       toast: null,
@@ -133,6 +134,36 @@ createApp({
       } catch (err) {
         this.showToast(`Failed to load history: ${err.message}`, 'error');
       }
+    },
+
+    async loadOpportunities() {
+      try {
+        const data = await this.apiCall('/listings/active');
+        this.opportunities = this.toCamelCase(data);
+      } catch (err) {
+        this.showToast(`Failed to load opportunities: ${err.message}`, 'error');
+      }
+    },
+
+    getFirstImage(imagesJson) {
+      if (!imagesJson) return null;
+      try {
+        const images = JSON.parse(imagesJson);
+        return Array.isArray(images) && images.length > 0 ? images[0] : null;
+      } catch {
+        return null;
+      }
+    },
+
+    truncate(text, maxLength) {
+      if (!text) return '-';
+      return text.length > maxLength ? text.substring(0, maxLength) + '...' : text;
+    },
+
+    formatPrice(price, currency) {
+      if (price == null) return '-';
+      const symbol = currency === 'GBP' ? '\u00A3' : currency === 'USD' ? '$' : (currency || '');
+      return `${symbol}${price.toFixed(2)}`;
     },
 
     async toggleJob(job) {
