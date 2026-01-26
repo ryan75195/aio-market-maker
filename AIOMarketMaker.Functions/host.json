@@ -4,13 +4,16 @@
   "logging": {
     "applicationInsights": {
       "samplingSettings": {
-        "isEnabled": true
+        "isEnabled": true,
+        "excludedTypes": "Request;Exception;Trace"
       },
-      "enableLiveMetricsFilters": true
+      "enableLiveMetricsFilters": true,
+      "flushTimeout": "00:00:05"
     },
     "logLevel": {
       "default": "Information",
       "Host.Results": "Warning",
+      "Host.Triggers.Timer": "Information",
       "Function": "Information",
       "Host.Aggregator": "Warning",
       "DurableTask.AzureStorage": "Warning",
