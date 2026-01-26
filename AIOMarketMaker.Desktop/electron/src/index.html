@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://unpkg.com; style-src 'self' 'unsafe-inline'; connect-src *;">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://unpkg.com; style-src 'self' 'unsafe-inline'; connect-src *;">
   <title>AIOMarketMaker</title>
   <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
   <link rel="stylesheet" href="styles.css">
@@ -16,6 +16,8 @@
         <div class="nav-items">
           <button :class="{ active: currentView === 'jobs' }" @click="currentView = 'jobs'">Jobs</button>
           <button :class="{ active: currentView === 'operations' }" @click="currentView = 'operations'">Operations</button>
+          <button :class="{ active: currentView === 'history' }" @click="currentView = 'history'; loadHistory()">History</button>
+          <button :class="{ active: currentView === 'settings' }" @click="currentView = 'settings'">Settings</button>
         </div>
         <div class="config-status">
           <span class="status-dot" :class="{ connected: !configError }"></span>
@@ -98,6 +100,153 @@
               <h3>Maintenance</h3>
               <p>Purge completed and failed orchestrations from the last 7 days.</p>
               <button class="btn danger" @click="purgeOrchestrations">Purge All</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- History View -->
+        <div v-if="currentView === 'history'" class="view">
+          <div class="view-header">
+            <h1>Run History</h1>
+            <button class="btn" @click="loadHistory">Refresh</button>
+          </div>
+
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Started</th>
+                <th>Trigger</th>
+                <th>Status</th>
+                <th>Phase</th>
+                <th>Progress</th>
+                <th>Listings Added</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="run in history" :key="run.id" :class="{ 'error-row': run.status === 'Failed' }">
+                <td>{{ formatDate(run.startedUtc) }}</td>
+                <td>
+                  <span class="trigger-badge" :class="run.triggerType.toLowerCase()">{{ run.triggerType }}</span>
+                </td>
+                <td>
+                  <span class="status-badge" :class="run.status.toLowerCase()">{{ run.status }}</span>
+                </td>
+                <td>{{ run.currentPhase || '-' }}</td>
+                <td>
+                  <div v-if="run.status === 'Running' && run.totalListingsFound > 0" class="progress-bar">
+                    <div class="progress-fill" :style="{ width: progressPercent(run) + '%' }"></div>
+                    <span class="progress-text">{{ run.listingsProcessed }}/{{ run.totalListingsFound }}</span>
+                  </div>
+                  <span v-else-if="run.status === 'Completed' && run.totalListingsFound > 0">{{ run.totalListingsFound }} processed</span>
+                  <span v-else>-</span>
+                </td>
+                <td class="number">{{ run.listingsAdded }}</td>
+              </tr>
+              <tr v-if="history.length === 0">
+                <td colspan="6" class="empty">No run history</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Settings View -->
+        <div v-if="currentView === 'settings'" class="view">
+          <div class="view-header">
+            <h1>Settings</h1>
+            <button class="btn primary" @click="saveSettings" :disabled="savingSettings">
+              {{ savingSettings ? 'Saving...' : 'Save Settings' }}
+            </button>
+          </div>
+
+          <div class="settings-sections">
+            <!-- API Connection -->
+            <div class="settings-section">
+              <h3 class="section-header" @click="toggleSection('api')">
+                <span class="collapse-icon">{{ collapsedSections.api ? '▶' : '▼' }}</span>
+                API Connection
+              </h3>
+              <div class="section-content" v-show="!collapsedSections.api">
+                <div class="form-group">
+                  <label>MarketMaker API URL</label>
+                  <input v-model="settings.marketMakerApi.baseUrl" placeholder="http://localhost:7071/api">
+                </div>
+                <div class="form-group">
+                  <label>Function Key</label>
+                  <input v-model="settings.marketMakerApi.functionKey" type="password" placeholder="Leave blank for local">
+                </div>
+                <div class="form-group">
+                  <label>Scraper API URL</label>
+                  <input v-model="settings.scraperApi.baseUrl" placeholder="http://localhost:7126">
+                </div>
+              </div>
+            </div>
+
+            <!-- Scraping -->
+            <div class="settings-section">
+              <h3 class="section-header" @click="toggleSection('scraping')">
+                <span class="collapse-icon">{{ collapsedSections.scraping ? '▶' : '▼' }}</span>
+                Scraping
+              </h3>
+              <div class="section-content" v-show="!collapsedSections.scraping">
+                <div class="form-group">
+                  <label>Max Listings to Fetch <span class="hint">(blank = unlimited)</span></label>
+                  <input v-model.number="settings.scraping.maxListingsToFetch" type="number" placeholder="10">
+                </div>
+                <div class="form-group">
+                  <label>Default Lookback Days</label>
+                  <input v-model.number="settings.scraping.defaultLookbackDays" type="number" placeholder="180">
+                </div>
+              </div>
+            </div>
+
+            <!-- Storage -->
+            <div class="settings-section">
+              <h3 class="section-header" @click="toggleSection('storage')">
+                <span class="collapse-icon">{{ collapsedSections.storage ? '▶' : '▼' }}</span>
+                Storage
+              </h3>
+              <div class="section-content" v-show="!collapsedSections.storage">
+                <div class="form-group">
+                  <label>Connection String</label>
+                  <input v-model="settings.storage.connectionString" placeholder="UseDevelopmentStorage=true">
+                </div>
+              </div>
+            </div>
+
+            <!-- OpenAI -->
+            <div class="settings-section">
+              <h3 class="section-header" @click="toggleSection('openAi')">
+                <span class="collapse-icon">{{ collapsedSections.openAi ? '▶' : '▼' }}</span>
+                OpenAI
+              </h3>
+              <div class="section-content" v-show="!collapsedSections.openAi">
+                <div class="form-group">
+                  <label>API Key</label>
+                  <input v-model="settings.openAi.apiKey" type="password" placeholder="sk-...">
+                </div>
+                <div class="form-group">
+                  <label>Model</label>
+                  <input v-model="settings.openAi.model" placeholder="gpt-4o-mini">
+                </div>
+              </div>
+            </div>
+
+            <!-- Pinecone -->
+            <div class="settings-section">
+              <h3 class="section-header" @click="toggleSection('pinecone')">
+                <span class="collapse-icon">{{ collapsedSections.pinecone ? '▶' : '▼' }}</span>
+                Pinecone
+              </h3>
+              <div class="section-content" v-show="!collapsedSections.pinecone">
+                <div class="form-group">
+                  <label>API Key</label>
+                  <input v-model="settings.pinecone.apiKey" type="password" placeholder="pcsk_...">
+                </div>
+                <div class="form-group">
+                  <label>Index Name</label>
+                  <input v-model="settings.pinecone.indexName" placeholder="arbitrage">
+                </div>
+              </div>
             </div>
           </div>
         </div>
