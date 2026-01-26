@@ -19,19 +19,15 @@ Systematically debug and fix eBay listing parser issues using evidence-based inv
 **Examples:**
 - `/fix-parser-issue 397530543947 status shows Active but listing is ended`
 - `/fix-parser-issue 123456789 price not extracted correctly`
-- `/fix-parser-issue 987654321 title missing special characters`
 
-## Available Tools
-
-Python scripts in this skill's `scripts/` directory:
+## Tools
 
 | Script | Purpose | Commands |
 |--------|---------|----------|
 | `db_query.py` | Query/manage SQL Server LocalDB | `get`, `delete`, `list` |
 | `blob_download.py` | Download HTML from blob storage | `search`, `download` |
-| `html_search.py` | Search HTML for patterns | `status`, `search`, `patterns` |
 
-**Script location:** `$SKILL_DIR/scripts/`
+**Script location:** `.claude/skills/fix-parser-issue/scripts/`
 
 ---
 
@@ -40,67 +36,55 @@ Python scripts in this skill's `scripts/` directory:
 ### 1.1 Check Database Status
 
 ```bash
-python $SKILL_DIR/scripts/db_query.py get $0
+python .claude/skills/fix-parser-issue/scripts/db_query.py get $0
 ```
 
-This shows: ID, ListingId, Title, Status, Price, Currency
-
-### 1.2 Download HTML from Blob Storage
+### 1.2 Download HTML
 
 ```bash
-python $SKILL_DIR/scripts/blob_download.py download $0
+python .claude/skills/fix-parser-issue/scripts/blob_download.py download $0
 ```
 
-Searches Azurite (local) first, then Azure. Downloads largest HTML (main listing page) to `AIOMarketMaker.Tests/Data/Listings/Verification/`.
+Downloads to: `AIOMarketMaker.Tests/Data/Listings/Verification/$0.htm`
 
-### 1.3 Analyze HTML Status
+### 1.3 Analyze HTML (Use Your Judgment)
 
-```bash
-python $SKILL_DIR/scripts/html_search.py status AIOMarketMaker.Tests/Data/Listings/Verification/$0.htm
-```
+Read the downloaded HTML and search for relevant content:
 
-Reports: detected status, status indicators found, has title/price.
+1. **For status issues:** Search for status indicators
+   - `grep -i "ended\|sold\|no longer available" <file>`
+   - Look in `.d-statusmessage` element area
 
-### 1.4 Search for Specific Patterns
+2. **For price issues:** Search for price elements
+   - `grep -i "x-price-primary\|itemprop=\"price\"" <file>`
 
-```bash
-# Search all known patterns
-python $SKILL_DIR/scripts/html_search.py patterns AIOMarketMaker.Tests/Data/Listings/Verification/$0.htm
+3. **For title issues:** Search for title elements
+   - `grep -i "x-item-title__mainTitle" <file>`
 
-# Search custom pattern
-python $SKILL_DIR/scripts/html_search.py search <file> "your regex pattern"
-```
+**Use your judgment** to identify:
+- What the HTML actually contains
+- What pattern the parser should recognize
+- Why the current parser logic fails
 
 ---
 
 ## Phase 2: Identify Root Cause
 
-### 2.1 Compare Evidence
-
-| Question | How to Check |
-|----------|--------------|
-| What does DB say? | `db_query.py get` output |
-| What does HTML say? | `html_search.py status` output |
-| Do they match? | Compare Status fields |
-
-### 2.2 Find Parser Logic
+### 2.1 Read Parser Source
 
 The parser is at: `AIOMarketMaker.Core/Parsers/EbayListingParser.cs`
 
 Key methods:
-- `GetListingStatus()` - determines Active/Ended/Sold
-- `GetProductPrice()` - extracts price
-- `GetCurrency()` - extracts currency code
-- `GetProductTitle()` - extracts title
+- `GetListingStatus()` - Active/Ended/Sold
+- `GetProductPrice()` - price extraction
+- `GetCurrency()` - currency code
+- `GetProductTitle()` - title extraction
 
-Read the relevant method and compare against what patterns exist in the HTML.
+### 2.2 Compare and Document
 
-### 2.3 Document the Gap
-
-Write down:
-1. **HTML contains:** (exact text from html_search)
-2. **Parser checks for:** (patterns from source code)
-3. **Gap:** (what's missing)
+| What HTML Contains | What Parser Checks | Gap |
+|--------------------|-------------------|-----|
+| (from your analysis) | (from source code) | (missing pattern) |
 
 ---
 
@@ -108,104 +92,66 @@ Write down:
 
 ### 3.1 Write Failing Test
 
-Add to `AIOMarketMaker.Tests/UnitTests/ListingParserUnitTests.cs`:
-
 ```csharp
 [Test]
-public void Should_parse_<listing_id>_<expected_behavior>()
+public void Should_parse_$0_<expected_behavior>()
 {
     var doc = PageBuilder.LoadVerificationHtmlDocument("$0");
     var parser = (EbayListingParser)_serviceUnderTest;
-
-    // Test the specific field that's broken
-    var result = parser.<MethodUnderTest>(doc);
-
-    Assert.That(result, Is.EqualTo(<expected_value>),
-        "<description of what should happen>");
+    var result = parser.<Method>(doc);
+    Assert.That(result, Is.EqualTo(<expected>));
 }
 ```
 
-### 3.2 Verify RED
+### 3.2 RED → GREEN → Refactor
 
 ```bash
-cd AIOMarketMaker && dotnet test --filter "Should_parse_$0"
+# Verify fails
+dotnet test --filter "Should_parse_$0"
+
+# Fix parser, then verify passes
+dotnet test --filter "Should_parse_$0"
+
+# Check no regressions
+dotnet test --filter "ListingParserUnitTests"
 ```
-
-**Must fail** with expected vs actual mismatch.
-
-### 3.3 Fix Parser
-
-Edit `EbayListingParser.cs` to handle the new pattern.
-
-### 3.4 Verify GREEN
-
-```bash
-cd AIOMarketMaker && dotnet test --filter "Should_parse_$0"
-```
-
-### 3.5 Run All Parser Tests
-
-```bash
-cd AIOMarketMaker && dotnet test --filter "ListingParserUnitTests"
-```
-
-Ensure no regressions.
 
 ---
 
-## Phase 4: Clean Up Database
+## Phase 4: Clean Up
 
-### 4.1 Delete Incorrect Record
+### 4.1 Delete Bad Record
 
 ```bash
-python $SKILL_DIR/scripts/db_query.py delete $0
+python .claude/skills/fix-parser-issue/scripts/db_query.py delete $0
 ```
 
-### 4.2 Verify via API
+### 4.2 Commit
 
 ```bash
-curl http://localhost:7071/api/listings/active | jq '.[] | select(.listingId == "$0")'
-```
-
-Should return empty.
-
----
-
-## Phase 5: Commit
-
-```bash
-git add -A
-git commit -m "fix(<parser_area>): <what was fixed>
-
-<Root cause explanation>
+git add -A && git commit -m "fix(parser): <what was fixed>
 
 - Added test for listing $0
-- Updated <method> to handle <new pattern>
-- Cleaned up incorrect database record
+- Updated <method> to handle <pattern>
 
 Co-Authored-By: Claude <noreply@anthropic.com>"
 ```
 
 ---
 
-## Quick Reference
+## Reference
 
-### Database Connection
-- **Type:** SQL Server LocalDB (NOT SQLite)
-- **Server:** `(localdb)\MSSQLLocalDB`
-- **Database:** `AIOMarketMaker`
+### Database
+- **Type:** SQL Server LocalDB
+- **Connection:** `(localdb)\MSSQLLocalDB` / `AIOMarketMaker`
 
 ### Blob Storage
-1. **Azurite (local):** Container `html`, port 10000
-2. **Azure:** Account `YOUR_STORAGE_ACCOUNT`, container `scrape-results`
-
-### Test Files
-- **Location:** `AIOMarketMaker.Tests/Data/Listings/Verification/`
-- **Format:** `<listing_id>.htm`
+1. Azurite (local): container `html`
+2. Azure: account `YOUR_STORAGE_ACCOUNT`, container `scrape-results`
 
 ### Known Status Patterns
-| HTML Pattern | Status |
-|--------------|--------|
+| Pattern | Status |
+|---------|--------|
 | `"Bidding ended on "` | Ended |
 | `"This listing was ended"` | Ended |
 | `"Item sold on"` | Sold |
