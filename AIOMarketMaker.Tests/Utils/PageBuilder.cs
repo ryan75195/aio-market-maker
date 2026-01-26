@@ -104,6 +104,16 @@ namespace AIOMarketMaker.Tests.Utils
             return LoadDocument(html);
         }
 
+        public static IDocument LoadVerificationHtmlDocument(string listingId)
+        {
+            var dataDir = Path.GetFullPath(Path.Combine(
+                               TestContext.CurrentContext.TestDirectory,
+                               "../../../Data/Listings/Verification"));
+            var htmlPath = Path.Combine(dataDir, listingId + ".htm");
+            var html = File.ReadAllText(htmlPath);
+            return LoadDocument(html);
+        }
+
         public static IDocument LoadDocument(string html)
         {
             // AngleSharp’s HtmlParser.ParseDocument is fully synchronous

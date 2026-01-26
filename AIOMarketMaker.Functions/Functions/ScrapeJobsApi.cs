@@ -332,6 +332,57 @@ public class ScrapeJobsApi
         await response.WriteAsJsonAsync(new { deleted = count });
         return response;
     }
+
+    /// <summary>
+    /// GET /api/listings/stats - Get currency breakdown of invalid listings
+    /// </summary>
+    [Function("GetListingStats")]
+    public async Task<HttpResponseData> GetListingStats(
+        [HttpTrigger(AuthorizationLevel.Function, "get", Route = "listings/stats")] HttpRequestData req)
+    {
+        var twoHoursAgo = DateTime.UtcNow.AddHours(-2);
+        var stats = await _dbContext.Listings
+            .Where(l => l.CreatedUtc > twoHoursAgo)
+            .GroupBy(l => l.Currency)
+            .Select(g => new {
+                Currency = g.Key,
+                Total = g.Count(),
+                NullPrice = g.Count(x => x.Price == null),
+                NullTitle = g.Count(x => x.Title == null)
+            })
+            .ToListAsync();
+
+        var response = req.CreateResponse(HttpStatusCode.OK);
+        await response.WriteAsJsonAsync(stats);
+        return response;
+    }
+
+    /// <summary>
+    /// GET /api/listings/invalid - Get invalid listings with their URLs
+    /// </summary>
+    [Function("GetInvalidListings")]
+    public async Task<HttpResponseData> GetInvalidListings(
+        [HttpTrigger(AuthorizationLevel.Function, "get", Route = "listings/invalid")] HttpRequestData req)
+    {
+        var invalidListings = await _dbContext.Listings
+            .Where(l => l.Title == null || l.Price == null)
+            .OrderByDescending(l => l.CreatedUtc)
+            .Take(100)
+            .Select(l => new {
+                l.Id,
+                l.ListingId,
+                l.Title,
+                l.Price,
+                l.Currency,
+                l.Url,
+                l.CreatedUtc
+            })
+            .ToListAsync();
+
+        var response = req.CreateResponse(HttpStatusCode.OK);
+        await response.WriteAsJsonAsync(invalidListings);
+        return response;
+    }
 }
 
 public record CreateJobRequest(string? SearchTerm, string? FilterInstructions, bool? IsEnabled);

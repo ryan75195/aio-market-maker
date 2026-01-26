@@ -220,22 +220,36 @@ namespace AIOMarketMaker.Core.Parsers
 
         internal string GetCurrency(IDocument document)
         {
-            var priceText = document.QuerySelector(".x-price-primary")?.TextContent?.Trim();
+            // Try new structure first: get text from first span inside x-price-primary
+            var priceSpan = document.QuerySelector(".x-price-primary > .ux-textspans");
+            var priceText = priceSpan?.TextContent?.Trim();
+
+            // Fall back to old structure: direct text content
+            if (string.IsNullOrEmpty(priceText))
+                priceText = document.QuerySelector(".x-price-primary")?.TextContent?.Trim();
+
             if (string.IsNullOrEmpty(priceText))
                 return null;
 
-            // Extract the currency prefix (everything before the first digit)
+            // Extract currency prefix (everything before first digit)
             var currencyPrefix = ExtractCurrencyPrefix(priceText);
             return StringParsing.ToIso(currencyPrefix);
         }
 
         internal decimal? GetProductPrice(IDocument document)
         {
-            var priceText = document.QuerySelector(".x-price-primary")?.TextContent?.Trim();
+            // Try new structure first: get text from first span inside x-price-primary
+            var priceSpan = document.QuerySelector(".x-price-primary > .ux-textspans");
+            var priceText = priceSpan?.TextContent?.Trim();
+
+            // Fall back to old structure: direct text content
+            if (string.IsNullOrEmpty(priceText))
+                priceText = document.QuerySelector(".x-price-primary")?.TextContent?.Trim();
+
             if (string.IsNullOrEmpty(priceText))
                 return null;
 
-            // Extract numeric portion (everything from first digit onwards)
+            // Extract numeric portion (everything from first digit onwards, stopping at non-numeric)
             var numericPart = ExtractNumericPortion(priceText);
             if (decimal.TryParse(numericPart, out var result))
                 return result;
@@ -266,6 +280,7 @@ namespace AIOMarketMaker.Core.Parsers
 
         /// <summary>
         /// Extract numeric portion from price text (e.g., "99.99" from "£99.99" or "US $99.99")
+        /// Stops at first non-numeric character after the number starts
         /// </summary>
         private static string ExtractNumericPortion(string priceText)
         {
@@ -282,7 +297,17 @@ namespace AIOMarketMaker.Core.Parsers
             if (firstDigitIndex < 0)
                 return null;
 
-            return priceText.Substring(firstDigitIndex);
+            // Find end of number (digits and decimal points/commas)
+            var endIndex = firstDigitIndex;
+            for (int i = firstDigitIndex; i < priceText.Length; i++)
+            {
+                if (char.IsDigit(priceText[i]) || priceText[i] == '.' || priceText[i] == ',')
+                    endIndex = i + 1;
+                else
+                    break;
+            }
+
+            return priceText.Substring(firstDigitIndex, endIndex - firstDigitIndex);
         }
 
         internal string GetProductTitle(IDocument document)

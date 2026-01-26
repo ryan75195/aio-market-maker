@@ -99,7 +99,7 @@ namespace AIOMarketMaker.Tests.Unit
             yield return new TestCaseData("BiddingEndedNoSale", EbayListingStatus.Ended, PageBuilder.LoadTestHtmlDocument("BiddingEndedNoSale"));
             yield return new TestCaseData("SoldBidListing", EbayListingStatus.Sold, PageBuilder.LoadTestHtmlDocument("SoldBidListing"));
             yield return new TestCaseData("SoldBuyNowListing", EbayListingStatus.Sold, PageBuilder.LoadTestHtmlDocument("SoldBuyNowListing"));
-            yield return new TestCaseData("MissingStatus", EbayListingStatus.Active, PageBuilder.BuildEmptyDocument());
+            yield return new TestCaseData("MissingStatus", EbayListingStatus.Unknown, PageBuilder.BuildEmptyDocument());
         }
 
         [Test, TestCaseSource(nameof(ParsePriceTestCases))]
@@ -119,10 +119,12 @@ namespace AIOMarketMaker.Tests.Unit
             yield return new TestCaseData("SoldBidListing", 316.34d, PageBuilder.LoadTestHtmlDocument("SoldBidListing"));
             yield return new TestCaseData("SoldBuyNowListing", 265.92d, PageBuilder.LoadTestHtmlDocument("SoldBuyNowListing"));
             yield return new TestCaseData("MissingPrice", null, PageBuilder.BuildEmptyDocument());
-            // Multi-character currency formats
+            // Multi-character currency formats (synthetic)
             yield return new TestCaseData("USD_Format", 99.99d, PageBuilder.BuildProductPage(price: 99.99m, currencySymbol: "US $"));
             yield return new TestCaseData("EUR_Format", 149.50d, PageBuilder.BuildProductPage(price: 149.50m, currencySymbol: "EUR "));
             yield return new TestCaseData("CAD_Format", 75.00d, PageBuilder.BuildProductPage(price: 75.00m, currencySymbol: "C $"));
+            // Real HTML with new eBay structure (or Best Offer inside x-price-primary)
+            yield return new TestCaseData("ActiveListingGBP_NullPrice", 259.99d, PageBuilder.LoadTestHtmlDocument("ActiveListingGBP_NullPrice"));
         }
 
         [Test, TestCaseSource(nameof(PurchaseFormatTestCases))]
@@ -178,11 +180,13 @@ namespace AIOMarketMaker.Tests.Unit
             yield return new TestCaseData("SoldBidListing", "GBP", PageBuilder.LoadTestHtmlDocument("SoldBidListing"));
             yield return new TestCaseData("SoldBuyNowListing", "GBP", PageBuilder.LoadTestHtmlDocument("SoldBuyNowListing"));
             yield return new TestCaseData("MissingCurrency", null, PageBuilder.BuildEmptyDocument());
-            // Multi-character currency formats
+            // Multi-character currency formats (synthetic)
             yield return new TestCaseData("USD_Format", "USD", PageBuilder.BuildProductPage(price: 99.99m, currencySymbol: "US $"));
             yield return new TestCaseData("EUR_Format", "EUR", PageBuilder.BuildProductPage(price: 149.50m, currencySymbol: "EUR "));
             yield return new TestCaseData("CAD_Format", "CAD", PageBuilder.BuildProductPage(price: 75.00m, currencySymbol: "C $"));
             yield return new TestCaseData("GBP_Symbol", "GBP", PageBuilder.BuildProductPage(price: 50.00m, currencySymbol: "£"));
+            // Real HTML with new eBay structure
+            yield return new TestCaseData("ActiveListingGBP_NullPrice", "GBP", PageBuilder.LoadTestHtmlDocument("ActiveListingGBP_NullPrice"));
         }
 
 
@@ -385,6 +389,47 @@ namespace AIOMarketMaker.Tests.Unit
 
             Assert.That(result, Is.EqualTo(EbayListingStatus.Unknown),
                 "Pages without title AND without status message should return Unknown");
+        }
+
+        /// <summary>
+        /// Verification tests for real HTML files fetched from active listings.
+        /// These verify the parser correctly extracts data from current eBay page structure.
+        /// </summary>
+        [Test, TestCaseSource(nameof(ActiveListingVerificationCases))]
+        public void Should_correctly_parse_active_listing_verification(
+            string listingId,
+            decimal expectedPrice,
+            string expectedCurrency,
+            string expectedTitleContains)
+        {
+            var doc = PageBuilder.LoadVerificationHtmlDocument(listingId);
+            var parser = (EbayListingParser)_serviceUnderTest;
+
+            var price = parser.GetProductPrice(doc);
+            var currency = parser.GetCurrency(doc);
+            var title = parser.GetProductTitle(doc);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(price, Is.EqualTo(expectedPrice), $"Price mismatch for listing {listingId}");
+                Assert.That(currency, Is.EqualTo(expectedCurrency), $"Currency mismatch for listing {listingId}");
+                Assert.That(title, Does.Contain(expectedTitleContains), $"Title mismatch for listing {listingId}");
+            });
+        }
+
+        private static IEnumerable<TestCaseData> ActiveListingVerificationCases()
+        {
+            // Real HTML from active listings - values verified against database
+            yield return new TestCaseData("397530543947", 295.00m, "GBP", "PlayStation 5")
+                .SetDescription("PS5 Blu-Ray Console");
+            yield return new TestCaseData("304091165013", 338.99m, "GBP", "PlayStation 5")
+                .SetDescription("PS5 Digital Edition Good Refurbished");
+            yield return new TestCaseData("306730616550", 307.50m, "GBP", "PlayStation 5")
+                .SetDescription("PS5 Digital Edition New");
+            yield return new TestCaseData("317742464949", 439.99m, "GBP", "PlayStation 5 Slim")
+                .SetDescription("PS5 Slim Disc Edition");
+            yield return new TestCaseData("267550125910", 14.33m, "GBP", "Prada")
+                .SetDescription("Prada Sunglasses Case");
         }
     }
 }
