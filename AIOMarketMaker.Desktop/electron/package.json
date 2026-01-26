@@ -1,0 +1,21 @@
+{
+  "name": "aiomarketmaker-desktop",
+  "version": "1.0.0",
+  "description": "Admin console for AIOMarketMaker",
+  "main": "main.js",
+  "scripts": {
+    "dev": "electron .",
+    "build": "electron-builder"
+  },
+  "devDependencies": {
+    "electron": "^28.0.0",
+    "electron-builder": "^24.9.1"
+  },
+  "build": {
+    "appId": "com.aiomarketmaker.desktop",
+    "productName": "AIOMarketMaker",
+    "directories": {
+      "output": "dist"
+    }
+  }
+}

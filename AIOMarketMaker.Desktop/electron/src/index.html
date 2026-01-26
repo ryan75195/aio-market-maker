@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://unpkg.com; style-src 'self' 'unsafe-inline'; connect-src *;">
+  <title>AIOMarketMaker</title>
+  <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div id="app">
+    <div class="layout">
+      <nav class="sidebar">
+        <div class="logo">AIOMarketMaker</div>
+        <div class="nav-items">
+          <button :class="{ active: currentView === 'jobs' }" @click="currentView = 'jobs'">Jobs</button>
+          <button :class="{ active: currentView === 'operations' }" @click="currentView = 'operations'">Operations</button>
+        </div>
+        <div class="config-status">
+          <span class="status-dot" :class="{ connected: !configError }"></span>
+          {{ configError ? 'Config Error' : apiTarget }}
+        </div>
+      </nav>
+
+      <main class="content">
+        <!-- Toast notifications -->
+        <div v-if="toast" class="toast" :class="toast.type">
+          {{ toast.message }}
+        </div>
+
+        <!-- Jobs View -->
+        <div v-if="currentView === 'jobs'" class="view">
+          <div class="view-header">
+            <h1>Scrape Jobs</h1>
+            <button class="btn primary" @click="showJobForm = true">New Job</button>
+          </div>
+
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Search Term</th>
+                <th>Filter</th>
+                <th>Enabled</th>
+                <th>Last Run</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="job in jobs" :key="job.id">
+                <td>{{ job.id }}</td>
+                <td>{{ job.searchTerm }}</td>
+                <td>{{ job.filterInstructions || '-' }}</td>
+                <td>
+                  <button class="btn small" :class="job.isEnabled ? 'success' : 'muted'" @click="toggleJob(job)">
+                    {{ job.isEnabled ? 'Enabled' : 'Disabled' }}
+                  </button>
+                </td>
+                <td>{{ formatDate(job.lastRunUtc) }}</td>
+                <td>
+                  <button class="btn small" @click="editJob(job)">Edit</button>
+                  <button class="btn small danger" @click="deleteJob(job)">Delete</button>
+                </td>
+              </tr>
+              <tr v-if="jobs.length === 0">
+                <td colspan="6" class="empty">No jobs configured</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Operations View -->
+        <div v-if="currentView === 'operations'" class="view">
+          <div class="view-header">
+            <h1>Operations</h1>
+          </div>
+
+          <div class="operations-grid">
+            <div class="card">
+              <h3>Start Scrape</h3>
+              <p>Manually trigger the scrape orchestration for all enabled jobs.</p>
+              <button class="btn primary" @click="startScrape" :disabled="loading">
+                {{ loading ? 'Starting...' : 'Start Scrape' }}
+              </button>
+            </div>
+
+            <div class="card">
+              <h3>Orchestration Status</h3>
+              <div v-if="lastInstanceId">
+                <p>Last Instance: <code>{{ lastInstanceId }}</code></p>
+                <button class="btn danger small" @click="terminateOrchestration">Terminate</button>
+              </div>
+              <p v-else class="muted">No recent orchestration</p>
+            </div>
+
+            <div class="card">
+              <h3>Maintenance</h3>
+              <p>Purge completed and failed orchestrations from the last 7 days.</p>
+              <button class="btn danger" @click="purgeOrchestrations">Purge All</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Job Form Modal -->
+        <div v-if="showJobForm" class="modal-overlay" @click.self="closeJobForm">
+          <div class="modal">
+            <h2>{{ editingJob ? 'Edit Job' : 'New Job' }}</h2>
+            <form @submit.prevent="saveJob">
+              <div class="form-group">
+                <label>Search Term</label>
+                <input v-model="jobForm.searchTerm" required placeholder="e.g., ps5 console">
+              </div>
+              <div class="form-group">
+                <label>Filter Instructions (optional)</label>
+                <textarea v-model="jobForm.filterInstructions" placeholder="e.g., Exclude bundles"></textarea>
+              </div>
+              <div class="form-group">
+                <label>
+                  <input type="checkbox" v-model="jobForm.isEnabled"> Enabled
+                </label>
+              </div>
+              <div class="form-actions">
+                <button type="button" class="btn" @click="closeJobForm">Cancel</button>
+                <button type="submit" class="btn primary">{{ editingJob ? 'Update' : 'Create' }}</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

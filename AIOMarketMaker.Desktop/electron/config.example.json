@@ -1,0 +1,9 @@
+{
+  "marketMakerApi": {
+    "baseUrl": "https://YOUR-FUNCTION-APP.azurewebsites.net/api",
+    "functionKey": "your-function-key-here"
+  },
+  "webScraperApi": {
+    "baseUrl": "http://localhost:7126/api"
+  }
+}
