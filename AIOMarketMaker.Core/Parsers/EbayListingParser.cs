@@ -220,15 +220,69 @@ namespace AIOMarketMaker.Core.Parsers
 
         internal string GetCurrency(IDocument document)
         {
-            var symbol = document.QuerySelector(".x-price-primary")?.TextContent.First().ToString();
-            return StringParsing.ToIso(symbol);
+            var priceText = document.QuerySelector(".x-price-primary")?.TextContent?.Trim();
+            if (string.IsNullOrEmpty(priceText))
+                return null;
+
+            // Extract the currency prefix (everything before the first digit)
+            var currencyPrefix = ExtractCurrencyPrefix(priceText);
+            return StringParsing.ToIso(currencyPrefix);
         }
 
         internal decimal? GetProductPrice(IDocument document)
         {
-            decimal result;
-            var success = decimal.TryParse(document.QuerySelector(".x-price-primary")?.TextContent.Substring(1), out result);
-            return success ? result : null;
+            var priceText = document.QuerySelector(".x-price-primary")?.TextContent?.Trim();
+            if (string.IsNullOrEmpty(priceText))
+                return null;
+
+            // Extract numeric portion (everything from first digit onwards)
+            var numericPart = ExtractNumericPortion(priceText);
+            if (decimal.TryParse(numericPart, out var result))
+                return result;
+
+            return null;
+        }
+
+        /// <summary>
+        /// Extract currency prefix from price text (e.g., "£" from "£99.99", "US $" from "US $99.99")
+        /// </summary>
+        private static string ExtractCurrencyPrefix(string priceText)
+        {
+            var firstDigitIndex = -1;
+            for (int i = 0; i < priceText.Length; i++)
+            {
+                if (char.IsDigit(priceText[i]))
+                {
+                    firstDigitIndex = i;
+                    break;
+                }
+            }
+
+            if (firstDigitIndex <= 0)
+                return priceText.Length > 0 ? priceText[0].ToString() : null;
+
+            return priceText.Substring(0, firstDigitIndex).Trim();
+        }
+
+        /// <summary>
+        /// Extract numeric portion from price text (e.g., "99.99" from "£99.99" or "US $99.99")
+        /// </summary>
+        private static string ExtractNumericPortion(string priceText)
+        {
+            var firstDigitIndex = -1;
+            for (int i = 0; i < priceText.Length; i++)
+            {
+                if (char.IsDigit(priceText[i]))
+                {
+                    firstDigitIndex = i;
+                    break;
+                }
+            }
+
+            if (firstDigitIndex < 0)
+                return null;
+
+            return priceText.Substring(firstDigitIndex);
         }
 
         internal string GetProductTitle(IDocument document)

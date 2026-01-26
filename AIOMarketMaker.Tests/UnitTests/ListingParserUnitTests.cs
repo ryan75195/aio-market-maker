@@ -119,6 +119,10 @@ namespace AIOMarketMaker.Tests.Unit
             yield return new TestCaseData("SoldBidListing", 316.34d, PageBuilder.LoadTestHtmlDocument("SoldBidListing"));
             yield return new TestCaseData("SoldBuyNowListing", 265.92d, PageBuilder.LoadTestHtmlDocument("SoldBuyNowListing"));
             yield return new TestCaseData("MissingPrice", null, PageBuilder.BuildEmptyDocument());
+            // Multi-character currency formats
+            yield return new TestCaseData("USD_Format", 99.99d, PageBuilder.BuildProductPage(price: 99.99m, currencySymbol: "US $"));
+            yield return new TestCaseData("EUR_Format", 149.50d, PageBuilder.BuildProductPage(price: 149.50m, currencySymbol: "EUR "));
+            yield return new TestCaseData("CAD_Format", 75.00d, PageBuilder.BuildProductPage(price: 75.00m, currencySymbol: "C $"));
         }
 
         [Test, TestCaseSource(nameof(PurchaseFormatTestCases))]
@@ -174,6 +178,11 @@ namespace AIOMarketMaker.Tests.Unit
             yield return new TestCaseData("SoldBidListing", "GBP", PageBuilder.LoadTestHtmlDocument("SoldBidListing"));
             yield return new TestCaseData("SoldBuyNowListing", "GBP", PageBuilder.LoadTestHtmlDocument("SoldBuyNowListing"));
             yield return new TestCaseData("MissingCurrency", null, PageBuilder.BuildEmptyDocument());
+            // Multi-character currency formats
+            yield return new TestCaseData("USD_Format", "USD", PageBuilder.BuildProductPage(price: 99.99m, currencySymbol: "US $"));
+            yield return new TestCaseData("EUR_Format", "EUR", PageBuilder.BuildProductPage(price: 149.50m, currencySymbol: "EUR "));
+            yield return new TestCaseData("CAD_Format", "CAD", PageBuilder.BuildProductPage(price: 75.00m, currencySymbol: "C $"));
+            yield return new TestCaseData("GBP_Symbol", "GBP", PageBuilder.BuildProductPage(price: 50.00m, currencySymbol: "£"));
         }
 
 
