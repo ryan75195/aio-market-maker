@@ -156,4 +156,34 @@ public class SaveListingsActivityTests
         Assert.That(saved.Images, Does.Contain("https://img1.jpg"));
         Assert.That(saved.Images, Does.Contain("https://img2.jpg"));
     }
+
+    [Test]
+    public async Task Should_skip_listings_with_null_or_empty_title()
+    {
+        // Arrange
+        var job = new ScrapeJob { SearchTerm = "test" };
+        _dbContext.ScrapeJobs.Add(job);
+        await _dbContext.SaveChangesAsync();
+
+        var input = new SaveListingsInput(job.Id, new List<ListingData>
+        {
+            new ListingData("111", null, 10.00m, "USD", null, null, null, null, null, null, null, null, null, null),
+            new ListingData("222", "", 20.00m, "USD", null, null, null, null, null, null, null, null, null, null),
+            new ListingData("333", "   ", 30.00m, "USD", null, null, null, null, null, null, null, null, null, null),
+            new ListingData("444", "Valid Title", 40.00m, "USD", null, null, null, null, null, null, null, null, null, null)
+        });
+
+        // Act
+        await _activity.Run(input, null!);
+
+        // Assert
+        var count = await _dbContext.Listings.CountAsync();
+        var saved = await _dbContext.Listings.FirstAsync();
+        Assert.Multiple(() =>
+        {
+            Assert.That(count, Is.EqualTo(1), "Only the listing with a valid title should be saved");
+            Assert.That(saved.ListingId, Is.EqualTo("444"));
+            Assert.That(saved.Title, Is.EqualTo("Valid Title"));
+        });
+    }
 }

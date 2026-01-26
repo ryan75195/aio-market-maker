@@ -102,8 +102,16 @@ namespace AIOMarketMaker.Core.Parsers
         internal EbayListingStatus? GetListingStatus(IDocument document)
         {
             var node = document.QuerySelector(".d-statusmessage")?.TextContent;
-            if (node == null) // bit of a flakey check.
+            if (node == null)
             {
+                // No status message found - check if page has valid structure
+                // A valid eBay listing page should have a title
+                var hasTitle = document.QuerySelector(".x-item-title__mainTitle") != null;
+                if (!hasTitle)
+                {
+                    // Page doesn't have expected structure (ended/unavailable/invalid)
+                    return EbayListingStatus.Unknown;
+                }
                 return EbayListingStatus.Active;
             }
             else if (node.Contains("Bidding ended on "))
@@ -111,10 +119,10 @@ namespace AIOMarketMaker.Core.Parsers
                 return EbayListingStatus.Ended;
             }
             else if (node.Contains("Item sold on") || node.Contains("This listing sold on"))
-            {                
+            {
                 return EbayListingStatus.Sold;
             }
-            
+
             return EbayListingStatus.Active;
         }
 

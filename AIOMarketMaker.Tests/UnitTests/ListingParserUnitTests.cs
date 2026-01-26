@@ -344,5 +344,38 @@ namespace AIOMarketMaker.Tests.Unit
             Assert.That(result, Does.Not.Contain("\u00A0"),
                 "Parsed description should not contain non‑breaking spaces");
         }
+
+        [Test]
+        public void Should_return_unknown_status_when_page_has_no_standard_structure()
+        {
+            // A page with no title, no price, no status message should return Unknown status
+            // This represents an "item unavailable" or error page
+            var doc = PageBuilder.BuildEmptyDocument();
+            var parser = (EbayListingParser)_serviceUnderTest;
+
+            var result = parser.GetListingStatus(doc);
+
+            Assert.That(result, Is.EqualTo(EbayListingStatus.Unknown),
+                "Empty/invalid pages should return Unknown status, not default to Active");
+        }
+
+        [Test]
+        public void Should_return_unknown_status_when_title_is_missing_but_status_element_absent()
+        {
+            // A page with a status message container but no recognizable content
+            // and no title should return Unknown
+            var doc = PageBuilder.BuildProductPage(
+                id: "123456789",
+                title: null,  // No title
+                price: null,  // No price
+                statusMessage: null  // No status message either
+            );
+            var parser = (EbayListingParser)_serviceUnderTest;
+
+            var result = parser.GetListingStatus(doc);
+
+            Assert.That(result, Is.EqualTo(EbayListingStatus.Unknown),
+                "Pages without title AND without status message should return Unknown");
+        }
     }
 }

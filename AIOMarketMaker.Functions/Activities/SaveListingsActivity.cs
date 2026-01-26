@@ -30,6 +30,7 @@ public class SaveListingsActivity
 
         var newListings = input.Listings
             .Where(l => !string.IsNullOrEmpty(l.ListingId))
+            .Where(l => !string.IsNullOrWhiteSpace(l.Title))
             .Select(l => new Listing
             {
                 ListingId = l.ListingId,

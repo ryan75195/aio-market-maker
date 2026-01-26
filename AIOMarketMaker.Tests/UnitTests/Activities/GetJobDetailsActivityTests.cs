@@ -1,6 +1,7 @@
 using AIOMarketMaker.Core.Data;
 using AIOMarketMaker.Core.Data.Models;
 using AIOMarketMaker.Functions.Activities;
+using AIOMarketMaker.Functions.Contracts;
 using AIOMarketMaker.Tests.Utils;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -43,7 +44,7 @@ public class GetJobDetailsActivityTests
     public async Task Should_return_null_when_job_not_found()
     {
         // Act
-        var result = await _activity.Run(999, null!);
+        var result = await _activity.Run(new GetJobDetailsInput(999), null!);
 
         // Assert
         Assert.That(result, Is.Null);
@@ -58,7 +59,7 @@ public class GetJobDetailsActivityTests
         await _dbContext.SaveChangesAsync();
 
         // Act
-        var result = await _activity.Run(job.Id, null!);
+        var result = await _activity.Run(new GetJobDetailsInput(job.Id), null!);
 
         // Assert
         Assert.Multiple(() =>
@@ -82,7 +83,7 @@ public class GetJobDetailsActivityTests
         await _dbContext.SaveChangesAsync();
 
         // Act
-        var result = await _activity.Run(job.Id, null!);
+        var result = await _activity.Run(new GetJobDetailsInput(job.Id), null!);
 
         // Assert - implementation uses Math.Ceiling on TotalDays, then adds 1
         // For -5 days: Ceiling(~5.0) = 5 or 6 depending on fractional part, then +1
@@ -102,7 +103,7 @@ public class GetJobDetailsActivityTests
         await _dbContext.SaveChangesAsync();
 
         // Act
-        var result = await _activity.Run(job.Id, null!);
+        var result = await _activity.Run(new GetJobDetailsInput(job.Id), null!);
 
         // Assert
         Assert.That(result!.LookbackDays, Is.GreaterThanOrEqualTo(1));
@@ -121,7 +122,7 @@ public class GetJobDetailsActivityTests
         await _dbContext.SaveChangesAsync();
 
         // Act
-        var result = await _activity.Run(job.Id, null!);
+        var result = await _activity.Run(new GetJobDetailsInput(job.Id), null!);
 
         // Assert - implementation uses Math.Ceiling on TotalDays, then adds 1
         // For -1 days: Ceiling(~1.0) = 1 or 2, then +1
