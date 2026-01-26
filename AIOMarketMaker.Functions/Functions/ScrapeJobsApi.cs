@@ -242,6 +242,74 @@ public class ScrapeJobsApi
         await response.WriteAsJsonAsync(new { job.Id, job.SearchTerm, job.IsEnabled });
         return response;
     }
+
+    /// <summary>
+    /// GET /api/history - List scrape run history
+    /// </summary>
+    [Function("GetHistory")]
+    public async Task<HttpResponseData> GetHistory(
+        [HttpTrigger(AuthorizationLevel.Function, "get", Route = "history")] HttpRequestData req)
+    {
+        var runs = await _dbContext.ScrapeRuns
+            .OrderByDescending(r => r.StartedUtc)
+            .Take(50)
+            .Select(r => new
+            {
+                r.Id,
+                r.InstanceId,
+                r.TriggerType,
+                r.StartedUtc,
+                r.CompletedUtc,
+                r.Status,
+                r.ListingsAdded,
+                r.ListingsSkipped,
+                r.TotalListingsFound,
+                r.ListingsProcessed,
+                r.CurrentPhase,
+                r.ErrorMessage
+            })
+            .ToListAsync();
+
+        var response = req.CreateResponse(HttpStatusCode.OK);
+        await response.WriteAsJsonAsync(runs);
+        return response;
+    }
+
+    /// <summary>
+    /// GET /api/listings/active - List active listings (opportunities)
+    /// </summary>
+    [Function("GetActiveListings")]
+    public async Task<HttpResponseData> GetActiveListings(
+        [HttpTrigger(AuthorizationLevel.Function, "get", Route = "listings/active")] HttpRequestData req)
+    {
+        var listings = await _dbContext.Listings
+            .Include(l => l.ScrapeJob)
+            .Where(l => l.ListingStatus == "Active")
+            .OrderByDescending(l => l.CreatedUtc)
+            .Take(100)
+            .Select(l => new
+            {
+                l.Id,
+                l.ListingId,
+                l.Title,
+                l.Price,
+                l.Currency,
+                l.ShippingCost,
+                l.Url,
+                l.Condition,
+                l.ListingStatus,
+                l.Location,
+                l.EndDateUtc,
+                l.CreatedUtc,
+                SearchTerm = l.ScrapeJob != null ? l.ScrapeJob.SearchTerm : null,
+                FirstImage = l.Images
+            })
+            .ToListAsync();
+
+        var response = req.CreateResponse(HttpStatusCode.OK);
+        await response.WriteAsJsonAsync(listings);
+        return response;
+    }
 }
 
 public record CreateJobRequest(string? SearchTerm, string? FilterInstructions, bool? IsEnabled);
