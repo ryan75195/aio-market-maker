@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 
 var electronDir = Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "electron");
 if (!Directory.Exists(electronDir))
@@ -16,20 +17,38 @@ if (!Directory.Exists(electronDir))
 
 Console.WriteLine($"Electron app directory: {electronDir}");
 
+// Helper to create ProcessStartInfo that works on Windows (npm.cmd) and Unix (npm)
+ProcessStartInfo CreateNpmProcess(string arguments, string workingDir)
+{
+    if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+    {
+        return new ProcessStartInfo
+        {
+            FileName = "cmd.exe",
+            Arguments = $"/c npm {arguments}",
+            WorkingDirectory = workingDir,
+            UseShellExecute = false,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true
+        };
+    }
+    return new ProcessStartInfo
+    {
+        FileName = "npm",
+        Arguments = arguments,
+        WorkingDirectory = workingDir,
+        UseShellExecute = false,
+        RedirectStandardOutput = true,
+        RedirectStandardError = true
+    };
+}
+
 // Check if node_modules exists
 var nodeModulesPath = Path.Combine(electronDir, "node_modules");
 if (!Directory.Exists(nodeModulesPath))
 {
     Console.WriteLine("Installing npm dependencies...");
-    var npmInstall = new ProcessStartInfo
-    {
-        FileName = "npm",
-        Arguments = "install",
-        WorkingDirectory = electronDir,
-        UseShellExecute = false,
-        RedirectStandardOutput = true,
-        RedirectStandardError = true
-    };
+    var npmInstall = CreateNpmProcess("install", electronDir);
 
     using var installProcess = Process.Start(npmInstall);
     if (installProcess == null)
@@ -63,15 +82,7 @@ if (!File.Exists(configPath) && File.Exists(configExamplePath))
 
 Console.WriteLine("Starting Electron app...");
 
-var npmStart = new ProcessStartInfo
-{
-    FileName = "npm",
-    Arguments = "run dev",
-    WorkingDirectory = electronDir,
-    UseShellExecute = false,
-    RedirectStandardOutput = true,
-    RedirectStandardError = true
-};
+var npmStart = CreateNpmProcess("run dev", electronDir);
 
 using var process = Process.Start(npmStart);
 if (process == null)
