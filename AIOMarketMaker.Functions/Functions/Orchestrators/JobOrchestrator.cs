@@ -67,7 +67,8 @@ public class JobOrchestrator
             }
 
             // Step 2b: Detect and update Active→Sold transitions
-            var statusUpdates = await DetectAndUpdateSoldListingsAsync(context, jobId, soldListingIds, logger);
+            var statusUpdates = await DetectAndUpdateSoldListingsAsync(
+                context, jobId, scrapeInstanceId, soldListingIds, jobDetails.MaxListingsToFetch, logger);
 
             // Report progress: Searching Active
             await context.CallActivityAsync(
@@ -265,7 +266,9 @@ public class JobOrchestrator
     private async Task<int> DetectAndUpdateSoldListingsAsync(
         TaskOrchestrationContext context,
         int jobId,
+        string scrapeInstanceId,
         HashSet<string> soldListingIds,
+        int? maxListingsToFetch,
         ILogger logger)
     {
         if (soldListingIds.Count == 0)
@@ -291,8 +294,24 @@ public class JobOrchestrator
             return 0;
         }
 
-        logger.LogInformation("Job {JobId}: Detected {Count} Active→Sold transitions, re-scraping...",
+        // Apply limit if configured (useful for dev/testing)
+        if (maxListingsToFetch.HasValue && transitionedListingIds.Count > maxListingsToFetch.Value)
+        {
+            logger.LogInformation("Job {JobId}: Limiting Active→Sold updates to {Max} (of {Total} detected)",
+                jobId, maxListingsToFetch.Value, transitionedListingIds.Count);
+            transitionedListingIds = transitionedListingIds.Take(maxListingsToFetch.Value).ToList();
+        }
+
+        logger.LogInformation("Job {JobId}: Re-scraping {Count} Active→Sold transitions...",
             jobId, transitionedListingIds.Count);
+
+        // Report progress: Updating Sold Status
+        await context.CallActivityAsync(
+            nameof(UpdateScrapeRunProgressActivity),
+            new UpdateProgressInput(scrapeInstanceId,
+                TotalListingsFound: transitionedListingIds.Count,
+                ListingsProcessed: 0,
+                CurrentPhase: "Updating Sold Status"));
 
         // Build URLs for transitioned listings
         var urlTasks = transitionedListingIds.Select(listingId =>
@@ -318,6 +337,14 @@ public class JobOrchestrator
             {
                 logger.LogWarning(ex, "Job {JobId}: Failed to re-scrape sold listing {ListingId}",
                     jobId, transitionedListingIds[i]);
+            }
+
+            // Report progress every 10 listings
+            if ((i + 1) % 10 == 0 || i == transitionedListingIds.Count - 1)
+            {
+                await context.CallActivityAsync(
+                    nameof(UpdateScrapeRunProgressActivity),
+                    new UpdateProgressInput(scrapeInstanceId, ListingsProcessed: i + 1));
             }
         }
 
