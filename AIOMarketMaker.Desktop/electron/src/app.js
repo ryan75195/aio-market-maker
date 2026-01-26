@@ -28,8 +28,8 @@ createApp({
         pinecone: { apiKey: '', indexName: '' }
       },
       collapsedSections: {
-        api: false,
-        scraping: false,
+        api: true,
+        scraping: true,
         storage: true,
         openAi: true,
         pinecone: true
