@@ -199,6 +199,33 @@ Focus on parser logic (`EbaySearchParser`, `EbayListingParser`) with AngleSharp 
 - Use `local.settings.json` to configure connection strings for local development
 - The Functions project can connect to the real Azure SQL database locally for testing
 
+### Azure Functions API Access
+
+**Retrieving Function Keys:**
+```bash
+# Get all function app keys (includes default function key and master key)
+az functionapp keys list \
+  --name YOUR-FUNCTION-APP \
+  --resource-group rg-aiomarketmaker-dev
+
+# Output includes:
+# - functionKeys.default: Use for calling HTTP-triggered functions
+# - masterKey: Admin access (use sparingly)
+# - systemKeys.durabletask_extension: For Durable Functions management
+```
+
+**Triggering Manual Scrape:**
+```bash
+# Trigger manual scrape via HTTP endpoint
+curl -X POST "https://YOUR-FUNCTION-APP.azurewebsites.net/api/TriggerManualScrapeHttp?code=<FUNCTION_KEY>"
+```
+
+**Checking Orchestration Status:**
+```bash
+# Get orchestration status using Durable Functions HTTP API
+curl "https://YOUR-FUNCTION-APP.azurewebsites.net/runtime/webhooks/durabletask/instances/<INSTANCE_ID>?code=<SYSTEM_KEY>"
+```
+
 ### Durable Functions Orchestration Debugging
 
 **Key Orchestrators:**
