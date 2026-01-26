@@ -325,3 +325,162 @@ body {
 .muted {
   color: #808080;
 }
+
+/* Status badges */
+.status-badge {
+  display: inline-block;
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 500;
+  text-transform: uppercase;
+}
+
+.status-badge.running {
+  background: #0e639c;
+  color: #fff;
+}
+
+.status-badge.completed {
+  background: #2a6;
+  color: #fff;
+}
+
+.status-badge.failed {
+  background: #c44;
+  color: #fff;
+}
+
+/* Trigger badges */
+.trigger-badge {
+  display: inline-block;
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.trigger-badge.manual {
+  background: #4a5568;
+  color: #e0e0e0;
+}
+
+.trigger-badge.nightly {
+  background: #553c9a;
+  color: #e0e0e0;
+}
+
+/* Table enhancements */
+.data-table td.number {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.data-table tr.error-row {
+  background: rgba(204, 68, 68, 0.1);
+}
+
+.data-table code.small {
+  font-size: 11px;
+  color: #808080;
+}
+
+/* Progress bar */
+.progress-bar {
+  position: relative;
+  background: #333;
+  border-radius: 4px;
+  height: 20px;
+  min-width: 100px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  background: linear-gradient(90deg, #4a9eff, #2d7ad6);
+  transition: width 0.3s ease;
+}
+
+.progress-text {
+  position: relative;
+  z-index: 1;
+  display: block;
+  text-align: center;
+  font-size: 0.75rem;
+  line-height: 20px;
+  color: #fff;
+}
+
+/* Settings */
+.settings-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+.settings-section {
+  background: #252526;
+  border-radius: 8px;
+  border: 1px solid #3c3c3c;
+  overflow: hidden;
+}
+
+.section-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 15px 20px;
+  margin: 0;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  background: #2d2d2d;
+  user-select: none;
+}
+
+.section-header:hover {
+  background: #333;
+}
+
+.collapse-icon {
+  font-size: 10px;
+  color: #808080;
+}
+
+.section-content {
+  padding: 15px 20px;
+}
+
+.section-content .form-group {
+  margin-bottom: 12px;
+}
+
+.section-content .form-group:last-child {
+  margin-bottom: 0;
+}
+
+.section-content input[type="number"],
+.section-content input[type="password"] {
+  width: 100%;
+  background: #1e1e1e;
+  border: 1px solid #3c3c3c;
+  padding: 10px;
+  border-radius: 5px;
+  color: #e0e0e0;
+  font-size: 14px;
+}
+
+.section-content input[type="number"]:focus,
+.section-content input[type="password"]:focus {
+  outline: none;
+  border-color: #0e639c;
+}
+
+.hint {
+  color: #808080;
+  font-size: 12px;
+  font-weight: normal;
+}
