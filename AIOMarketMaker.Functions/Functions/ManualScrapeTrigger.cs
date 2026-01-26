@@ -3,22 +3,29 @@ using Microsoft.Azure.Functions.Worker.Http;
 using Microsoft.DurableTask.Client;
 using Microsoft.Extensions.Logging;
 using System.Net;
+using System.Text.Json;
 using AIOMarketMaker.Functions.Functions.Orchestrators;
+using AIOMarketMaker.Functions.Contracts;
+using AIOMarketMaker.Core.Data;
+using AIOMarketMaker.Core.Data.Models;
 
 namespace AIOMarketMaker.Functions.Functions;
 
 public class ManualScrapeTrigger
 {
     private readonly ILogger<ManualScrapeTrigger> _logger;
+    private readonly EtlDbContext _dbContext;
 
-    public ManualScrapeTrigger(ILogger<ManualScrapeTrigger> logger)
+    public ManualScrapeTrigger(ILogger<ManualScrapeTrigger> logger, EtlDbContext dbContext)
     {
         _logger = logger;
+        _dbContext = dbContext;
     }
 
     /// <summary>
     /// HTTP trigger to manually start the scrape orchestration.
     /// POST /api/scrape/start
+    /// Body (optional): { "maxListingsToFetch": 10, "lookbackDays": 180 }
     /// </summary>
     [Function("ManualScrapeTrigger")]
     public async Task<HttpResponseData> Run(
@@ -28,13 +35,50 @@ public class ManualScrapeTrigger
     {
         _logger.LogInformation("Manual scrape trigger fired at {Time}", DateTime.UtcNow);
 
+        // Parse optional request body for scraping overrides
+        StartScrapeRequest? scrapeRequest = null;
+        var requestBody = await req.ReadAsStringAsync();
+        if (!string.IsNullOrWhiteSpace(requestBody))
+        {
+            try
+            {
+                scrapeRequest = JsonSerializer.Deserialize<StartScrapeRequest>(requestBody,
+                    new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            }
+            catch (JsonException ex)
+            {
+                _logger.LogWarning(ex, "Failed to parse request body, using defaults");
+            }
+        }
+
+        // Create orchestration input with overrides
+        var orchestratorInput = new ScrapeOrchestratorInput(
+            scrapeRequest?.MaxListingsToFetch,
+            scrapeRequest?.LookbackDays);
+
+        if (orchestratorInput.MaxListingsToFetch.HasValue || orchestratorInput.LookbackDays.HasValue)
+        {
+            _logger.LogInformation("Scrape overrides: MaxListings={Max}, LookbackDays={Days}",
+                orchestratorInput.MaxListingsToFetch, orchestratorInput.LookbackDays);
+        }
+
         var instanceId = await client.ScheduleNewOrchestrationInstanceAsync(
-            nameof(ScrapeOrchestrator));
+            nameof(ScrapeOrchestrator), orchestratorInput);
 
         _logger.LogInformation("Started orchestration with ID: {InstanceId}", instanceId);
 
+        // Create a ScrapeRun record to track this execution
+        var scrapeRun = new ScrapeRun
+        {
+            InstanceId = instanceId,
+            StartedUtc = DateTime.UtcNow,
+            Status = "Running"
+        };
+        _dbContext.ScrapeRuns.Add(scrapeRun);
+        await _dbContext.SaveChangesAsync();
+
         var response = req.CreateResponse(HttpStatusCode.Accepted);
-        await response.WriteAsJsonAsync(new { instanceId, status = "Started" });
+        await response.WriteAsJsonAsync(new { instanceId, status = "Started", runId = scrapeRun.Id });
         return response;
     }
 

@@ -1,9 +1,16 @@
 namespace AIOMarketMaker.Functions.Contracts;
 
+// API request DTOs
+public record StartScrapeRequest(int? MaxListingsToFetch, int? LookbackDays);
+
+// Orchestrator input DTOs
+public record ScrapeOrchestratorInput(int? MaxListingsToFetch, int? LookbackDays);
+
 // Job orchestration DTOs
-public record JobDetails(int Id, string SearchTerm, int LookbackDays);
+public record JobDetails(int Id, string SearchTerm, int LookbackDays, int? MaxListingsToFetch);
 public record JobResult(int JobId, bool Success, int ListingsFound, string? Error);
 public record ScrapeJobInfo(int Id, string SearchTerm);
+public record JobOrchestratorInput(int JobId, string ScrapeInstanceId);
 
 // Search DTOs
 public record SearchPageResult(bool Success, List<string> ListingIds, string? Error);
