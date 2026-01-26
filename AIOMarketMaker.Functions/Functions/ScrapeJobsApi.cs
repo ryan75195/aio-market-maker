@@ -310,6 +310,28 @@ public class ScrapeJobsApi
         await response.WriteAsJsonAsync(listings);
         return response;
     }
+
+    /// <summary>
+    /// DELETE /api/listings/invalid - Remove listings with NULL price or title
+    /// </summary>
+    [Function("DeleteInvalidListings")]
+    public async Task<HttpResponseData> DeleteInvalidListings(
+        [HttpTrigger(AuthorizationLevel.Function, "delete", Route = "listings/invalid")] HttpRequestData req)
+    {
+        var invalidListings = await _dbContext.Listings
+            .Where(l => l.Title == null || l.Price == null)
+            .ToListAsync();
+
+        var count = invalidListings.Count;
+        _dbContext.Listings.RemoveRange(invalidListings);
+        await _dbContext.SaveChangesAsync();
+
+        _logger.LogInformation("Deleted {Count} invalid listings (missing title or price)", count);
+
+        var response = req.CreateResponse(HttpStatusCode.OK);
+        await response.WriteAsJsonAsync(new { deleted = count });
+        return response;
+    }
 }
 
 public record CreateJobRequest(string? SearchTerm, string? FilterInstructions, bool? IsEnabled);
