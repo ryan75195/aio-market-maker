@@ -33,6 +33,11 @@ public class JobRunner : IJobRunner
     private readonly ILogger<JobRunner> _logger;
     private readonly int _defaultLookbackDays;
 
+    private static readonly HashSet<string> TerminalStatuses = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "Sold", "Ended", "OutOfStock"
+    };
+
     public JobRunner(
         EtlDbContext dbContext,
         IEbayScraper ebayScraper,
@@ -68,22 +73,21 @@ public class JobRunner : IJobRunner
             // Detect and update Active→Sold transitions
             var statusUpdates = await DetectAndUpdateSoldListings(job.Id, soldResultIds, ct);
 
-            var newSearchResultIds = await FilterNewListings(job.Id, allResults, ct);
+            var listingIdsToProcess = await FilterNewListings(job.Id, allResults, ct);
 
-            if (newSearchResultIds.Length == 0)
+            if (listingIdsToProcess.Length == 0)
             {
-                _logger.LogInformation("No new listings for job {JobId}, skipping fetch", job.Id);
+                _logger.LogInformation("No listings to process for job {JobId}", job.Id);
                 await UpdateJobTimestamp(job, ct);
                 return new JobRunResult(job.Id, true, allResults.Count(), 0, statusUpdates, null);
             }
 
-            var ebayProducts = await FetchEbayProducts(newSearchResultIds);
-            var listings = await SaveEbayListings(ebayProducts, job.Id, ct);
+            var ebayProducts = await FetchEbayProducts(listingIdsToProcess);
+            var (inserted, updated) = await UpsertListings(ebayProducts, job.Id, ct);
 
-            await SaveInitialStatusHistory(listings, ct);
             await UpdateJobTimestamp(job, ct);
 
-            return new JobRunResult(job.Id, true, allResults.Count(), newSearchResultIds.Length, statusUpdates, null);
+            return new JobRunResult(job.Id, true, allResults.Count(), inserted, statusUpdates + updated, null);
         }
         catch (Exception ex)
         {
@@ -238,19 +242,25 @@ public class JobRunner : IJobRunner
         IEnumerable<IEbayProductSummary> searchResults,
         CancellationToken ct)
     {
-        var existingListingIds = (await _dbContext.Listings
-            .Where(l => l.ScrapeJobId == jobId)
+        var searchResultIds = searchResults
+            .Where(s => s.ListingId != null)
+            .Select(s => s.ListingId!)
+            .ToList();
+
+        // Get listings with terminal status (globally, not per-job)
+        var terminalListingIds = (await _dbContext.Listings
+            .Where(l => searchResultIds.Contains(l.ListingId))
+            .Where(l => l.ListingStatus != null && TerminalStatuses.Contains(l.ListingStatus))
             .Select(l => l.ListingId)
             .ToListAsync(ct))
             .ToHashSet();
 
-        var newListingIds = searchResults
-            .Where(s => s.ListingId != null && !existingListingIds.Contains(s.ListingId))
-            .Select(s => s.ListingId!)
+        var newListingIds = searchResultIds
+            .Where(id => !terminalListingIds.Contains(id))
             .ToArray();
 
-        _logger.LogInformation("{NewCount} new listings to fetch (skipping {ExistingCount} existing)",
-            newListingIds.Length, searchResults.Count() - newListingIds.Length);
+        _logger.LogInformation("{NewCount} listings to process (filtered {TerminalCount} terminal)",
+            newListingIds.Length, terminalListingIds.Count);
 
         return newListingIds;
     }
@@ -263,39 +273,101 @@ public class JobRunner : IJobRunner
         return ebayProducts;
     }
 
-    private async Task<IEnumerable<Listing>> SaveEbayListings(
+    private async Task<(int Inserted, int Updated)> UpsertListings(
         IEnumerable<EbayProduct> ebayProducts,
         int jobId,
         CancellationToken ct)
     {
-        var newListings = ebayProducts
-            .Where(p => p.ListingId != null)
-            .Select(p => MapToListing(p, jobId))
-            .ToList();
+        var insertCount = 0;
+        var updateCount = 0;
 
-        _dbContext.Listings.AddRange(newListings);
+        foreach (var product in ebayProducts.Where(p => p.ListingId != null))
+        {
+            var existing = await _dbContext.Listings
+                .FirstOrDefaultAsync(l => l.ListingId == product.ListingId, ct);
+
+            if (existing == null)
+            {
+                // INSERT new listing
+                var newListing = MapToListing(product, jobId);
+                _dbContext.Listings.Add(newListing);
+                await _dbContext.SaveChangesAsync(ct);
+
+                // Create initial history record
+                _dbContext.ListingStatusHistory.Add(new ListingStatusHistory
+                {
+                    ListingId = newListing.Id,
+                    ListingStatus = newListing.ListingStatus ?? "Unknown",
+                    Price = newListing.Price,
+                    SoldDateUtc = newListing.EndDateUtc,
+                    RecordedUtc = DateTime.UtcNow,
+                    Source = "InitialScrape"
+                });
+                insertCount++;
+            }
+            else
+            {
+                // UPDATE existing listing with status protection
+                var statusChanged = UpdateExistingListing(existing, product);
+
+                if (statusChanged)
+                {
+                    _dbContext.ListingStatusHistory.Add(new ListingStatusHistory
+                    {
+                        ListingId = existing.Id,
+                        ListingStatus = existing.ListingStatus ?? "Unknown",
+                        Price = existing.Price,
+                        SoldDateUtc = existing.EndDateUtc,
+                        RecordedUtc = DateTime.UtcNow,
+                        Source = "StatusUpdate"
+                    });
+                }
+                updateCount++;
+            }
+        }
+
         await _dbContext.SaveChangesAsync(ct);
 
-        _logger.LogInformation("Saved {Count} listings to database", newListings.Count);
-        return newListings;
+        _logger.LogInformation("Upserted listings: {Inserted} inserted, {Updated} updated",
+            insertCount, updateCount);
+
+        return (insertCount, updateCount);
     }
 
-    private async Task SaveInitialStatusHistory(IEnumerable<Listing> listings, CancellationToken ct)
+    private static bool UpdateExistingListing(Listing existing, EbayProduct product)
     {
-        var historyRecords = listings.Select(l => new ListingStatusHistory
+        var statusChanged = false;
+        var newStatus = product.ListingStatus?.ToString();
+
+        // Only update status if it's a forward progression
+        if (ListingStatusHelper.CanUpdateStatus(existing.ListingStatus, newStatus))
         {
-            ListingId = l.Id,
-            ListingStatus = l.ListingStatus ?? "Unknown",
-            Price = l.Price,
-            SoldDateUtc = l.EndDateUtc,
-            RecordedUtc = DateTime.UtcNow,
-            Source = "InitialScrape"
-        }).ToList();
+            if (existing.ListingStatus != newStatus)
+            {
+                existing.ListingStatus = newStatus;
+                existing.EndDateUtc = product.EndDateUtc;
+                statusChanged = true;
+            }
+        }
 
-        _dbContext.ListingStatusHistory.AddRange(historyRecords);
-        await _dbContext.SaveChangesAsync(ct);
+        // Always update data fields (don't touch CreatedUtc or ScrapeJobId)
+        existing.Title = product.Title;
+        existing.Price = product.Price;
+        existing.Currency = product.Currency;
+        existing.ShippingCost = product.ShippingCost;
+        existing.Url = product.Url;
+        existing.Condition = product.Condition?.ToString();
+        existing.PurchaseFormat = product.PurchaseFormat?.ToString();
+        existing.Description = product.Description;
+        existing.ItemSpecifics = product.ItemSpecifics;
+        existing.Location = product.Location;
+        if (product.Images != null)
+        {
+            existing.Images = JsonSerializer.Serialize(product.Images);
+        }
+        existing.UpdatedUtc = DateTime.UtcNow;
 
-        _logger.LogInformation("Created {Count} initial history records", historyRecords.Count);
+        return statusChanged;
     }
 
     private async Task UpdateJobTimestamp(ScrapeJob job, CancellationToken ct)
