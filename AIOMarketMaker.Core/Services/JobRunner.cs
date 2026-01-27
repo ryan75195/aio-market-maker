@@ -167,72 +167,81 @@ public class JobRunner : IJobRunner
         HashSet<string> soldResultIds,
         CancellationToken ct)
     {
-        // Get all active listings for this job from the database
+        // Get all active listings GLOBALLY (not per-job) that appear in sold search results
         var activeListings = await _dbContext.Listings
-            .Where(l => l.ScrapeJobId == jobId && l.ListingStatus == "Active")
+            .Where(l => l.ListingStatus == "Active")
+            .Where(l => soldResultIds.Contains(l.ListingId))
             .Select(l => new { l.Id, l.ListingId })
             .ToListAsync(ct);
 
         if (activeListings.Count == 0)
         {
+            _logger.LogInformation("No Active→Sold transitions detected globally");
             return 0;
         }
 
-        // Find listings that are Active in DB but appear in sold search results
-        var transitionedListingIds = activeListings
-            .Where(l => soldResultIds.Contains(l.ListingId))
+        // Check which ones are already marked as Sold (by another job that ran first)
+        var alreadySoldIds = await _dbContext.Listings
+            .Where(l => activeListings.Select(a => a.ListingId).Contains(l.ListingId))
+            .Where(l => l.ListingStatus == "Sold")
+            .Select(l => l.ListingId)
+            .ToListAsync(ct);
+
+        var needsRescrape = activeListings
+            .Where(l => !alreadySoldIds.Contains(l.ListingId))
             .Select(l => l.ListingId)
             .ToArray();
 
-        if (transitionedListingIds.Length == 0)
+        if (needsRescrape.Length == 0)
         {
-            _logger.LogInformation("No Active→Sold transitions detected for job {JobId}", jobId);
+            _logger.LogInformation("All {Count} transitions already processed by other jobs",
+                alreadySoldIds.Count);
             return 0;
         }
 
-        _logger.LogInformation("Detected {Count} Active→Sold transitions for job {JobId}, re-scraping...",
-            transitionedListingIds.Length, jobId);
+        _logger.LogInformation("Detected {Count} Active→Sold transitions, re-scraping...",
+            needsRescrape.Length);
 
         // Re-scrape those listings to get accurate sold price and date
-        var soldProducts = await _ebayScraper.GetItemsFromListings(transitionedListingIds);
+        var soldProducts = await _ebayScraper.GetItemsFromListings(needsRescrape);
 
         var updatedCount = 0;
         foreach (var product in soldProducts)
         {
             if (product.ListingId == null) continue;
 
-            var listing = await _dbContext.Listings
-                .FirstOrDefaultAsync(l => l.ScrapeJobId == jobId && l.ListingId == product.ListingId, ct);
+            // Update ALL matching listings (could be in multiple jobs' active list)
+            var listings = await _dbContext.Listings
+                .Where(l => l.ListingId == product.ListingId && l.ListingStatus == "Active")
+                .ToListAsync(ct);
 
-            if (listing == null) continue;
-
-            // Update listing with sold data
-            listing.ListingStatus = product.ListingStatus?.ToString() ?? "Sold";
-            listing.Price = product.Price;
-            listing.EndDateUtc = product.EndDateUtc;
-            listing.UpdatedUtc = DateTime.UtcNow;
-
-            // Add status history record
-            _dbContext.ListingStatusHistory.Add(new ListingStatusHistory
+            foreach (var listing in listings)
             {
-                ListingId = listing.Id,
-                ListingStatus = listing.ListingStatus,
-                Price = product.Price,
-                SoldDateUtc = product.EndDateUtc,
-                RecordedUtc = DateTime.UtcNow,
-                Source = "JobScrape"
-            });
+                listing.ListingStatus = product.ListingStatus?.ToString() ?? "Sold";
+                listing.Price = product.Price;
+                listing.EndDateUtc = product.EndDateUtc;
+                listing.UpdatedUtc = DateTime.UtcNow;
 
-            updatedCount++;
+                _dbContext.ListingStatusHistory.Add(new ListingStatusHistory
+                {
+                    ListingId = listing.Id,
+                    ListingStatus = listing.ListingStatus,
+                    Price = product.Price,
+                    SoldDateUtc = product.EndDateUtc,
+                    RecordedUtc = DateTime.UtcNow,
+                    Source = "JobScrape"
+                });
 
-            _logger.LogInformation("Updated listing {ListingId}: Active → {NewStatus}, Price: {Price}, SoldDate: {SoldDate}",
-                product.ListingId, listing.ListingStatus, product.Price, product.EndDateUtc);
+                updatedCount++;
+            }
+
+            _logger.LogInformation("Updated listing {ListingId}: Active → {NewStatus}",
+                product.ListingId, product.ListingStatus);
         }
 
         await _dbContext.SaveChangesAsync(ct);
 
-        _logger.LogInformation("Updated {Count} listings from Active to Sold for job {JobId}",
-            updatedCount, jobId);
+        _logger.LogInformation("Updated {Count} listing records from Active to Sold", updatedCount);
 
         return updatedCount;
     }
