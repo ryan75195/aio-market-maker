@@ -186,4 +186,184 @@ public class SaveListingsActivityTests
             Assert.That(saved.Title, Is.EqualTo("Valid Title"));
         });
     }
+
+    [Test]
+    public async Task Should_update_existing_listing_instead_of_insert()
+    {
+        // Arrange - existing listing
+        var job = new ScrapeJob { SearchTerm = "test" };
+        _dbContext.ScrapeJobs.Add(job);
+        await _dbContext.SaveChangesAsync();
+
+        var existingListing = new Listing
+        {
+            ListingId = "123456",
+            ScrapeJobId = job.Id,
+            Title = "Old Title",
+            Price = 50.00m,
+            ListingStatus = "Active",
+            CreatedUtc = new DateTime(2025, 1, 1, 0, 0, 0, DateTimeKind.Utc)
+        };
+        _dbContext.Listings.Add(existingListing);
+        await _dbContext.SaveChangesAsync();
+
+        var input = new SaveListingsInput(job.Id, new List<ListingData>
+        {
+            new ListingData(
+                ListingId: "123456",
+                Title: "New Title",
+                Price: 75.00m,
+                Currency: "USD",
+                ShippingCost: null,
+                Condition: null,
+                ListingStatus: "Sold",
+                PurchaseFormat: null,
+                Description: null,
+                Url: null,
+                EndDateUtc: DateTime.UtcNow,
+                Location: null,
+                ItemSpecifics: null,
+                Images: null)
+        });
+
+        // Act
+        await _activity.Run(input, null!);
+
+        // Assert
+        var count = await _dbContext.Listings.CountAsync();
+        var saved = await _dbContext.Listings.FirstAsync(l => l.ListingId == "123456");
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(count, Is.EqualTo(1), "Should not create duplicate");
+            Assert.That(saved.Title, Is.EqualTo("New Title"), "Title should be updated");
+            Assert.That(saved.Price, Is.EqualTo(75.00m), "Price should be updated");
+            Assert.That(saved.ListingStatus, Is.EqualTo("Sold"), "Status should be updated (Active->Sold allowed)");
+            Assert.That(saved.CreatedUtc, Is.EqualTo(new DateTime(2025, 1, 1, 0, 0, 0, DateTimeKind.Utc)),
+                "CreatedUtc should be preserved");
+        });
+    }
+
+    [Test]
+    public async Task Should_not_downgrade_status_from_sold_to_active()
+    {
+        // Arrange - existing SOLD listing
+        var job = new ScrapeJob { SearchTerm = "test" };
+        _dbContext.ScrapeJobs.Add(job);
+        await _dbContext.SaveChangesAsync();
+
+        var existingListing = new Listing
+        {
+            ListingId = "123456",
+            ScrapeJobId = job.Id,
+            Title = "Original Title",
+            Price = 100.00m,
+            ListingStatus = "Sold",
+            EndDateUtc = new DateTime(2025, 1, 15, 0, 0, 0, DateTimeKind.Utc)
+        };
+        _dbContext.Listings.Add(existingListing);
+        await _dbContext.SaveChangesAsync();
+
+        var input = new SaveListingsInput(job.Id, new List<ListingData>
+        {
+            new ListingData(
+                ListingId: "123456",
+                Title: "Updated Title",
+                Price: 90.00m,
+                Currency: "USD",
+                ShippingCost: null,
+                Condition: null,
+                ListingStatus: "Active",  // Trying to downgrade!
+                PurchaseFormat: null,
+                Description: null,
+                Url: null,
+                EndDateUtc: null,
+                Location: null,
+                ItemSpecifics: null,
+                Images: null)
+        });
+
+        // Act
+        await _activity.Run(input, null!);
+
+        // Assert
+        var saved = await _dbContext.Listings.FirstAsync(l => l.ListingId == "123456");
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(saved.ListingStatus, Is.EqualTo("Sold"), "Status should NOT be downgraded");
+            Assert.That(saved.EndDateUtc, Is.EqualTo(new DateTime(2025, 1, 15, 0, 0, 0, DateTimeKind.Utc)),
+                "EndDateUtc should be preserved when status not updated");
+            Assert.That(saved.Title, Is.EqualTo("Updated Title"), "Other fields can still be updated");
+        });
+    }
+
+    [Test]
+    public async Task Should_preserve_original_scrape_job_id_on_update()
+    {
+        // Arrange - listing owned by job1
+        var job1 = new ScrapeJob { SearchTerm = "job1" };
+        var job2 = new ScrapeJob { SearchTerm = "job2" };
+        _dbContext.ScrapeJobs.AddRange(job1, job2);
+        await _dbContext.SaveChangesAsync();
+
+        var existingListing = new Listing
+        {
+            ListingId = "123456",
+            ScrapeJobId = job1.Id,
+            Title = "Original",
+            ListingStatus = "Active"
+        };
+        _dbContext.Listings.Add(existingListing);
+        await _dbContext.SaveChangesAsync();
+
+        // Job2 tries to save the same listing
+        var input = new SaveListingsInput(job2.Id, new List<ListingData>
+        {
+            new ListingData("123456", "Updated by job2", 50.00m, "USD", null, null, "Sold", null, null, null, DateTime.UtcNow, null, null, null)
+        });
+
+        // Act
+        await _activity.Run(input, null!);
+
+        // Assert
+        var saved = await _dbContext.Listings.FirstAsync(l => l.ListingId == "123456");
+        Assert.That(saved.ScrapeJobId, Is.EqualTo(job1.Id), "ScrapeJobId should remain with original job");
+    }
+
+    [Test]
+    public async Task Should_add_history_record_on_status_change()
+    {
+        // Arrange
+        var job = new ScrapeJob { SearchTerm = "test" };
+        _dbContext.ScrapeJobs.Add(job);
+        await _dbContext.SaveChangesAsync();
+
+        var existingListing = new Listing
+        {
+            ListingId = "123456",
+            ScrapeJobId = job.Id,
+            Title = "Test",
+            ListingStatus = "Active"
+        };
+        _dbContext.Listings.Add(existingListing);
+        await _dbContext.SaveChangesAsync();
+
+        var input = new SaveListingsInput(job.Id, new List<ListingData>
+        {
+            new ListingData("123456", "Test", 100.00m, "USD", null, null, "Sold", null, null, null, DateTime.UtcNow, null, null, null)
+        });
+
+        // Act
+        await _activity.Run(input, null!);
+
+        // Assert
+        var historyRecords = await _dbContext.ListingStatusHistory
+            .Where(h => h.ListingId == existingListing.Id)
+            .ToListAsync();
+
+        Assert.That(historyRecords.Count, Is.EqualTo(1));
+        Assert.That(historyRecords[0].ListingStatus, Is.EqualTo("Sold"));
+        Assert.That(historyRecords[0].Source, Is.EqualTo("StatusUpdate"));
+    }
 }
