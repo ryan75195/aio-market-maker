@@ -21,16 +21,19 @@ public class ScrapeUrlOrchestrator
         [OrchestrationTrigger] TaskOrchestrationContext context)
     {
         var logger = context.CreateReplaySafeLogger<ScrapeUrlOrchestrator>();
-        var url = context.GetInput<string>();
+        var input = context.GetInput<ScrapeUrlInput>()!;
+        var url = input.Url;
 
-        logger.LogInformation("ScrapeUrlOrchestrator: Starting for URL: {Url}", url);
+        logger.LogInformation("ScrapeUrlOrchestrator: Starting for URL: {Url} (GroupId={GroupId}, FileKey={FileKey})",
+            url, input.GroupId, input.FileKey);
 
-        // Step 1: Submit the scrape job (returns immediately with jobId)
+        // Step 1: Submit the scrape job with GroupId/FileKey
         string jobId;
         try
         {
             jobId = await context.CallActivityAsync<string>(
-                nameof(SubmitScrapeJobActivity), url);
+                nameof(SubmitScrapeJobActivity),
+                new SubmitScrapeJobInput(url, input.GroupId, input.FileKey));
             logger.LogInformation("ScrapeUrlOrchestrator: Job {JobId} submitted for URL: {Url}", jobId, url);
         }
         catch (Exception ex)

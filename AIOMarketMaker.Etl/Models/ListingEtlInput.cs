@@ -101,6 +101,13 @@ public record SubmitScrapeJobInput(
     string? FileKey = null
 );
 
+// Sub-orchestrator input for ScrapeUrlOrchestrator
+public record ScrapeUrlInput(
+    string Url,
+    string? GroupId = null,
+    string? FileKey = null
+);
+
 // Parsing DTOs
 public record ParseListingInput(string ListingId, string ListingUrl, string Html);
 public record ParsedListingResult(

@@ -243,8 +243,10 @@ public class JobOrchestrator
             new BuildSearchUrlInput(searchTerm, isSold, page));
 
         // Scrape the page using durable timer pattern (no blocking)
+        // Search pages don't need GroupId/FileKey (they're not stored for blob triggers)
         var html = await context.CallSubOrchestratorAsync<string?>(
-            nameof(ScrapeUrlOrchestrator), url);
+            nameof(ScrapeUrlOrchestrator),
+            new ScrapeUrlInput(url));
 
         if (string.IsNullOrEmpty(html))
         {

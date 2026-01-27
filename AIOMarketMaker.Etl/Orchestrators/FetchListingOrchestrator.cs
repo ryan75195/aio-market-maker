@@ -39,9 +39,10 @@ public class FetchListingOrchestrator
 
         try
         {
-            // Step 1: Scrape the listing page
+            // Step 1: Scrape the listing page (GroupId=listingId, FileKey='listing')
             var listingHtml = await context.CallSubOrchestratorAsync<string?>(
-                nameof(ScrapeUrlOrchestrator), input.ListingUrl);
+                nameof(ScrapeUrlOrchestrator),
+                new ScrapeUrlInput(input.ListingUrl, input.ListingId, "listing"));
 
             if (string.IsNullOrEmpty(listingHtml))
             {
@@ -60,14 +61,15 @@ public class FetchListingOrchestrator
                 return null;
             }
 
-            // Step 3: Scrape and parse description if available
+            // Step 3: Scrape and parse description if available (GroupId=listingId, FileKey='description')
             string? description = null;
             if (!string.IsNullOrEmpty(parsed.DescriptionSourceUrl))
             {
                 try
                 {
                     var descHtml = await context.CallSubOrchestratorAsync<string?>(
-                        nameof(ScrapeUrlOrchestrator), parsed.DescriptionSourceUrl);
+                        nameof(ScrapeUrlOrchestrator),
+                        new ScrapeUrlInput(parsed.DescriptionSourceUrl, input.ListingId, "description"));
 
                     if (!string.IsNullOrEmpty(descHtml))
                     {
