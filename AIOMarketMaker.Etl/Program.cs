@@ -64,6 +64,16 @@ var host = new HostBuilder()
         services.AddSingleton<ISearchParser, EbaySearchParser>();
         services.AddSingleton<IListingParser, EbayListingParser>();
 
+        // Web scraper client (required for orchestrators)
+        var scraperBaseUrl = configuration.GetValue<string>("Scraper:BaseUrl") ?? "http://localhost:7126";
+        var scraperApiKey = configuration.GetValue<string>("Scraper:ApiKey") ?? "";
+        services.AddSingleton(new ScraperApiConfig(scraperBaseUrl, scraperApiKey));
+        services.AddHttpClient<IWebscraperClient, WebscraperClient>(client =>
+        {
+            client.BaseAddress = new Uri(scraperBaseUrl);
+            client.Timeout = TimeSpan.FromMinutes(5);
+        });
+
         // Embedding service (optional)
         var openAiKey = configuration.GetValue<string>("OpenAi:ApiKey") ?? "";
         if (!string.IsNullOrEmpty(openAiKey))
