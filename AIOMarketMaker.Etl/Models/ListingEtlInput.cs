@@ -20,3 +20,10 @@ public record BlobState(
 {
     public bool HasBoth => HasListing && HasDescription;
 }
+
+public record ProcessListingInput(
+    string JobId,
+    string ListingId,
+    int ScrapeJobId,
+    bool HasDescription
+);
