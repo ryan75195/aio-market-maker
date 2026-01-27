@@ -44,7 +44,9 @@ public record StatusResponse(
 
 public record StartRequest(
        string[] Urls,
-       IEnumerable<ProxyConfig>? Proxies = null
+       IEnumerable<ProxyConfig>? Proxies = null,
+       string? GroupId = null,
+       string? FileKey = null
    );
 
 public record UrlRequest(

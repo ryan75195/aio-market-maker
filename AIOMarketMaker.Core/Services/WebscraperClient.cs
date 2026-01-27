@@ -15,6 +15,8 @@ namespace AIOMarketMaker.Core.Services
            IEnumerable<string> urls,
            IEnumerable<object>? proxies = null,
            string? correlationId = null,
+           string? groupId = null,
+           string? fileKey = null,
            CancellationToken ct = default);
 
         Task<string> GetPageHtmlAsync(
@@ -86,9 +88,11 @@ namespace AIOMarketMaker.Core.Services
             IEnumerable<string> urls,
             IEnumerable<object>? proxies = null,
             string? correlationId = null,
+            string? groupId = null,
+            string? fileKey = null,
             CancellationToken ct = default)
         {
-            var req = new StartRequest(urls.ToArray(), null);
+            var req = new StartRequest(urls.ToArray(), null, groupId, fileKey);
 
             var request = new HttpRequestMessage(HttpMethod.Post, AppendApiKey("api/NewJob"))
             {
@@ -118,7 +122,7 @@ namespace AIOMarketMaker.Core.Services
             CancellationToken ct = default)
         {
             var startTime = DateTime.UtcNow;
-            var job = await NewJobAsync(new[] { url }, proxies, correlationId, ct);
+            var job = await NewJobAsync(new[] { url }, proxies, correlationId, ct: ct);
 
             // Poll until complete (every 2s, but only log every 60s)
             var jobStatus = JobStatusType.Pending;

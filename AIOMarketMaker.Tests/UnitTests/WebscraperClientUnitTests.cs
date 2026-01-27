@@ -141,6 +141,47 @@ namespace AIOMarketMaker.Tests.Unit
         }
 
         [Test]
+        public async Task Should_include_GroupId_and_FileKey_in_request_body()
+        {
+            // Arrange
+            string? capturedBody = null;
+            var groupId = "listing123";
+            var fileKey = "listing";
+
+            var mockHandler = new Mock<HttpMessageHandler>();
+            mockHandler
+                .Protected()
+                .Setup<Task<HttpResponseMessage>>(
+                    "SendAsync",
+                    ItExpr.IsAny<HttpRequestMessage>(),
+                    ItExpr.IsAny<CancellationToken>())
+                .Callback<HttpRequestMessage, CancellationToken>(async (req, _) =>
+                {
+                    capturedBody = await req.Content!.ReadAsStringAsync();
+                })
+                .ReturnsAsync(new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = JsonContent.Create(new StartResponse("job-123"))
+                });
+
+            var httpClient = new HttpClient(mockHandler.Object)
+            {
+                BaseAddress = new Uri("http://localhost:7126/")
+            };
+
+            var config = new ScraperApiConfig("http://localhost:7126/", "test-api-key");
+            var client = new WebscraperClient(httpClient, config, _mockJobRepository.Object, _mockLogger.Object);
+
+            // Act
+            await client.NewJobAsync(new[] { "http://example.com" }, groupId: groupId, fileKey: fileKey);
+
+            // Assert
+            Assert.That(capturedBody, Is.Not.Null);
+            Assert.That(capturedBody, Does.Contain("\"groupId\":\"listing123\"").IgnoreCase);
+            Assert.That(capturedBody, Does.Contain("\"fileKey\":\"listing\"").IgnoreCase);
+        }
+
+        [Test]
         public async Task GetPageHtmlAsync_should_pass_correlation_id_to_NewJobAsync()
         {
             // Arrange
