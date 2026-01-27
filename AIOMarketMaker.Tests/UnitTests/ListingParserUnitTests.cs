@@ -537,5 +537,23 @@ namespace AIOMarketMaker.Tests.Unit
                 Assert.That(status, Is.EqualTo(EbayListingStatus.Ended), "Status should be Ended (seller ended listing)");
             });
         }
+
+        [Test]
+        public void Should_parse_out_of_stock_listing_as_out_of_stock()
+        {
+            // Listing 304091165013 - "Sony PlayStation 5 (PS5) Digital Edition - 825GB - White Gaming Console - Good"
+            // This listing shows "This item is out of stock." in a warning message
+            var doc = PageBuilder.LoadVerificationHtmlDocument("304091165013");
+            var parser = (EbayListingParser)_serviceUnderTest;
+
+            var status = parser.GetListingStatus(doc);
+            var title = parser.GetProductTitle(doc);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(status, Is.EqualTo(EbayListingStatus.OutOfStock), "Status should be OutOfStock");
+                Assert.That(title, Does.Contain("PlayStation 5"), "Title should contain PlayStation 5");
+            });
+        }
     }
 }

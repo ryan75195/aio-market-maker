@@ -8,6 +8,7 @@ namespace AIOMarketMaker.Models.Ebay
         Active,
         Sold,
         Ended,
+        OutOfStock,
         Unknown
     }
 

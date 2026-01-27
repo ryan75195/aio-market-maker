@@ -101,6 +101,13 @@ namespace AIOMarketMaker.Core.Parsers
 
         internal EbayListingStatus? GetListingStatus(IDocument document)
         {
+            // Check for out of stock warning message first
+            var warningMessage = document.QuerySelector(".ux-message--INLINE-WARNING .ux-textspans")?.TextContent;
+            if (warningMessage != null && warningMessage.Contains("out of stock", StringComparison.OrdinalIgnoreCase))
+            {
+                return EbayListingStatus.OutOfStock;
+            }
+
             var node = document.QuerySelector(".d-statusmessage")?.TextContent;
             if (node == null)
             {
