@@ -46,3 +46,69 @@ public record UpdateProgressInput(
     int? TotalListingsFound = null,
     int? ListingsProcessed = null,
     string? CurrentPhase = null);
+
+// Orchestrator DTOs
+public record ScrapeOrchestratorInput(int ScrapeRunId, int? MaxListingsToFetch, int? LookbackDays);
+public record OrchestratorResult(
+    int SucceededJobs,
+    int FailedJobs,
+    int TotalListingsFound,
+    TimeSpan Duration,
+    List<string> Errors);
+
+// Job orchestration DTOs
+public record JobDetails(int Id, string SearchTerm, int LookbackDays, int? MaxListingsToFetch);
+public record JobResult(int JobId, bool Success, int ListingsFound, string? Error);
+public record JobOrchestratorInput(int JobId, string ScrapeInstanceId, int? MaxListingsToFetch = null, int? LookbackDays = null);
+public record GetJobDetailsInput(int JobId, int? MaxListingsToFetch = null, int? LookbackDays = null);
+
+// URL building DTOs
+public record BuildSearchUrlInput(string SearchTerm, bool IsSold, int Page);
+public record FetchListingInput(string ListingId, string ListingUrl);
+
+// Listing DTOs
+public record ListingData(
+    string ListingId,
+    string? Title,
+    decimal? Price,
+    string? Currency,
+    decimal? ShippingCost,
+    string? Condition,
+    string? ListingStatus,
+    string? PurchaseFormat,
+    string? Description,
+    string? Url,
+    DateTime? EndDateUtc,
+    string? Location,
+    string? ItemSpecifics,
+    List<string>? Images
+);
+public record SaveListingsInput(int JobId, List<ListingData> Listings);
+
+// Active listings DTOs (for sold detection)
+public record ActiveListingInfo(int Id, string ListingId);
+public record GetActiveListingsInput(int JobId);
+public record UpdateSoldListingsInput(int JobId, List<ListingData> SoldListings);
+
+// Scrape job status DTOs
+public record ScrapeJobStatusResult(string JobId, string Status, bool IsComplete);
+public record GetScrapedHtmlInput(string JobId);
+
+// Parsing DTOs
+public record ParseListingInput(string ListingId, string ListingUrl, string Html);
+public record ParsedListingResult(
+    string ListingId,
+    string? Title,
+    decimal? Price,
+    string? Currency,
+    decimal? ShippingCost,
+    string? Condition,
+    string? ListingStatus,
+    string? PurchaseFormat,
+    string? Url,
+    DateTime? EndDateUtc,
+    string? Location,
+    string? ItemSpecifics,
+    List<string>? Images,
+    string? DescriptionSourceUrl
+);
