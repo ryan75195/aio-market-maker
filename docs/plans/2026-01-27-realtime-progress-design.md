@@ -10,16 +10,27 @@
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
+│                      ETL (Durable Functions)                     │
+├─────────────────────────────────────────────────────────────────┤
+│ 1. POST /api/scrape/start (HTTP Trigger)                         │
+│    → Creates ScrapeRun record (Status = "Running")               │
+│    → Starts ScrapeOrchestrator with runId                        │
+│    → Returns { runId } immediately                               │
+├─────────────────────────────────────────────────────────────────┤
+│ 2. ScrapeOrchestrator (Durable Orchestration)                    │
+│    → For each enabled ScrapeJob:                                 │
+│      → Search eBay, parse listing IDs                            │
+│      → Filter out existing listings                              │
+│      → Update ScrapeRun.TotalListingsFound                       │
+│      → Submit URLs to scraper with GroupId/FileKey               │
+│    → Orchestration completes (blob triggers take over)           │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
 │                         API (Functions)                          │
 ├─────────────────────────────────────────────────────────────────┤
-│ 1. POST /api/scrape/start                                        │
-│    → Search eBay, get listing IDs                                │
-│    → Filter out existing listings                                │
-│    → Create ScrapeRun (TotalListingsFound = filtered count)      │
-│    → Submit URLs to scraper with GroupId/FileKey                 │
-│    → Return { runId }                                            │
-├─────────────────────────────────────────────────────────────────┤
-│ 2. GET /api/history                                              │
+│ GET /api/history                                                 │
 │    → Returns ScrapeRuns with ListingsProcessed/TotalListingsFound│
 │    → UI calculates percentage                                    │
 └─────────────────────────────────────────────────────────────────┘
@@ -51,27 +62,38 @@
 
 ---
 
-## API Changes
+## ETL Changes
 
-### `POST /api/scrape/start` (New)
+### `POST /api/scrape/start` (New HTTP Trigger)
 
-Orchestrates initial job setup:
+HTTP trigger that starts the scrape orchestration:
+
+1. Create ScrapeRun record with `Status = "Running"`
+2. Start `ScrapeOrchestrator` with `runId`
+3. Return `{ runId }` immediately (async)
+
+### `ScrapeOrchestrator` (New Durable Orchestration)
+
+Long-running orchestration that handles the full scrape workflow:
 
 1. Get enabled ScrapeJobs from DB
 2. For each job:
-   - Build search URL
-   - Submit to scraper, wait for HTML
-   - Parse search results → listing IDs
-3. Filter out listing IDs already in Listings table
-4. Create ScrapeRun record:
-   - `Status = "Running"`
-   - `TotalListingsFound = filtered count`
-   - `ListingsProcessed = 0`
-5. For each new listing ID:
+   - Call `SearchEbayActivity` to search and parse listing IDs
+   - Call `FilterListingsActivity` to remove duplicates
+3. Update `ScrapeRun.TotalListingsFound` = total filtered count
+4. For each new listing ID:
    - Build listing URL + description URL
-   - Submit to scraper with `GroupId=listingId`, `FileKey="listing"/"description"`
-   - Use `ScrapeRun.Id` as the scraper job ID
-6. Return `{ runId }`
+   - Call `SubmitUrlsActivity` to submit to scraper with `GroupId=listingId`
+5. Orchestration completes (blob triggers handle individual processing)
+
+### Activities to Add
+
+- `SearchEbayActivity` - Search eBay, return listing IDs
+- `FilterListingsActivity` - Filter out existing listings
+- `SubmitUrlsActivity` - Submit URLs to WebscraperClient
+- `UpdateScrapeRunActivity` - Update TotalListingsFound/status
+
+## API Changes
 
 ### `GET /api/history` (Existing)
 
@@ -132,38 +154,47 @@ await _dbContext.Database.ExecuteSqlRawAsync(@"
 
 ## UI Changes
 
-### Modify History view in `app.js`
+### Add ETL URL to config
 
-**1. Faster polling interval:**
+Add `etlApi` section to `config.json`:
+
+```json
+{
+  "marketMakerApi": { "baseUrl": "...", "functionKey": "..." },
+  "etlApi": { "baseUrl": "http://localhost:7072/api" },
+  ...
+}
+```
+
+### Modify `app.js`
+
+**1. Add ETL API call method:**
+
+```javascript
+async etlApiCall(endpoint, options = {}) {
+  const baseUrl = this.config.etlApi?.baseUrl || 'http://localhost:7072/api';
+  // Similar to apiCall but for ETL endpoints
+}
+```
+
+**2. Update `startScrape()` to call ETL:**
+
+```javascript
+async startScrape() {
+  const data = await this.etlApiCall('/scrape/start', { method: 'POST', body: ... });
+  // ...
+}
+```
+
+**3. Faster polling interval:**
 
 Change from 5000ms to 2000ms when jobs are running:
 
 ```javascript
-// In refreshHistory or mounted
-const hasRunning = this.history.some(r => r.status === 'Running');
 const interval = hasRunning ? 2000 : 5000;
 ```
 
-**2. Enhanced progress bar display:**
-
-```html
-<div class="progress" style="height: 20px;">
-  <div class="progress-bar"
-       :class="getProgressClass(run)"
-       :style="{ width: getProgressPercent(run) + '%' }">
-    {{ run.listingsProcessed }}/{{ run.totalListingsFound }} ({{ getProgressPercent(run) }}%)
-  </div>
-</div>
-```
-
-**3. Progress calculation method:**
-
-```javascript
-getProgressPercent(run) {
-  if (!run.totalListingsFound || run.totalListingsFound === 0) return 0;
-  return Math.round((run.listingsProcessed / run.totalListingsFound) * 100);
-}
-```
+**4. Progress bar already works** - `progressPercent(run)` method exists
 
 ---
 
@@ -184,10 +215,15 @@ This allows ETL to parse `ScrapeRunId` directly from the blob path for progress 
 
 | Component | File | Change |
 |-----------|------|--------|
-| API | `ScrapeJobsApi.cs` | Add `POST /api/scrape/start` endpoint |
-| ETL | `ListingEtlInput.cs` | JobId is ScrapeRunId (no model change needed) |
+| ETL | `Triggers/StartScrapeTrigger.cs` | New HTTP trigger for `/api/scrape/start` |
+| ETL | `Orchestrators/ScrapeOrchestrator.cs` | New orchestration for search/filter/submit workflow |
+| ETL | `Activities/SearchEbayActivity.cs` | Search eBay and parse listing IDs |
+| ETL | `Activities/FilterListingsActivity.cs` | Filter out existing listings |
+| ETL | `Activities/SubmitUrlsActivity.cs` | Submit URLs to scraper |
+| ETL | `Activities/UpdateScrapeRunActivity.cs` | Update TotalListingsFound/status |
 | ETL | `ProcessListingActivity.cs` | Add atomic progress increment after save |
-| UI | `app.js` | Faster polling (2s), enhanced progress bar display |
+| UI | `config.json` | Add `etlApi.baseUrl` config |
+| UI | `app.js` | Add `etlApiCall()`, update `startScrape()`, faster polling (2s) |
 
 ---
 
