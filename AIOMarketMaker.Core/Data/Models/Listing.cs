@@ -28,6 +28,11 @@ public class Listing
     public string? Description { get; set; }
 
     /// <summary>
+    /// Status of description fetching: pending, complete, missing, failed
+    /// </summary>
+    public string DescriptionStatus { get; set; } = "pending";
+
+    /// <summary>
     /// JSON serialized item specifics
     /// </summary>
     public string? ItemSpecifics { get; set; }
