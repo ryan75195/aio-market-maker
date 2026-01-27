@@ -7,6 +7,8 @@ namespace AIOMarketMaker.Core.Services
         string BuildSearchUrl(string query, bool sold, int page, Condition condition, BuyingFormat buyingFormat);
 
         string BuildListingUrl(string itemId);
+
+        string BuildDescriptionUrl(string listingId);
     }
 
     public class EbayUrlBuilder : IEbayUrlBuilder
@@ -55,6 +57,16 @@ namespace AIOMarketMaker.Core.Services
                 throw new ArgumentException("Item ID cannot be null or empty.", nameof(itemId));
 
             return $"{BaseItemUrl}{HttpUtility.UrlEncode(itemId)}";
+        }
+
+        public string BuildDescriptionUrl(string listingId)
+        {
+            if (string.IsNullOrWhiteSpace(listingId))
+                throw new ArgumentException("Listing ID cannot be null or empty.", nameof(listingId));
+
+            return $"https://itm.ebaydesc.com/itmdesc/{listingId}" +
+                   "?t=0&category=139971&excSoj=1&ver=0&excTrk=1&lsite=3" +
+                   "&ittenable=false&domain=ebay.com&descgauge=1&cspheader=1&oneClk=2&secureDesc=1";
         }
     }
 }

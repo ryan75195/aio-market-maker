@@ -31,6 +31,16 @@ public class TestableEbayUrlBuilder : IEbayUrlBuilder
         return $"{_baseUrl}/itm/{HttpUtility.UrlEncode(itemId)}";
     }
 
+    public string BuildDescriptionUrl(string listingId)
+    {
+        if (string.IsNullOrWhiteSpace(listingId))
+            throw new ArgumentException("Listing ID cannot be null or empty.", nameof(listingId));
+
+        return $"https://itm.ebaydesc.com/itmdesc/{listingId}" +
+               "?t=0&category=139971&excSoj=1&ver=0&excTrk=1&lsite=3" +
+               "&ittenable=false&domain=ebay.com&descgauge=1&cspheader=1&oneClk=2&secureDesc=1";
+    }
+
     private static int GetConditionValue(Condition condition) => condition switch
     {
         Condition.NEW => 1000,
