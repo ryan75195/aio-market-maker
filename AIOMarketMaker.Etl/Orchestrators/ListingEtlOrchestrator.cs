@@ -71,7 +71,6 @@ public class ListingEtlOrchestrator
 
         // Process listing (with or without description)
         var processInput = new ProcessListingInput(
-            JobId: "",
             input.ListingId,
             ScrapeJobId: lookupResult.ScrapeJobId ?? 0,
             HasDescription: state.HasDescription

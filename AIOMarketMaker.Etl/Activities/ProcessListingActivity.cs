@@ -36,7 +36,7 @@ public class ProcessListingActivity
         var container = _blobService.GetBlobContainerClient("html");
 
         // Fetch listing HTML (required)
-        var listingBlobPath = $"{input.JobId}/{input.ListingId}/listing.html";
+        var listingBlobPath = $"{input.ListingId}/listing.html";
         var listingBlob = container.GetBlobClient(listingBlobPath);
         var listingContent = await listingBlob.DownloadContentAsync();
         var listingHtml = listingContent.Value.Content.ToString();
@@ -54,7 +54,7 @@ public class ProcessListingActivity
         {
             try
             {
-                var descBlobPath = $"{input.JobId}/{input.ListingId}/description.html";
+                var descBlobPath = $"{input.ListingId}/description.html";
                 var descBlob = container.GetBlobClient(descBlobPath);
                 var descContent = await descBlob.DownloadContentAsync();
                 var descHtml = descContent.Value.Content.ToString();
@@ -127,20 +127,6 @@ public class ProcessListingActivity
         }
 
         await _dbContext.SaveChangesAsync();
-
-        // Increment progress and check completion atomically
-        // Note: JobId is the ScrapeRun.Id as a string
-        if (int.TryParse(input.JobId, out var scrapeRunId))
-        {
-            await _dbContext.Database.ExecuteSqlRawAsync(@"
-                UPDATE ScrapeRuns
-                SET ListingsProcessed = ListingsProcessed + 1,
-                    Status = CASE WHEN ListingsProcessed + 1 >= TotalListingsFound
-                                  AND Status = 'Running' THEN 'Completed' ELSE Status END,
-                    CompletedUtc = CASE WHEN ListingsProcessed + 1 >= TotalListingsFound
-                                        AND Status = 'Running' THEN datetime('now') ELSE CompletedUtc END
-                WHERE Id = {0}", scrapeRunId);
-        }
 
         _logger.LogInformation(
             "Processed listing {ListingId}: descriptionStatus={Status}",
