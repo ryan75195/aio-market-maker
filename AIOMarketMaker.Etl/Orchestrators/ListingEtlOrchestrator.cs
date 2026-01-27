@@ -20,6 +20,18 @@ public class ListingEtlOrchestrator
             "Starting ETL orchestration for listing {ListingId} (triggered by {Source})",
             input.ListingId, input.TriggerSource);
 
+        // Lookup ScrapeRun and ScrapeJob from junction table
+        var lookupResult = await context.CallActivityAsync<ScrapeRunLookupResult>(
+            nameof(LookupScrapeRunActivity), input.ListingId);
+
+        if (!lookupResult.Found)
+        {
+            logger.LogWarning(
+                "No pending ScrapeRunListing found for {ListingId}, skipping processing",
+                input.ListingId);
+            return;
+        }
+
         // Check what blobs exist
         var state = await context.CallActivityAsync<BlobState>(
             nameof(CheckBlobsActivity), input);
@@ -58,15 +70,23 @@ public class ListingEtlOrchestrator
         }
 
         // Process listing (with or without description)
-        // Note: JobId is empty until LookupScrapeRunActivity is added (Task 4.3)
         var processInput = new ProcessListingInput(
             JobId: "",
             input.ListingId,
-            ScrapeJobId: 0, // TODO: Get from job metadata
+            ScrapeJobId: lookupResult.ScrapeJobId ?? 0,
             HasDescription: state.HasDescription
         );
 
         await context.CallActivityAsync(nameof(ProcessListingActivity), processInput);
+
+        // Update junction table with completion status
+        var updateInput = new UpdateScrapeRunListingInput(
+            lookupResult.ScrapeRunId!.Value,
+            input.ListingId,
+            "Complete"
+        );
+
+        await context.CallActivityAsync(nameof(UpdateScrapeRunListingActivity), updateInput);
 
         logger.LogInformation(
             "ETL orchestration completed for listing {ListingId} (hasDescription={HasDescription})",
