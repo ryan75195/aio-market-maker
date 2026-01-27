@@ -9,6 +9,11 @@
     <IsTestProject>true</IsTestProject>
   </PropertyGroup>
 
+  <!-- Exclude archived files from compilation -->
+  <ItemGroup>
+    <Compile Remove="_archived/**/*.cs" />
+  </ItemGroup>
+
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
   </ItemGroup>
