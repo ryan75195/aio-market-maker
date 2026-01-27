@@ -94,6 +94,13 @@ public record UpdateSoldListingsInput(int JobId, List<ListingData> SoldListings)
 public record ScrapeJobStatusResult(string JobId, string Status, bool IsComplete);
 public record GetScrapedHtmlInput(string JobId);
 
+// Scrape submission DTOs
+public record SubmitScrapeJobInput(
+    string Url,
+    string? GroupId = null,
+    string? FileKey = null
+);
+
 // Parsing DTOs
 public record ParseListingInput(string ListingId, string ListingUrl, string Html);
 public record ParsedListingResult(
