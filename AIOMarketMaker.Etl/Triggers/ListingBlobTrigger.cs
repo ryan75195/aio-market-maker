@@ -30,7 +30,7 @@ public class ListingBlobTrigger
             _logger.LogInformation("Starting new orchestration {InstanceId}", instanceId);
             await client.ScheduleNewOrchestrationInstanceAsync(
                 "ListingEtlOrchestrator",
-                new ListingEtlInput("", listingId, TriggerSource.Listing),
+                new ListingEtlInput(listingId, TriggerSource.Listing),
                 new StartOrchestrationOptions { InstanceId = instanceId });
         }
         else

@@ -58,8 +58,9 @@ public class ListingEtlOrchestrator
         }
 
         // Process listing (with or without description)
+        // Note: JobId is empty until LookupScrapeRunActivity is added (Task 4.3)
         var processInput = new ProcessListingInput(
-            input.JobId,
+            JobId: "",
             input.ListingId,
             ScrapeJobId: 0, // TODO: Get from job metadata
             HasDescription: state.HasDescription

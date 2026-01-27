@@ -7,7 +7,6 @@ public enum TriggerSource
 }
 
 public record ListingEtlInput(
-    string JobId,
     string ListingId,
     TriggerSource TriggerSource
 );

@@ -21,8 +21,8 @@ public class CheckBlobsActivity
     {
         var container = _blobService.GetBlobContainerClient("html");
 
-        var listingBlobPath = $"{input.JobId}/{input.ListingId}/listing.html";
-        var descriptionBlobPath = $"{input.JobId}/{input.ListingId}/description.html";
+        var listingBlobPath = $"{input.ListingId}/listing.html";
+        var descriptionBlobPath = $"{input.ListingId}/description.html";
 
         var listingBlob = container.GetBlobClient(listingBlobPath);
         var descriptionBlob = container.GetBlobClient(descriptionBlobPath);
