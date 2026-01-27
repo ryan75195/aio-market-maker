@@ -11,6 +11,12 @@ public class FilterNewListingsActivity
     private readonly EtlDbContext _dbContext;
     private readonly ILogger<FilterNewListingsActivity> _logger;
 
+    // Terminal statuses that should be filtered globally
+    private static readonly HashSet<string> TerminalStatuses = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "Sold", "Ended", "OutOfStock"
+    };
+
     public FilterNewListingsActivity(
         EtlDbContext dbContext,
         ILogger<FilterNewListingsActivity> logger)
@@ -27,19 +33,21 @@ public class FilterNewListingsActivity
         _logger.LogInformation("Filtering {Count} listings for job {JobId}",
             input.ListingIds.Count, input.JobId);
 
-        var existingListingIds = await _dbContext.Listings
-            .Where(l => l.ScrapeJobId == input.JobId)
+        // Get all listings with terminal status (globally, not per-job)
+        var terminalListingIds = await _dbContext.Listings
+            .Where(l => input.ListingIds.Contains(l.ListingId))
+            .Where(l => l.ListingStatus != null && TerminalStatuses.Contains(l.ListingStatus))
             .Select(l => l.ListingId)
             .ToListAsync();
 
-        var existingSet = existingListingIds.ToHashSet();
+        var terminalSet = terminalListingIds.ToHashSet();
 
         var newListingIds = input.ListingIds
-            .Where(id => !existingSet.Contains(id))
+            .Where(id => !terminalSet.Contains(id))
             .ToList();
 
-        _logger.LogInformation("Found {NewCount} new listings (skipping {ExistingCount} existing)",
-            newListingIds.Count, input.ListingIds.Count - newListingIds.Count);
+        _logger.LogInformation("Found {NewCount} listings to process (filtered {TerminalCount} terminal)",
+            newListingIds.Count, terminalSet.Count);
 
         return newListingIds;
     }
