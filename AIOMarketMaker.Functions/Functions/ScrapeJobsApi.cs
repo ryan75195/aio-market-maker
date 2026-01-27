@@ -424,6 +424,36 @@ public class ScrapeJobsApi
         await response.WriteAsJsonAsync(new { deleted = count });
         return response;
     }
+
+    /// <summary>
+    /// GET /api/health - Health check endpoint
+    /// </summary>
+    [Function("HealthCheck")]
+    public async Task<HttpResponseData> HealthCheck(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "health")] HttpRequestData req)
+    {
+        var response = req.CreateResponse(HttpStatusCode.OK);
+
+        // Check database connectivity
+        bool dbConnected = false;
+        try
+        {
+            dbConnected = await _dbContext.Database.CanConnectAsync();
+        }
+        catch
+        {
+            // Database connection failed
+        }
+
+        await response.WriteAsJsonAsync(new
+        {
+            status = dbConnected ? "healthy" : "degraded",
+            timestamp = DateTime.UtcNow,
+            database = dbConnected ? "connected" : "disconnected"
+        });
+
+        return response;
+    }
 }
 
 public record CreateJobRequest(string? SearchTerm, string? FilterInstructions, bool? IsEnabled);
