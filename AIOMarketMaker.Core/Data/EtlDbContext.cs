@@ -21,6 +21,7 @@ public class EtlDbContext : DbContext
     public DbSet<Listing> Listings { get; set; } = null!;
     public DbSet<ListingStatusHistory> ListingStatusHistory { get; set; } = null!;
     public DbSet<ScrapeRun> ScrapeRuns { get; set; } = null!;
+    public DbSet<ScrapeRunListing> ScrapeRunListings { get; set; } = null!;
 
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
     {
@@ -95,6 +96,29 @@ public class EtlDbContext : DbContext
 
             entity.HasIndex(e => e.StartedUtc);
             entity.HasIndex(e => e.InstanceId);
+        });
+
+        modelBuilder.Entity<ScrapeRunListing>(entity =>
+        {
+            entity.ToTable("ScrapeRunListings");
+            entity.HasKey(e => new { e.ScrapeRunId, e.ListingId });
+
+            entity.Property(e => e.ListingId).IsRequired().HasMaxLength(20);
+            entity.Property(e => e.Status).HasMaxLength(20).HasDefaultValue("Pending");
+            entity.Property(e => e.CreatedUtc).HasDefaultValueSql(dateDefaultSql);
+
+            entity.HasIndex(e => e.ListingId);
+            entity.HasIndex(e => new { e.ScrapeRunId, e.Status });
+
+            entity.HasOne(e => e.ScrapeRun)
+                .WithMany()
+                .HasForeignKey(e => e.ScrapeRunId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(e => e.ScrapeJob)
+                .WithMany()
+                .HasForeignKey(e => e.ScrapeJobId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
     }
 }
