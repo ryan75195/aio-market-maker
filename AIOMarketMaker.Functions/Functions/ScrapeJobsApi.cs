@@ -383,6 +383,47 @@ public class ScrapeJobsApi
         await response.WriteAsJsonAsync(invalidListings);
         return response;
     }
+
+    /// <summary>
+    /// DELETE /api/listings/all - Clear all listings from the database
+    /// </summary>
+    [Function("ClearAllListings")]
+    public async Task<HttpResponseData> ClearAllListings(
+        [HttpTrigger(AuthorizationLevel.Function, "delete", Route = "listings/all")] HttpRequestData req)
+    {
+        var count = await _dbContext.Listings.CountAsync();
+
+        if (count > 0)
+        {
+            // Use raw SQL for efficient bulk delete
+            await _dbContext.Database.ExecuteSqlRawAsync("DELETE FROM Listings");
+            _logger.LogInformation("Cleared {Count} listings from database", count);
+        }
+
+        var response = req.CreateResponse(HttpStatusCode.OK);
+        await response.WriteAsJsonAsync(new { deleted = count });
+        return response;
+    }
+
+    /// <summary>
+    /// DELETE /api/history/all - Clear all scrape run history from the database
+    /// </summary>
+    [Function("ClearAllHistory")]
+    public async Task<HttpResponseData> ClearAllHistory(
+        [HttpTrigger(AuthorizationLevel.Function, "delete", Route = "history/all")] HttpRequestData req)
+    {
+        var count = await _dbContext.ScrapeRuns.CountAsync();
+
+        if (count > 0)
+        {
+            await _dbContext.Database.ExecuteSqlRawAsync("DELETE FROM ScrapeRuns");
+            _logger.LogInformation("Cleared {Count} scrape runs from database", count);
+        }
+
+        var response = req.CreateResponse(HttpStatusCode.OK);
+        await response.WriteAsJsonAsync(new { deleted = count });
+        return response;
+    }
 }
 
 public record CreateJobRequest(string? SearchTerm, string? FilterInstructions, bool? IsEnabled);

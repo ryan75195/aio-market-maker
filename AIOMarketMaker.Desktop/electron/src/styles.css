@@ -217,6 +217,12 @@ body {
   font-size: 12px;
 }
 
+.button-group {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
 /* Modal */
 .modal-overlay {
   position: fixed;

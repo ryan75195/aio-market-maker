@@ -144,6 +144,15 @@
               <p>Purge completed and failed orchestrations from the last 7 days.</p>
               <button class="btn danger" @click="purgeOrchestrations">Purge All</button>
             </div>
+
+            <div class="card">
+              <h3>Clear Data</h3>
+              <p>Remove all listings and/or run history from the database.</p>
+              <div class="button-group">
+                <button class="btn danger" @click="clearListings" :disabled="loading">Clear Listings</button>
+                <button class="btn danger" @click="clearHistory" :disabled="loading">Clear History</button>
+              </div>
+            </div>
           </div>
         </div>
 

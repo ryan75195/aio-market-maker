@@ -283,6 +283,44 @@ createApp({
       }
     },
 
+    async clearListings() {
+      if (!confirm('Delete ALL listings from the database? This cannot be undone.')) return;
+
+      this.loading = true;
+      try {
+        const data = await this.apiCall('/listings/all', { method: 'DELETE' });
+        const result = this.toCamelCase(data);
+        this.showToast(`Cleared ${result.deleted} listings`, 'success');
+        // Refresh opportunities if on that view
+        if (this.currentView === 'opportunities') {
+          await this.loadOpportunities();
+        }
+      } catch (err) {
+        this.showToast(`Failed to clear listings: ${err.message}`, 'error');
+      } finally {
+        this.loading = false;
+      }
+    },
+
+    async clearHistory() {
+      if (!confirm('Delete ALL run history from the database? This cannot be undone.')) return;
+
+      this.loading = true;
+      try {
+        const data = await this.apiCall('/history/all', { method: 'DELETE' });
+        const result = this.toCamelCase(data);
+        this.showToast(`Cleared ${result.deleted} history records`, 'success');
+        // Refresh history if on that view
+        if (this.currentView === 'history') {
+          await this.loadHistory();
+        }
+      } catch (err) {
+        this.showToast(`Failed to clear history: ${err.message}`, 'error');
+      } finally {
+        this.loading = false;
+      }
+    },
+
     formatDate(dateStr) {
       if (!dateStr) return 'Never';
       const date = new Date(dateStr);
