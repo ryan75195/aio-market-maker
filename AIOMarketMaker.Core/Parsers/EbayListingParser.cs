@@ -125,7 +125,7 @@ namespace AIOMarketMaker.Core.Parsers
             {
                 return EbayListingStatus.Ended;
             }
-            else if (node.Contains("Item sold on") || node.Contains("This listing sold on"))
+            else if (node.Contains("Item sold on") || node.Contains("This listing sold on") || node.Contains("This Buy It Now listing sold on"))
             {
                 return EbayListingStatus.Sold;
             }

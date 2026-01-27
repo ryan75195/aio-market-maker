@@ -555,5 +555,24 @@ namespace AIOMarketMaker.Tests.Unit
                 Assert.That(title, Does.Contain("PlayStation 5"), "Title should contain PlayStation 5");
             });
         }
+
+        [Test]
+        public void Should_parse_187982647756_buy_it_now_sold_listing_as_sold()
+        {
+            // Listing 187982647756 - "PlayStation 5 Digital Edition 825GB Console"
+            // Status message: "This Buy It Now listing sold on Tue, 27 Jan at 8:36 AM."
+            // This is a different "sold" pattern than the existing ones
+            var doc = PageBuilder.LoadVerificationHtmlDocument("187982647756");
+            var parser = (EbayListingParser)_serviceUnderTest;
+
+            var status = parser.GetListingStatus(doc);
+            var title = parser.GetProductTitle(doc);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(status, Is.EqualTo(EbayListingStatus.Sold), "Status should be Sold");
+                Assert.That(title, Does.Contain("PlayStation 5"), "Title should contain PlayStation 5");
+            });
+        }
     }
 }
