@@ -117,7 +117,7 @@ git commit -m "feat: add etlApiCall method for ETL API calls"
 
 ---
 
-## Phase 3: Update startScrape to Call ETL
+## Phase 3: Update Orchestration Methods to Call ETL
 
 ### Task 3.1: Modify startScrape method
 
@@ -179,6 +179,62 @@ async startScrape() {
 ```bash
 git add AIOMarketMaker.Desktop/electron/src/app.js
 git commit -m "feat: update startScrape to call ETL API"
+```
+
+---
+
+### Task 3.2: Update terminateOrchestration to use ETL API
+
+**Files:**
+- Modify: `AIOMarketMaker.Desktop/electron/src/app.js`
+
+**Step 1: Update terminateOrchestration**
+
+Find the `terminateOrchestration` method and change:
+
+```javascript
+await this.apiCall(`/orchestration/${this.lastInstanceId}`, { method: 'DELETE' });
+```
+
+to:
+
+```javascript
+await this.etlApiCall(`/orchestration/${this.lastInstanceId}`, { method: 'DELETE' });
+```
+
+**Step 2: Commit**
+
+```bash
+git add AIOMarketMaker.Desktop/electron/src/app.js
+git commit -m "feat: update terminateOrchestration to call ETL API"
+```
+
+---
+
+### Task 3.3: Update purgeOrchestrations to use ETL API
+
+**Files:**
+- Modify: `AIOMarketMaker.Desktop/electron/src/app.js`
+
+**Step 1: Update purgeOrchestrations**
+
+Find the `purgeOrchestrations` method and change:
+
+```javascript
+const data = await this.apiCall('/orchestration/purge', { method: 'POST' });
+```
+
+to:
+
+```javascript
+const data = await this.etlApiCall('/orchestration/purge', { method: 'POST' });
+```
+
+**Step 2: Commit**
+
+```bash
+git add AIOMarketMaker.Desktop/electron/src/app.js
+git commit -m "feat: update purgeOrchestrations to call ETL API"
 ```
 
 ---
@@ -305,6 +361,8 @@ git commit -m "fix: resolve UI issues for real-time progress"
 | 1.2 | `app.js` | Add `etlApi` to settings data model |
 | 2.1 | `app.js` | Add `etlApiCall()` method |
 | 3.1 | `app.js` | Update `startScrape()` to call ETL |
+| 3.2 | `app.js` | Update `terminateOrchestration()` to call ETL |
+| 3.3 | `app.js` | Update `purgeOrchestrations()` to call ETL |
 | 4.1 | `app.js` | Change polling interval to 2 seconds |
 | 5.1 | `index.html` | Add ETL API URL to settings UI |
 | 6.1 | - | Test and verify |
