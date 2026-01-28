@@ -41,10 +41,10 @@ public class JobOrchestrator
             var allListingIds = new List<string>();
             var soldListingIds = new HashSet<string>();
 
-            // Report progress: Searching Sold
+            // Report progress: Searching
             await context.CallActivityAsync(
                 nameof(UpdateScrapeRunProgressActivity),
-                new UpdateProgressInput(scrapeInstanceId, CurrentPhase: "Searching Sold"));
+                new UpdateProgressInput(scrapeInstanceId, CurrentPhase: "Searching"));
 
             // Step 2a: Search SOLD listings page by page until no results in date range
             logger.LogInformation("Job {JobId}: Searching sold listings...", jobId);
@@ -70,10 +70,8 @@ public class JobOrchestrator
             var statusUpdates = await DetectAndUpdateSoldListingsAsync(
                 context, jobId, scrapeInstanceId, soldListingIds, jobDetails.MaxListingsToFetch, logger);
 
-            // Report progress: Searching Active
-            await context.CallActivityAsync(
-                nameof(UpdateScrapeRunProgressActivity),
-                new UpdateProgressInput(scrapeInstanceId, CurrentPhase: "Searching Active"));
+            // Phase stays as "Searching" - no need to distinguish sold/active
+            // (phase already set above)
 
             // Step 2c: Search ACTIVE listings page by page until no results (limit 10000)
             const int activeItemLimit = 10000;
@@ -154,14 +152,14 @@ public class JobOrchestrator
             logger.LogInformation("Job {JobId}: Submitted {Submitted} scrape jobs ({Failed} failed)",
                 jobId, submitResult.SubmittedCount, submitResult.FailedCount);
 
-            // Step 7: Update phase to "Scraping" - individual listings will be processed
+            // Step 7: Update phase to "Indexing" - individual listings will be processed
             // by blob triggers when scrapes complete
             await context.CallActivityAsync(
                 nameof(UpdateScrapeRunProgressActivity),
                 new UpdateProgressInput(scrapeInstanceId,
                     TotalListingsFound: newListingIds.Count,
                     ListingsProcessed: 0,
-                    CurrentPhase: "Scraping"));
+                    CurrentPhase: "Indexing"));
 
             // Step 8: Update job timestamp
             await context.CallActivityAsync(nameof(UpdateJobTimestampActivity), jobId);
@@ -259,13 +257,13 @@ public class JobOrchestrator
         logger.LogInformation("Job {JobId}: Re-scraping {Count} Active→Sold transitions...",
             jobId, transitionedListingIds.Count);
 
-        // Report progress: Updating Sold Status
+        // Report progress: Updating Listings
         await context.CallActivityAsync(
             nameof(UpdateScrapeRunProgressActivity),
             new UpdateProgressInput(scrapeInstanceId,
                 TotalListingsFound: transitionedListingIds.Count,
                 ListingsProcessed: 0,
-                CurrentPhase: "Updating Sold Status"));
+                CurrentPhase: "Updating Listings"));
 
         // Build URLs for transitioned listings
         var urlTasks = transitionedListingIds.Select(listingId =>
@@ -293,13 +291,10 @@ public class JobOrchestrator
                     jobId, transitionedListingIds[i]);
             }
 
-            // Report progress every 10 listings
-            if ((i + 1) % 10 == 0 || i == transitionedListingIds.Count - 1)
-            {
-                await context.CallActivityAsync(
-                    nameof(UpdateScrapeRunProgressActivity),
-                    new UpdateProgressInput(scrapeInstanceId, ListingsProcessed: i + 1));
-            }
+            // Report progress after each listing for real-time updates
+            await context.CallActivityAsync(
+                nameof(UpdateScrapeRunProgressActivity),
+                new UpdateProgressInput(scrapeInstanceId, ListingsProcessed: i + 1));
         }
 
         if (soldListings.Count == 0)
