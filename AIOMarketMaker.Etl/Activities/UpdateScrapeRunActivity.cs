@@ -29,15 +29,31 @@ public class UpdateScrapeRunActivity
             return;
         }
 
-        run.CompletedUtc = DateTime.UtcNow;
-        run.Status = input.Success ? "Completed" : "Failed";
+        // Only mark as Completed/Failed if no listings are pending processing
+        // Blob triggers will mark as Completed when ListingsProcessed >= TotalListingsFound
+        if (!input.Success)
+        {
+            // Failed runs should be marked immediately
+            run.CompletedUtc = DateTime.UtcNow;
+            run.Status = "Failed";
+            run.ErrorMessage = input.ErrorMessage;
+        }
+        else if (run.CurrentPhase == "Completed" &&
+                 (run.TotalListingsFound == 0 || run.ListingsProcessed >= run.TotalListingsFound))
+        {
+            // Only mark complete when phase confirms all work is done
+            // This prevents premature completion when multiple jobs overwrite each other's progress
+            run.CompletedUtc = DateTime.UtcNow;
+            run.Status = "Completed";
+        }
+        // else: listings still being processed by blob triggers, leave status as Running
+
         run.ListingsAdded = input.ListingsAdded;
         run.ListingsSkipped = input.ListingsSkipped;
-        run.ErrorMessage = input.ErrorMessage;
 
         await _dbContext.SaveChangesAsync();
 
-        _logger.LogInformation("Updated ScrapeRun {Id} for instance {InstanceId}: {Status}, {Added} added, {Skipped} skipped",
-            run.Id, input.InstanceId, run.Status, run.ListingsAdded, run.ListingsSkipped);
+        _logger.LogInformation("Updated ScrapeRun {Id} for instance {InstanceId}: {Status}, {Added} added, {Skipped} skipped, {Processed}/{Total} processed",
+            run.Id, input.InstanceId, run.Status, run.ListingsAdded, run.ListingsSkipped, run.ListingsProcessed, run.TotalListingsFound);
     }
 }
