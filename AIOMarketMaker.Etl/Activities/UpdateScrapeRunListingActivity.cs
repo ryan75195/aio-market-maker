@@ -5,7 +5,7 @@ using AIOMarketMaker.Core.Data;
 
 namespace AIOMarketMaker.Etl.Activities;
 
-public record UpdateScrapeRunListingInput(int ScrapeRunId, string ListingId, string Status);
+public record UpdateScrapeRunListingInput(int ScrapeRunId, string ListingId, string Status, bool IsNewListing = false);
 
 public class UpdateScrapeRunListingActivity
 {
@@ -42,9 +42,14 @@ public class UpdateScrapeRunListingActivity
         // If completing, also increment ScrapeRun progress
         if (input.Status == "Complete")
         {
+            var addedIncrement = input.IsNewListing ? 1 : 0;
+            var skippedIncrement = input.IsNewListing ? 0 : 1;
+
             await _dbContext.Database.ExecuteSqlRawAsync(@"
                 UPDATE ScrapeRuns
                 SET ListingsProcessed = ListingsProcessed + 1,
+                    ListingsAdded = ListingsAdded + {1},
+                    ListingsSkipped = ListingsSkipped + {2},
                     Status = CASE WHEN ListingsProcessed + 1 >= TotalListingsFound
                                   AND TotalListingsFound > 0
                                   AND Status = 'Running' THEN 'Completed' ELSE Status END,
@@ -54,7 +59,7 @@ public class UpdateScrapeRunListingActivity
                     CurrentPhase = CASE WHEN ListingsProcessed + 1 >= TotalListingsFound
                                         AND TotalListingsFound > 0
                                         AND Status = 'Running' THEN 'Completed' ELSE CurrentPhase END
-                WHERE Id = {0}", input.ScrapeRunId);
+                WHERE Id = {0}", input.ScrapeRunId, addedIncrement, skippedIncrement);
         }
 
         _logger.LogInformation("Updated ScrapeRunListing {ListingId} to {Status}", input.ListingId, input.Status);

@@ -31,7 +31,7 @@ public class ProcessListingActivity
     }
 
     [Function(nameof(ProcessListingActivity))]
-    public async Task Run([ActivityTrigger] ProcessListingInput input)
+    public async Task<bool> Run([ActivityTrigger] ProcessListingInput input)
     {
         var container = _blobService.GetBlobContainerClient("html");
 
@@ -126,10 +126,14 @@ public class ProcessListingActivity
             _dbContext.Listings.Add(listing);
         }
 
+        var isNew = existing == null;
+
         await _dbContext.SaveChangesAsync();
 
         _logger.LogInformation(
-            "Processed listing {ListingId}: descriptionStatus={Status}",
-            input.ListingId, descriptionStatus);
+            "Processed listing {ListingId}: {Action}, descriptionStatus={Status}",
+            input.ListingId, isNew ? "added" : "updated", descriptionStatus);
+
+        return isNew;
     }
 }

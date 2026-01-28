@@ -161,13 +161,14 @@ public class ListingEtlOrchestrator
             HasDescription: state.HasDescription
         );
 
-        await context.CallActivityAsync(nameof(ProcessListingActivity), processInput);
+        var isNewListing = await context.CallActivityAsync<bool>(nameof(ProcessListingActivity), processInput);
 
         // Update junction table with completion status
         var updateInput = new UpdateScrapeRunListingInput(
             lookupResult.ScrapeRunId!.Value,
             input.ListingId,
-            "Complete"
+            "Complete",
+            IsNewListing: isNewListing
         );
 
         await context.CallActivityAsync(nameof(UpdateScrapeRunListingActivity), updateInput);
