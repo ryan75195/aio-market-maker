@@ -1,6 +1,8 @@
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
+using Microsoft.DurableTask;
 using Microsoft.DurableTask.Client;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using System.Net;
 using System.Text.Json;
@@ -45,34 +47,57 @@ public class StartScrapeTrigger
             }
         }
 
-        // Create ScrapeRun record
-        var scrapeRun = new ScrapeRun
+        // Get all enabled jobs
+        var enabledJobs = await _dbContext.ScrapeJobs
+            .Where(j => j.IsEnabled)
+            .Select(j => new { j.Id, j.SearchTerm })
+            .ToListAsync();
+
+        if (enabledJobs.Count == 0)
         {
-            InstanceId = null, // Will be set after orchestration starts
-            TriggerType = "Manual",
-            StartedUtc = DateTime.UtcNow,
-            Status = "Running"
-        };
-        _dbContext.ScrapeRuns.Add(scrapeRun);
-        await _dbContext.SaveChangesAsync();
+            _logger.LogInformation("No enabled jobs found");
+            var noJobsResponse = req.CreateResponse(HttpStatusCode.OK);
+            await noJobsResponse.WriteAsJsonAsync(new { message = "No enabled jobs", runs = Array.Empty<object>() });
+            return noJobsResponse;
+        }
 
-        // Start orchestration with runId
-        var orchestratorInput = new ScrapeOrchestratorInput(
-            scrapeRun.Id,
-            scrapeRequest?.MaxListingsToFetch,
-            scrapeRequest?.LookbackDays);
+        // Create a ScrapeRun for each enabled job
+        var startedRuns = new List<object>();
+        foreach (var job in enabledJobs)
+        {
+            var scrapeRun = new ScrapeRun
+            {
+                JobId = job.Id,
+                TriggerType = "Manual",
+                StartedUtc = DateTime.UtcNow,
+                Status = "Running"
+            };
+            _dbContext.ScrapeRuns.Add(scrapeRun);
+            await _dbContext.SaveChangesAsync();
 
-        var instanceId = await client.ScheduleNewOrchestrationInstanceAsync(
-            nameof(ScrapeOrchestrator), orchestratorInput);
+            // Start orchestration for this job
+            var instanceId = $"scrape-run-{scrapeRun.Id}";
+            var orchestratorInput = new JobOrchestratorInput(
+                job.Id,
+                instanceId,
+                scrapeRequest?.MaxListingsToFetch,
+                scrapeRequest?.LookbackDays);
 
-        // Update ScrapeRun with instanceId
-        scrapeRun.InstanceId = instanceId;
-        await _dbContext.SaveChangesAsync();
+            await client.ScheduleNewOrchestrationInstanceAsync(
+                nameof(JobOrchestrator), orchestratorInput,
+                new StartOrchestrationOptions { InstanceId = instanceId });
 
-        _logger.LogInformation("Started orchestration {InstanceId} for run {RunId}", instanceId, scrapeRun.Id);
+            scrapeRun.InstanceId = instanceId;
+            await _dbContext.SaveChangesAsync();
+
+            _logger.LogInformation("Started JobOrchestrator {InstanceId} for job {JobId}: {SearchTerm}",
+                instanceId, job.Id, job.SearchTerm);
+
+            startedRuns.Add(new { runId = scrapeRun.Id, instanceId, jobId = job.Id, searchTerm = job.SearchTerm });
+        }
 
         var response = req.CreateResponse(HttpStatusCode.Accepted);
-        await response.WriteAsJsonAsync(new { runId = scrapeRun.Id, instanceId });
+        await response.WriteAsJsonAsync(new { runs = startedRuns });
         return response;
     }
 
