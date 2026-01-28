@@ -1,5 +1,7 @@
 using Microsoft.Azure.Functions.Worker;
+using Microsoft.DurableTask;
 using Microsoft.DurableTask.Client;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using AIOMarketMaker.Etl.Orchestrators;
 using AIOMarketMaker.Etl.Models;
@@ -21,6 +23,7 @@ public class NightlyScrapeTrigger
 
     /// <summary>
     /// Timer trigger that starts the scrape orchestration nightly at 2 AM UTC.
+    /// Creates a separate ScrapeRun and JobOrchestrator for each enabled job.
     /// </summary>
     [Function("NightlyScrapeTrigger")]
     public async Task Run(
@@ -30,31 +33,51 @@ public class NightlyScrapeTrigger
     {
         _logger.LogInformation("Nightly scrape trigger fired at {Time}", DateTime.UtcNow);
 
-        // Create a ScrapeRun record to track this execution
-        var scrapeRun = new ScrapeRun
+        // Get all enabled jobs
+        var enabledJobs = await _dbContext.ScrapeJobs
+            .Where(j => j.IsEnabled)
+            .Select(j => new { j.Id, j.SearchTerm })
+            .ToListAsync();
+
+        if (enabledJobs.Count == 0)
         {
-            InstanceId = null, // Will be set after orchestration starts
-            TriggerType = "Nightly",
-            StartedUtc = DateTime.UtcNow,
-            Status = "Running"
-        };
-        _dbContext.ScrapeRuns.Add(scrapeRun);
-        await _dbContext.SaveChangesAsync();
+            _logger.LogInformation("No enabled jobs found for nightly scrape");
+            return;
+        }
 
-        // Start orchestration with runId
-        var orchestratorInput = new ScrapeOrchestratorInput(
-            scrapeRun.Id,
-            null, // Use default MaxListingsToFetch
-            null  // Use default LookbackDays
-        );
+        // Create a ScrapeRun for each enabled job
+        foreach (var job in enabledJobs)
+        {
+            var scrapeRun = new ScrapeRun
+            {
+                JobId = job.Id,
+                TriggerType = "Nightly",
+                StartedUtc = DateTime.UtcNow,
+                Status = "Running"
+            };
+            _dbContext.ScrapeRuns.Add(scrapeRun);
+            await _dbContext.SaveChangesAsync();
 
-        var instanceId = await client.ScheduleNewOrchestrationInstanceAsync(
-            nameof(ScrapeOrchestrator), orchestratorInput);
+            // Start orchestration for this job
+            var instanceId = $"scrape-run-{scrapeRun.Id}";
+            var orchestratorInput = new JobOrchestratorInput(
+                job.Id,
+                instanceId,
+                null, // Use default MaxListingsToFetch
+                null  // Use default LookbackDays
+            );
 
-        // Update ScrapeRun with instanceId
-        scrapeRun.InstanceId = instanceId;
-        await _dbContext.SaveChangesAsync();
+            await client.ScheduleNewOrchestrationInstanceAsync(
+                nameof(JobOrchestrator), orchestratorInput,
+                new StartOrchestrationOptions { InstanceId = instanceId });
 
-        _logger.LogInformation("Started nightly orchestration {InstanceId} for run {RunId}", instanceId, scrapeRun.Id);
+            scrapeRun.InstanceId = instanceId;
+            await _dbContext.SaveChangesAsync();
+
+            _logger.LogInformation("Started nightly JobOrchestrator {InstanceId} for job {JobId}: {SearchTerm}",
+                instanceId, job.Id, job.SearchTerm);
+        }
+
+        _logger.LogInformation("Nightly scrape started {Count} job orchestrations", enabledJobs.Count);
     }
 }
