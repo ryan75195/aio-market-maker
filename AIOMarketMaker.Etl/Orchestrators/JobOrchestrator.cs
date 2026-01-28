@@ -136,86 +136,38 @@ public class JobOrchestrator
                 return new JobResult(jobId, true, allListingIds.Count, null);
             }
 
-            // Report progress: Fetching with total count
+            // Step 4: Extract ScrapeRunId from scrapeInstanceId (format: "scrape-run-{id}")
+            var scrapeRunId = int.Parse(scrapeInstanceId.Split('-').Last());
+
+            // Step 5: Insert junction table entries for tracking
+            await context.CallActivityAsync(
+                nameof(InsertScrapeRunListingsActivity),
+                new InsertScrapeRunListingsInput(scrapeRunId, jobId, newListingIds));
+
+            logger.LogInformation("Job {JobId}: Inserted {Count} ScrapeRunListings entries", jobId, newListingIds.Count);
+
+            // Step 6: Submit all scrape jobs (fire-and-forget)
+            var submitResult = await context.CallActivityAsync<SubmitScrapeJobsResult>(
+                nameof(SubmitScrapeJobsActivity),
+                new SubmitScrapeJobsInput(newListingIds));
+
+            logger.LogInformation("Job {JobId}: Submitted {Submitted} scrape jobs ({Failed} failed)",
+                jobId, submitResult.SubmittedCount, submitResult.FailedCount);
+
+            // Step 7: Update phase to "Scraping" - individual listings will be processed
+            // by blob triggers when scrapes complete
             await context.CallActivityAsync(
                 nameof(UpdateScrapeRunProgressActivity),
                 new UpdateProgressInput(scrapeInstanceId,
                     TotalListingsFound: newListingIds.Count,
                     ListingsProcessed: 0,
-                    CurrentPhase: "Fetching"));
+                    CurrentPhase: "Scraping"));
 
-            // Step 4: Build listing URLs (fan out)
-            var urlTasks = newListingIds.Select(listingId =>
-                context.CallActivityAsync<string>(nameof(BuildUrlsActivity.BuildListingUrlActivity), listingId));
-            var listingUrls = await Task.WhenAll(urlTasks);
-
-            // Step 5: Fetch listings in batches to avoid overwhelming the orchestrator
-            // Processing all listings at once creates too many sub-orchestrators (gRPC limit)
-            const int batchSize = 50;
-            var allListings = new List<ListingData>();
-
-            for (int batchStart = 0; batchStart < newListingIds.Count; batchStart += batchSize)
-            {
-                var batchIds = newListingIds.Skip(batchStart).Take(batchSize).ToList();
-                var batchUrls = listingUrls.Skip(batchStart).Take(batchSize).ToList();
-
-                logger.LogInformation("Job {JobId}: Fetching batch {BatchNum}/{TotalBatches} ({Count} listings)",
-                    jobId, (batchStart / batchSize) + 1, (newListingIds.Count + batchSize - 1) / batchSize, batchIds.Count);
-
-                // Fan out within the batch - wrap each call to handle individual failures
-                var fetchTasks = batchIds.Select(async (listingId, i) =>
-                {
-                    try
-                    {
-                        return await context.CallSubOrchestratorAsync<ListingData?>(
-                            nameof(FetchListingOrchestrator),
-                            new FetchListingInput(listingId, batchUrls[i]));
-                    }
-                    catch (Exception ex)
-                    {
-                        logger.LogWarning(ex, "Job {JobId}: Failed to fetch listing {ListingId}", jobId, listingId);
-                        return null;
-                    }
-                });
-
-                var batchResults = await Task.WhenAll(fetchTasks);
-
-                // Collect successful results from this batch
-                allListings.AddRange(batchResults.Where(r => r != null).Cast<ListingData>());
-
-                logger.LogInformation("Job {JobId}: Batch complete, {Count} listings fetched so far",
-                    jobId, allListings.Count);
-
-                // Report progress after each batch
-                await context.CallActivityAsync(
-                    nameof(UpdateScrapeRunProgressActivity),
-                    new UpdateProgressInput(scrapeInstanceId, ListingsProcessed: allListings.Count));
-            }
-
-            logger.LogInformation("Job {JobId}: Fetched {Count} listing details total", jobId, allListings.Count);
-
-            if (allListings.Count > 0)
-            {
-                // Report progress: Saving
-                await context.CallActivityAsync(
-                    nameof(UpdateScrapeRunProgressActivity),
-                    new UpdateProgressInput(scrapeInstanceId, CurrentPhase: "Saving"));
-
-                await context.CallActivityAsync(
-                    nameof(SaveListingsActivity),
-                    new SaveListingsInput(jobId, allListings));
-            }
-
-            // Step 6: Update job timestamp
+            // Step 8: Update job timestamp
             await context.CallActivityAsync(nameof(UpdateJobTimestampActivity), jobId);
 
-            // Report progress: Completed
-            await context.CallActivityAsync(
-                nameof(UpdateScrapeRunProgressActivity),
-                new UpdateProgressInput(scrapeInstanceId, CurrentPhase: "Completed"));
-
-            logger.LogInformation("Job {JobId} completed: {TotalFound} found, {NewFetched} new",
-                jobId, allListingIds.Count, allListings.Count);
+            logger.LogInformation("Job {JobId} completed: {TotalFound} found, {NewCount} new listings submitted for scraping",
+                jobId, allListingIds.Count, newListingIds.Count);
 
             return new JobResult(jobId, true, allListingIds.Count, null);
         }
