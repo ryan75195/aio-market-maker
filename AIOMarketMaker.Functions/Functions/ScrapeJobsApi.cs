@@ -430,6 +430,29 @@ public class ScrapeJobsApi
     }
 
     /// <summary>
+    /// DELETE /api/data/all - Clear all scrape data (listings, run history, and junction table)
+    /// </summary>
+    [Function("ClearAllData")]
+    public async Task<HttpResponseData> ClearAllData(
+        [HttpTrigger(AuthorizationLevel.Function, "delete", Route = "data/all")] HttpRequestData req)
+    {
+        var listingsCount = await _dbContext.Listings.CountAsync();
+        var runsCount = await _dbContext.ScrapeRuns.CountAsync();
+
+        // Delete in correct order: Listings first (no FK deps), then ScrapeRuns (cascades to ScrapeRunListings)
+        if (listingsCount > 0)
+            await _dbContext.Database.ExecuteSqlRawAsync("DELETE FROM Listings");
+        if (runsCount > 0)
+            await _dbContext.Database.ExecuteSqlRawAsync("DELETE FROM ScrapeRuns");
+
+        _logger.LogInformation("Cleared all data: {Listings} listings, {Runs} scrape runs (+ cascaded ScrapeRunListings)", listingsCount, runsCount);
+
+        var response = req.CreateResponse(HttpStatusCode.OK);
+        await response.WriteAsJsonAsync(new { deletedListings = listingsCount, deletedRuns = runsCount });
+        return response;
+    }
+
+    /// <summary>
     /// GET /api/health - Health check endpoint
     /// </summary>
     [Function("HealthCheck")]
