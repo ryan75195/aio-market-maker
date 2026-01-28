@@ -227,6 +227,11 @@
                   <input v-model="settings.marketMakerApi.functionKey" type="password" placeholder="Leave blank for local">
                 </div>
                 <div class="form-group">
+                  <label>ETL API URL</label>
+                  <input v-model="settings.etlApi.baseUrl" placeholder="http://localhost:7072/api">
+                  <span class="hint">URL for the ETL Functions (scrape orchestration)</span>
+                </div>
+                <div class="form-group">
                   <label>Scraper API URL</label>
                   <input v-model="settings.scraperApi.baseUrl" placeholder="http://localhost:7126">
                 </div>

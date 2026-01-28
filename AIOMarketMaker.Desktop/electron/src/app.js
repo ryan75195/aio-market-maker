@@ -22,6 +22,7 @@ createApp({
       refreshInterval: null,
       settings: {
         marketMakerApi: { baseUrl: '', functionKey: '' },
+        etlApi: { baseUrl: '' },
         scraperApi: { baseUrl: '' },
         scraping: { maxListingsToFetch: null, defaultLookbackDays: 180 },
         storage: { connectionString: '' },
@@ -86,6 +87,27 @@ createApp({
       if (functionKey && functionKey !== 'your-function-key-here') {
         url.searchParams.set('code', functionKey);
       }
+
+      const response = await fetch(url.toString(), {
+        ...options,
+        headers: {
+          'Content-Type': 'application/json',
+          ...options.headers
+        }
+      });
+
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({ error: response.statusText }));
+        throw new Error(error.error || `HTTP ${response.status}`);
+      }
+
+      return response.json();
+    },
+
+    async etlApiCall(endpoint, options = {}) {
+      const baseUrl = this.config.etlApi?.baseUrl || 'http://localhost:7072/api';
+
+      const url = new URL(`${baseUrl}${endpoint}`);
 
       const response = await fetch(url.toString(), {
         ...options,
@@ -242,14 +264,18 @@ createApp({
           body.lookbackDays = this.settings.scraping.defaultLookbackDays;
         }
 
-        const data = await this.apiCall('/scrape/start', {
+        const data = await this.etlApiCall('/scrape/start', {
           method: 'POST',
           body: Object.keys(body).length > 0 ? JSON.stringify(body) : undefined
         });
         const result = this.toCamelCase(data);
         this.lastInstanceId = result.instanceId;
         localStorage.setItem('lastInstanceId', result.instanceId);
-        this.showToast(`Scrape started: ${result.instanceId}`, 'success');
+        this.showToast(`Scrape started (Run #${result.runId})`, 'success');
+
+        // Switch to history view to see progress
+        this.currentView = 'history';
+        await this.loadHistory();
       } catch (err) {
         this.showToast(`Failed to start scrape: ${err.message}`, 'error');
       } finally {
@@ -262,7 +288,7 @@ createApp({
       if (!confirm('Terminate this orchestration?')) return;
 
       try {
-        await this.apiCall(`/orchestration/${this.lastInstanceId}`, { method: 'DELETE' });
+        await this.etlApiCall(`/orchestration/${this.lastInstanceId}`, { method: 'DELETE' });
         this.showToast('Orchestration terminated', 'success');
         this.lastInstanceId = null;
         localStorage.removeItem('lastInstanceId');
@@ -275,7 +301,7 @@ createApp({
       if (!confirm('Purge all orchestrations from the last 7 days?')) return;
 
       try {
-        const data = await this.apiCall('/orchestration/purge', { method: 'POST' });
+        const data = await this.etlApiCall('/orchestration/purge', { method: 'POST' });
         const result = this.toCamelCase(data);
         this.showToast(`Purged ${result.purged} orchestrations`, 'success');
       } catch (err) {
@@ -337,7 +363,7 @@ createApp({
         if (this.currentView === 'history' && this.history.some(r => r.status === 'Running')) {
           this.loadHistory();
         }
-      }, 5000);
+      }, 2000);
     },
 
     stopAutoRefresh() {
