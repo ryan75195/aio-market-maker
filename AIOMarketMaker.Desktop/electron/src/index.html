@@ -167,6 +167,7 @@
             <thead>
               <tr>
                 <th>Started</th>
+                <th>Job</th>
                 <th>Trigger</th>
                 <th>Status</th>
                 <th>Phase</th>
@@ -177,6 +178,7 @@
             <tbody>
               <tr v-for="run in history" :key="run.id" :class="{ 'error-row': run.status === 'Failed' }">
                 <td>{{ formatDate(run.startedUtc) }}</td>
+                <td>{{ run.jobSearchTerm || 'All Jobs' }}</td>
                 <td>
                   <span class="trigger-badge" :class="run.triggerType.toLowerCase()">{{ run.triggerType }}</span>
                 </td>
@@ -195,7 +197,7 @@
                 <td class="number">{{ run.listingsAdded }}</td>
               </tr>
               <tr v-if="history.length === 0">
-                <td colspan="6" class="empty">No run history</td>
+                <td colspan="7" class="empty">No run history</td>
               </tr>
             </tbody>
           </table>
