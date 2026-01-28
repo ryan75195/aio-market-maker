@@ -28,7 +28,7 @@ public class JobOrchestrator
             // Step 1: Get job details (with runtime overrides if provided)
             var jobDetails = await context.CallActivityAsync<JobDetails>(
                 nameof(GetJobDetailsActivity),
-                new GetJobDetailsInput(jobId, input.MaxListingsToFetch, input.LookbackDays));
+                new GetJobDetailsInput(jobId, input.MaxSoldListings, input.MaxActiveListings, input.LookbackDays));
 
             if (jobDetails == null)
             {
@@ -68,7 +68,7 @@ public class JobOrchestrator
 
             // Step 2b: Detect and update Active→Sold transitions
             var statusUpdates = await DetectAndUpdateSoldListingsAsync(
-                context, jobId, scrapeInstanceId, soldListingIds, jobDetails.MaxListingsToFetch, logger);
+                context, jobId, scrapeInstanceId, soldListingIds, jobDetails.MaxSoldListings, logger);
 
             // Phase stays as "Searching" - no need to distinguish sold/active
             // (phase already set above)
@@ -110,20 +110,36 @@ public class JobOrchestrator
                 nameof(UpdateScrapeRunProgressActivity),
                 new UpdateProgressInput(scrapeInstanceId, CurrentPhase: "Filtering"));
 
-            // Step 3: Filter out existing listings
-            var newListingIds = await context.CallActivityAsync<List<string>>(
+            // Step 3: Filter out existing listings, applying limits separately
+            //         so sold listings don't consume the active quota
+            var newSoldIds = allListingIds.Where(id => soldListingIds.Contains(id)).ToList();
+            var newActiveIds = allListingIds.Where(id => !soldListingIds.Contains(id)).ToList();
+
+            var filteredSold = await context.CallActivityAsync<List<string>>(
                 nameof(FilterNewListingsActivity),
-                new FilterNewListingsInput(jobId, allListingIds));
+                new FilterNewListingsInput(jobId, newSoldIds));
+            var filteredActive = await context.CallActivityAsync<List<string>>(
+                nameof(FilterNewListingsActivity),
+                new FilterNewListingsInput(jobId, newActiveIds));
 
-            logger.LogInformation("Job {JobId}: {NewCount} new listings to fetch", jobId, newListingIds.Count);
-
-            // Apply max listings limit if configured (useful for dev/testing)
-            if (jobDetails.MaxListingsToFetch.HasValue && newListingIds.Count > jobDetails.MaxListingsToFetch.Value)
+            // Apply limits independently
+            if (jobDetails.MaxSoldListings.HasValue && filteredSold.Count > jobDetails.MaxSoldListings.Value)
             {
-                logger.LogInformation("Job {JobId}: Limiting to {Max} listings (MaxListingsToFetch config)",
-                    jobId, jobDetails.MaxListingsToFetch.Value);
-                newListingIds = newListingIds.Take(jobDetails.MaxListingsToFetch.Value).ToList();
+                logger.LogInformation("Job {JobId}: Limiting sold to {Max} listings (MaxSoldListings config)",
+                    jobId, jobDetails.MaxSoldListings.Value);
+                filteredSold = filteredSold.Take(jobDetails.MaxSoldListings.Value).ToList();
             }
+            if (jobDetails.MaxActiveListings.HasValue && filteredActive.Count > jobDetails.MaxActiveListings.Value)
+            {
+                logger.LogInformation("Job {JobId}: Limiting active to {Max} listings (MaxActiveListings config)",
+                    jobId, jobDetails.MaxActiveListings.Value);
+                filteredActive = filteredActive.Take(jobDetails.MaxActiveListings.Value).ToList();
+            }
+
+            var newListingIds = filteredSold.Concat(filteredActive).ToList();
+
+            logger.LogInformation("Job {JobId}: {NewCount} new listings to fetch ({SoldNew} sold, {ActiveNew} active)",
+                jobId, newListingIds.Count, filteredSold.Count, filteredActive.Count);
 
             if (newListingIds.Count == 0)
             {
@@ -144,22 +160,22 @@ public class JobOrchestrator
 
             logger.LogInformation("Job {JobId}: Inserted {Count} ScrapeRunListings entries", jobId, newListingIds.Count);
 
-            // Step 6: Submit all scrape jobs (fire-and-forget)
-            var submitResult = await context.CallActivityAsync<SubmitScrapeJobsResult>(
-                nameof(SubmitScrapeJobsActivity),
-                new SubmitScrapeJobsInput(newListingIds));
-
-            logger.LogInformation("Job {JobId}: Submitted {Submitted} scrape jobs ({Failed} failed)",
-                jobId, submitResult.SubmittedCount, submitResult.FailedCount);
-
-            // Step 7: Update phase to "Indexing" - individual listings will be processed
-            // by blob triggers when scrapes complete
+            // Step 6: Set TotalListingsFound BEFORE submitting jobs to prevent race condition
+            // where blob triggers auto-complete the run against TotalListingsFound=0
             await context.CallActivityAsync(
                 nameof(UpdateScrapeRunProgressActivity),
                 new UpdateProgressInput(scrapeInstanceId,
                     TotalListingsFound: newListingIds.Count,
                     ListingsProcessed: 0,
                     CurrentPhase: "Indexing"));
+
+            // Step 7: Submit all scrape jobs (fire-and-forget)
+            var submitResult = await context.CallActivityAsync<SubmitScrapeJobsResult>(
+                nameof(SubmitScrapeJobsActivity),
+                new SubmitScrapeJobsInput(newListingIds));
+
+            logger.LogInformation("Job {JobId}: Submitted {Submitted} scrape jobs ({Failed} failed)",
+                jobId, submitResult.SubmittedCount, submitResult.FailedCount);
 
             // Step 8: Update job timestamp
             await context.CallActivityAsync(nameof(UpdateJobTimestampActivity), jobId);
@@ -172,6 +188,19 @@ public class JobOrchestrator
         catch (Exception ex)
         {
             logger.LogError(ex, "Job {JobId} failed with exception", jobId);
+
+            try
+            {
+                await context.CallActivityAsync(
+                    nameof(UpdateScrapeRunActivity),
+                    new UpdateScrapeRunInput(scrapeInstanceId, false, 0, 0, ex.Message));
+            }
+            catch (Exception updateEx)
+            {
+                logger.LogError(updateEx, "Job {JobId}: Failed to update ScrapeRun status for instance {InstanceId}",
+                    jobId, scrapeInstanceId);
+            }
+
             return new JobResult(jobId, false, 0, ex.Message);
         }
     }
