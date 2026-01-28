@@ -19,6 +19,11 @@ public class ScrapeRun
     public string TriggerType { get; set; } = "Manual";
 
     /// <summary>
+    /// The scrape job this run is for (null for legacy runs that processed all jobs)
+    /// </summary>
+    public int? JobId { get; set; }
+
+    /// <summary>
     /// When the scrape run started
     /// </summary>
     public DateTime StartedUtc { get; set; }
