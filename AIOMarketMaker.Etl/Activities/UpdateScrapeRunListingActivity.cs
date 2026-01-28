@@ -46,9 +46,14 @@ public class UpdateScrapeRunListingActivity
                 UPDATE ScrapeRuns
                 SET ListingsProcessed = ListingsProcessed + 1,
                     Status = CASE WHEN ListingsProcessed + 1 >= TotalListingsFound
+                                  AND TotalListingsFound > 0
                                   AND Status = 'Running' THEN 'Completed' ELSE Status END,
                     CompletedUtc = CASE WHEN ListingsProcessed + 1 >= TotalListingsFound
-                                        AND Status = 'Running' THEN datetime('now') ELSE CompletedUtc END
+                                        AND TotalListingsFound > 0
+                                        AND Status = 'Running' THEN GETUTCDATE() ELSE CompletedUtc END,
+                    CurrentPhase = CASE WHEN ListingsProcessed + 1 >= TotalListingsFound
+                                        AND TotalListingsFound > 0
+                                        AND Status = 'Running' THEN 'Completed' ELSE CurrentPhase END
                 WHERE Id = {0}", input.ScrapeRunId);
         }
 
