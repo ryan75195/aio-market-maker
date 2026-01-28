@@ -28,17 +28,35 @@ public class EnqueueScrapeRetryActivity
     [Function(nameof(EnqueueScrapeRetryActivity))]
     public async Task Run([ActivityTrigger] EnqueueScrapeRetryInput input)
     {
+        if (string.IsNullOrEmpty(input.ListingId) || string.IsNullOrEmpty(input.FileKey))
+        {
+            _logger.LogWarning(
+                "EnqueueScrapeRetryActivity: Invalid input - ListingId={ListingId}, FileKey={FileKey}",
+                input.ListingId, input.FileKey);
+            throw new ArgumentException("ListingId and FileKey are required");
+        }
+
         var url = input.FileKey == "listing"
             ? _urlBuilder.BuildListingUrl(input.ListingId)
             : _urlBuilder.BuildDescriptionUrl(input.ListingId);
 
-        _logger.LogInformation(
-            "Enqueuing retry scrape for {ListingId}/{FileKey}: {Url}",
-            input.ListingId, input.FileKey, url);
+        try
+        {
+            _logger.LogInformation(
+                "EnqueueScrapeRetryActivity: Enqueuing retry scrape for {ListingId}/{FileKey}: {Url}",
+                input.ListingId, input.FileKey, url);
 
-        await _webScraper.NewJobAsync(
-            new[] { url },
-            groupId: input.ListingId,
-            fileKey: input.FileKey);
+            await _webScraper.NewJobAsync(
+                new[] { url },
+                groupId: input.ListingId,
+                fileKey: input.FileKey);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex,
+                "EnqueueScrapeRetryActivity: Failed to enqueue retry for {ListingId}/{FileKey}",
+                input.ListingId, input.FileKey);
+            throw;
+        }
     }
 }
