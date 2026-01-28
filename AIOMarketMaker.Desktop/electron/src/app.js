@@ -24,7 +24,7 @@ createApp({
         marketMakerApi: { baseUrl: '', functionKey: '' },
         etlApi: { baseUrl: '' },
         scraperApi: { baseUrl: '' },
-        scraping: { maxListingsToFetch: null, defaultLookbackDays: 180 },
+        scraping: { maxSoldListings: null, maxActiveListings: null, defaultLookbackDays: 180 },
         storage: { connectionString: '' },
         openAi: { apiKey: '', model: '' },
         pinecone: { apiKey: '', indexName: '' }
@@ -257,8 +257,11 @@ createApp({
       this.loading = true;
       try {
         const body = {};
-        if (this.settings.scraping?.maxListingsToFetch) {
-          body.maxListingsToFetch = this.settings.scraping.maxListingsToFetch;
+        if (this.settings.scraping?.maxSoldListings) {
+          body.maxSoldListings = this.settings.scraping.maxSoldListings;
+        }
+        if (this.settings.scraping?.maxActiveListings) {
+          body.maxActiveListings = this.settings.scraping.maxActiveListings;
         }
         if (this.settings.scraping?.defaultLookbackDays) {
           body.lookbackDays = this.settings.scraping.defaultLookbackDays;
@@ -306,6 +309,26 @@ createApp({
         this.showToast(`Purged ${result.purged} orchestrations`, 'success');
       } catch (err) {
         this.showToast(`Failed to purge: ${err.message}`, 'error');
+      }
+    },
+
+    async clearAllData() {
+      if (!confirm('Delete ALL scrape data (listings, run history, and tracking data)? This cannot be undone.')) return;
+
+      this.loading = true;
+      try {
+        const data = await this.apiCall('/data/all', { method: 'DELETE' });
+        const result = this.toCamelCase(data);
+        this.showToast(`Cleared ${result.deletedListings} listings and ${result.deletedRuns} history records`, 'success');
+        if (this.currentView === 'history') {
+          await this.loadHistory();
+        } else if (this.currentView === 'opportunities') {
+          await this.loadOpportunities();
+        }
+      } catch (err) {
+        this.showToast(`Failed to clear data: ${err.message}`, 'error');
+      } finally {
+        this.loading = false;
       }
     },
 

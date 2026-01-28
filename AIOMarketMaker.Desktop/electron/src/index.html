@@ -147,10 +147,11 @@
 
             <div class="card">
               <h3>Clear Data</h3>
-              <p>Remove all listings and/or run history from the database.</p>
+              <p>Remove scrape data from the database.</p>
               <div class="button-group">
-                <button class="btn danger" @click="clearListings" :disabled="loading">Clear Listings</button>
-                <button class="btn danger" @click="clearHistory" :disabled="loading">Clear History</button>
+                <button class="btn danger" @click="clearAllData" :disabled="loading">Reset All Data</button>
+                <button class="btn danger small" @click="clearListings" :disabled="loading">Listings Only</button>
+                <button class="btn danger small" @click="clearHistory" :disabled="loading">History Only</button>
               </div>
             </div>
           </div>
@@ -248,8 +249,12 @@
               </h3>
               <div class="section-content" v-show="!collapsedSections.scraping">
                 <div class="form-group">
-                  <label>Max Listings to Fetch <span class="hint">(blank = unlimited)</span></label>
-                  <input v-model.number="settings.scraping.maxListingsToFetch" type="number" placeholder="10">
+                  <label>Max Sold Listings <span class="hint">(blank = unlimited)</span></label>
+                  <input v-model.number="settings.scraping.maxSoldListings" type="number" placeholder="100">
+                </div>
+                <div class="form-group">
+                  <label>Max Active Listings <span class="hint">(blank = unlimited)</span></label>
+                  <input v-model.number="settings.scraping.maxActiveListings" type="number" placeholder="100">
                 </div>
                 <div class="form-group">
                   <label>Default Lookback Days</label>
