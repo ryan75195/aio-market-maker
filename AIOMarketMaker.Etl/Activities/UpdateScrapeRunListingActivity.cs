@@ -5,7 +5,12 @@ using AIOMarketMaker.Core.Data;
 
 namespace AIOMarketMaker.Etl.Activities;
 
-public record UpdateScrapeRunListingInput(int ScrapeRunId, string ListingId, string Status, bool IsNewListing = false);
+public record UpdateScrapeRunListingInput(
+    int ScrapeRunId,
+    string ListingId,
+    string Status,
+    bool IsNewListing = false,
+    string? ErrorMessage = null);
 
 public class UpdateScrapeRunListingActivity
 {
@@ -37,13 +42,18 @@ public class UpdateScrapeRunListingActivity
             mapping.CompletedUtc = DateTime.UtcNow;
         }
 
+        if (input.Status == "Failed" && input.ErrorMessage != null)
+        {
+            mapping.ErrorMessage = input.ErrorMessage;
+        }
+
         await _dbContext.SaveChangesAsync();
 
-        // If completing, also increment ScrapeRun progress
-        if (input.Status == "Complete")
+        // If completing or failing, increment ScrapeRun progress so the run can finish
+        if (input.Status == "Complete" || input.Status == "Failed")
         {
-            var addedIncrement = input.IsNewListing ? 1 : 0;
-            var skippedIncrement = input.IsNewListing ? 0 : 1;
+            var addedIncrement = input.Status == "Complete" && input.IsNewListing ? 1 : 0;
+            var skippedIncrement = input.Status == "Complete" && !input.IsNewListing ? 1 : 0;
 
             await _dbContext.Database.ExecuteSqlRawAsync(@"
                 UPDATE ScrapeRuns
