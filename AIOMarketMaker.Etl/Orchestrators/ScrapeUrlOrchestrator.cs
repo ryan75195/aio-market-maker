@@ -13,8 +13,8 @@ namespace AIOMarketMaker.Etl.Orchestrators;
 /// </summary>
 public class ScrapeUrlOrchestrator
 {
-    private const int PollIntervalSeconds = 10;
-    private const int MaxPollAttempts = 120; // 20 minutes max wait
+    private const int PollIntervalSeconds = 3;
+    private const int MaxPollAttempts = 400; // 20 minutes max wait
 
     [Function(nameof(ScrapeUrlOrchestrator))]
     public async Task<string?> RunOrchestrator(
@@ -88,9 +88,10 @@ public class ScrapeUrlOrchestrator
         }
 
         // Step 4: Fetch the scraped HTML from blob storage
+        // Pass GroupId/FileKey so it can retrieve from the simple blob path format
         var html = await context.CallActivityAsync<string?>(
             nameof(GetScrapedHtmlActivity),
-            new GetScrapedHtmlInput(jobId));
+            new GetScrapedHtmlInput(jobId, input.GroupId, input.FileKey));
 
         if (string.IsNullOrEmpty(html))
         {
