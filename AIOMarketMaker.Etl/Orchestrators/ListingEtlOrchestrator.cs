@@ -69,6 +69,91 @@ public class ListingEtlOrchestrator
             }
         }
 
+        // Handle missing blobs with retry logic
+        if (!state.HasListing || !state.HasDescription)
+        {
+            var missingBlob = !state.HasListing ? "listing" : "description";
+
+            // Check retry count
+            var retryResult = await context.CallActivityAsync<IncrementRetryCountResult>(
+                nameof(IncrementRetryCountActivity),
+                new IncrementRetryCountInput(lookupResult.ScrapeRunId!.Value, input.ListingId));
+
+            if (retryResult.NewRetryCount > 1)
+            {
+                // Max retries exceeded - mark as failed
+                logger.LogWarning(
+                    "Max retries exceeded for {ListingId}/{MissingBlob}, marking as Failed",
+                    input.ListingId, missingBlob);
+
+                var failedInput = new UpdateScrapeRunListingInput(
+                    lookupResult.ScrapeRunId!.Value,
+                    input.ListingId,
+                    "Failed"
+                );
+                await context.CallActivityAsync(nameof(UpdateScrapeRunListingActivity), failedInput);
+                return;
+            }
+
+            // Re-enqueue the missing blob for retry
+            logger.LogInformation(
+                "Re-enqueueing {MissingBlob} scrape for {ListingId} (retry {RetryCount})",
+                missingBlob, input.ListingId, retryResult.NewRetryCount);
+
+            await context.CallActivityAsync(
+                nameof(EnqueueScrapeRetryActivity),
+                new EnqueueScrapeRetryInput(input.ListingId, missingBlob));
+
+            // Wait again for the blob
+            var retryTimeout = context.CurrentUtcDateTime.AddMinutes(TimeoutMinutes);
+            using var retryCts = new CancellationTokenSource();
+
+            var retryTimeoutTask = context.CreateTimer(retryTimeout, retryCts.Token);
+            var retryEventName = missingBlob == "listing" ? "listing-ready" : "description-ready";
+            var retryEvent = context.WaitForExternalEvent<bool>(retryEventName);
+
+            var retryWinner = await Task.WhenAny(retryTimeoutTask, retryEvent);
+
+            if (retryWinner == retryEvent)
+            {
+                retryCts.Cancel();
+                logger.LogInformation("Retry blob arrived for {ListingId}/{MissingBlob}", input.ListingId, missingBlob);
+
+                // Re-check blob state
+                state = await context.CallActivityAsync<BlobState>(nameof(CheckBlobsActivity), input);
+            }
+            else
+            {
+                logger.LogWarning(
+                    "Retry timeout for {ListingId}/{MissingBlob}, marking as Failed",
+                    input.ListingId, missingBlob);
+
+                var failedInput = new UpdateScrapeRunListingInput(
+                    lookupResult.ScrapeRunId!.Value,
+                    input.ListingId,
+                    "Failed"
+                );
+                await context.CallActivityAsync(nameof(UpdateScrapeRunListingActivity), failedInput);
+                return;
+            }
+        }
+
+        // Final check - if listing still missing after retry, fail
+        if (!state.HasListing)
+        {
+            logger.LogWarning(
+                "Listing blob still missing for {ListingId} after retry, marking as Failed",
+                input.ListingId);
+
+            var failedInput = new UpdateScrapeRunListingInput(
+                lookupResult.ScrapeRunId!.Value,
+                input.ListingId,
+                "Failed"
+            );
+            await context.CallActivityAsync(nameof(UpdateScrapeRunListingActivity), failedInput);
+            return;
+        }
+
         // Process listing (with or without description)
         var processInput = new ProcessListingInput(
             input.ListingId,
