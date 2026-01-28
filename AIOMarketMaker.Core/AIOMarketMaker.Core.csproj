@@ -20,7 +20,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <EmbeddedResource Include="Data\Migrations\*.sql" />
+    <EmbeddedResource Include="Data\Migrations\**\*.sql" />
   </ItemGroup>
 
   <ItemGroup>

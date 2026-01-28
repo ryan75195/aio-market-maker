@@ -41,6 +41,11 @@ public class ScrapeRunListing
     /// </summary>
     public int RetryCount { get; set; } = 0;
 
+    /// <summary>
+    /// Error message explaining why processing failed (null if successful)
+    /// </summary>
+    public string? ErrorMessage { get; set; }
+
     // Navigation properties
 
     /// <summary>

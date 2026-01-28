@@ -106,6 +106,7 @@ public class EtlDbContext : DbContext
             entity.Property(e => e.ListingId).IsRequired().HasMaxLength(20);
             entity.Property(e => e.Status).HasMaxLength(20).HasDefaultValue("Pending");
             entity.Property(e => e.CreatedUtc).HasDefaultValueSql(dateDefaultSql);
+            entity.Property(e => e.ErrorMessage).HasMaxLength(500);
 
             entity.HasIndex(e => e.ListingId);
             entity.HasIndex(e => new { e.ScrapeRunId, e.Status });
