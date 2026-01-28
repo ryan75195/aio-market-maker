@@ -257,6 +257,10 @@ public class ScrapeJobsApi
             {
                 r.Id,
                 r.InstanceId,
+                r.JobId,
+                JobSearchTerm = r.JobId != null
+                    ? _dbContext.ScrapeJobs.Where(j => j.Id == r.JobId).Select(j => j.SearchTerm).FirstOrDefault()
+                    : null,
                 r.TriggerType,
                 r.StartedUtc,
                 r.CompletedUtc,
