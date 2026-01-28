@@ -36,6 +36,11 @@ public class ScrapeRunListing
     /// </summary>
     public DateTime? CompletedUtc { get; set; }
 
+    /// <summary>
+    /// Number of ETL retry attempts for this listing (max 1)
+    /// </summary>
+    public int RetryCount { get; set; } = 0;
+
     // Navigation properties
 
     /// <summary>
