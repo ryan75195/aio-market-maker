@@ -54,12 +54,8 @@ public class ListingEtlOrchestrator
 
             if (winner == partnerEvent)
             {
-                cts.Cancel(); // Cancel the timer
+                cts.Cancel();
                 logger.LogInformation("Partner blob arrived for listing {ListingId}", input.ListingId);
-
-                // Re-check blob state after event
-                state = await context.CallActivityAsync<BlobState>(
-                    nameof(CheckBlobsActivity), input);
             }
             else
             {
@@ -67,6 +63,10 @@ public class ListingEtlOrchestrator
                     "Timeout waiting for {MissingBlob} blob for listing {ListingId}",
                     state.MissingBlob, input.ListingId);
             }
+
+            // Always re-check blob state after wait (blob may have arrived without trigger firing)
+            state = await context.CallActivityAsync<BlobState>(
+                nameof(CheckBlobsActivity), input);
         }
 
         // Handle missing blobs with retry logic
@@ -81,17 +81,12 @@ public class ListingEtlOrchestrator
 
             if (retryResult.NewRetryCount > 1)
             {
-                // Max retries exceeded - mark as failed
                 logger.LogWarning(
                     "Max retries exceeded for {ListingId}/{MissingBlob}, marking as Failed",
                     input.ListingId, missingBlob);
 
-                var failedInput = new UpdateScrapeRunListingInput(
-                    lookupResult.ScrapeRunId!.Value,
-                    input.ListingId,
-                    "Failed"
-                );
-                await context.CallActivityAsync(nameof(UpdateScrapeRunListingActivity), failedInput);
+                await MarkFailed(context, lookupResult.ScrapeRunId!.Value, input.ListingId,
+                    $"Missing {missingBlob} blob after {retryResult.NewRetryCount} retries");
                 return;
             }
 
@@ -117,41 +112,38 @@ public class ListingEtlOrchestrator
             if (retryWinner == retryEvent)
             {
                 retryCts.Cancel();
-                logger.LogInformation("Retry blob arrived for {ListingId}/{MissingBlob}", input.ListingId, missingBlob);
-
-                // Re-check blob state
-                state = await context.CallActivityAsync<BlobState>(nameof(CheckBlobsActivity), input);
+                logger.LogInformation("Retry blob arrived for {ListingId}/{MissingBlob}",
+                    input.ListingId, missingBlob);
             }
             else
             {
                 logger.LogWarning(
-                    "Retry timeout for {ListingId}/{MissingBlob}, marking as Failed",
+                    "Retry timeout for {ListingId}/{MissingBlob}",
                     input.ListingId, missingBlob);
+            }
 
-                var failedInput = new UpdateScrapeRunListingInput(
-                    lookupResult.ScrapeRunId!.Value,
-                    input.ListingId,
-                    "Failed"
-                );
-                await context.CallActivityAsync(nameof(UpdateScrapeRunListingActivity), failedInput);
+            // Always re-check blob state after retry wait
+            state = await context.CallActivityAsync<BlobState>(nameof(CheckBlobsActivity), input);
+
+            // If listing blob still missing after retry, fail
+            if (!state.HasListing)
+            {
+                logger.LogWarning(
+                    "Listing blob still missing for {ListingId} after retry, marking as Failed",
+                    input.ListingId);
+
+                await MarkFailed(context, lookupResult.ScrapeRunId!.Value, input.ListingId,
+                    "Missing listing blob after timeout and retry");
                 return;
             }
-        }
 
-        // Final check - if listing still missing after retry, fail
-        if (!state.HasListing)
-        {
-            logger.LogWarning(
-                "Listing blob still missing for {ListingId} after retry, marking as Failed",
-                input.ListingId);
-
-            var failedInput = new UpdateScrapeRunListingInput(
-                lookupResult.ScrapeRunId!.Value,
-                input.ListingId,
-                "Failed"
-            );
-            await context.CallActivityAsync(nameof(UpdateScrapeRunListingActivity), failedInput);
-            return;
+            // If only description missing, proceed without it (description is optional)
+            if (!state.HasDescription)
+            {
+                logger.LogWarning(
+                    "Description blob still missing for {ListingId} after retry, proceeding without it",
+                    input.ListingId);
+            }
         }
 
         // Process listing (with or without description)
@@ -176,5 +168,20 @@ public class ListingEtlOrchestrator
         logger.LogInformation(
             "ETL orchestration completed for listing {ListingId} (hasDescription={HasDescription})",
             input.ListingId, state.HasDescription);
+    }
+
+    private static async Task MarkFailed(
+        TaskOrchestrationContext context,
+        int scrapeRunId,
+        string listingId,
+        string errorMessage)
+    {
+        var failedInput = new UpdateScrapeRunListingInput(
+            scrapeRunId,
+            listingId,
+            "Failed",
+            ErrorMessage: errorMessage
+        );
+        await context.CallActivityAsync(nameof(UpdateScrapeRunListingActivity), failedInput);
     }
 }
