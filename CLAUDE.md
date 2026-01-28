@@ -108,15 +108,21 @@ func start --cwd AIOMarketMaker
 ## Important Configuration
 
 ### local.settings.json
-Both `AIOMarketMaker.Api` and `AIOMarketMaker.Etl` require `local.settings.json` with:
+Both `AIOMarketMaker.Functions` and `AIOMarketMaker.Etl` require `local.settings.json`.
+
+**ETL local.settings.json** (key settings):
 ```json
 {
   "Values": {
-    "StorageConnectionString": "UseDevelopmentStorage=true",
-    ...
+    "AzureWebJobsStorage": "UseDevelopmentStorage=true",
+    "SqlConnectionString": "Server=(localdb)\\MSSQLLocalDB;Database=AIOMarketMaker;...",
+    "Scraping:MaxListingsToFetch": "100",
+    "Scraping:DefaultLookbackDays": "180"
   }
 }
 ```
+- Use `SqlConnectionString` for SQL Server or `SqliteConnectionString` for SQLite (not both)
+- `Scraping:MaxListingsToFetch` limits listings per job (can be overridden via UI Settings)
 
 ### External Dependencies
 - The external web scraper service must be running on `http://localhost:7126`
@@ -130,6 +136,13 @@ AIOMarketMaker depends on AIOWebScraper for HTML fetching. Start it before runni
 cd ../AIOWebScraper/ScraperWorker
 dotnet run -- --dedicated-mode
 # Runs on http://localhost:5000, proxied via Azure Functions on 7126
+```
+
+### Clearing Azurite Queues
+To clear the scrape work queue during development:
+```bash
+az storage message clear --queue-name "scrape-work" \
+  --connection-string "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;QueueEndpoint=http://127.0.0.1:10001/devstoreaccount1;"
 ```
 
 ### Debugging Failed Scrapes
@@ -229,9 +242,16 @@ curl "https://YOUR-FUNCTION-APP.azurewebsites.net/runtime/webhooks/durabletask/i
 ### Durable Functions Orchestration Debugging
 
 **Key Orchestrators:**
-- `ScrapeOrchestrator` - Main entry point, coordinates search + listing scraping
-- `JobOrchestrator` - Manages individual scrape jobs
+- `JobOrchestrator` - Main orchestrator, one per enabled job with isolated ScrapeRun
 - `ScrapeUrlOrchestrator` - Handles single URL scraping with retry
+- `ScrapeOrchestrator` - ARCHIVED (was single-run-for-all-jobs, now replaced by per-job architecture)
+
+**Per-Job ScrapeRuns Architecture:**
+Each enabled job gets its own `ScrapeRun` record with isolated progress tracking:
+- `StartScrapeTrigger` creates separate ScrapeRun per job (with `JobId` foreign key)
+- Each run has independent `CurrentPhase`, `TotalListingsFound`, `ListingsProcessed`
+- History API returns `JobId` and `JobSearchTerm` for each run
+- Prevents race conditions where multiple jobs overwrote each other's progress
 
 **Poison Message Debugging:**
 When orchestrations fail repeatedly, messages move to poison queues:
@@ -293,19 +313,23 @@ traces
 The SQLite database (`etl.db`) contains valuable production data. **NEVER** suggest deleting or recreating the database to fix schema issues. Always use migrations instead.
 
 ### Migration System
-This project uses a custom SQL migration system located in `AIOMarketMaker.Etl/Data/Migrations/`:
-- Migrations are plain `.sql` files with sequential numbering: `001_InitialCreate.sql`, `002_CreateProductsTable.sql`, etc.
-- The `MigrationRunner` class automatically applies pending migrations on startup
+This project uses a custom SQL migration system with **embedded resources**:
+- **SQLite migrations**: `AIOMarketMaker.Core/Data/Migrations/*.sql` (embedded in Core assembly)
+- **SQL Server migrations**: `AIOMarketMaker.Core/Data/Migrations/SqlServer/*.sql` (for Azure deployment)
+- The `MigrationRunner` in `AIOMarketMaker.Core.Data.Migrations` applies pending migrations on startup
 - Applied migrations are tracked in the `__MigrationHistory` table
+- **IMPORTANT**: After adding a migration file, rebuild the Core project to embed it
 
 ### Adding New Tables/Schema Changes
 When adding new EF Core entities or modifying the schema:
-1. Create the model class in `AIOMarketMaker.Etl/Data/Models/`
+1. Create the model class in `AIOMarketMaker.Core/Data/Models/`
 2. Add the `DbSet<T>` to `EtlDbContext`
 3. Configure the entity in `OnModelCreating()`
-4. **Create a new migration SQL file** in `Data/Migrations/` with the next sequence number
-5. Use `CREATE TABLE IF NOT EXISTS` and `CREATE INDEX IF NOT EXISTS` for idempotency
-6. The migration will be applied automatically on next application restart
+4. **Create migration SQL file** in `AIOMarketMaker.Core/Data/Migrations/` with next sequence number
+5. **Create SQL Server version** in `SqlServer/` subfolder with idempotent syntax (IF NOT EXISTS)
+6. Use `CREATE TABLE IF NOT EXISTS` and `CREATE INDEX IF NOT EXISTS` for idempotency
+7. **Rebuild Core project** to embed the new migration
+8. The migration will be applied automatically on next application restart
 
 ### Example Migration Format
 ```sql
