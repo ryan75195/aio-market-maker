@@ -172,7 +172,7 @@ public class JobOrchestrator
             // Step 7: Submit all scrape jobs (fire-and-forget)
             var submitResult = await context.CallActivityAsync<SubmitScrapeJobsResult>(
                 nameof(SubmitScrapeJobsActivity),
-                new SubmitScrapeJobsInput(newListingIds));
+                new SubmitScrapeJobsInput(scrapeRunId, newListingIds));
 
             logger.LogInformation("Job {JobId}: Submitted {Submitted} scrape jobs ({Failed} failed)",
                 jobId, submitResult.SubmittedCount, submitResult.FailedCount);
