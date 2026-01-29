@@ -11,3 +11,5 @@ public record StaleListingInfo(
 public record FindStalePendingListingsResult(List<StaleListingInfo> StaleListings);
 
 public record StartOrchestrationInput(int ScrapeRunId, string ListingId);
+
+public record StartSweepInput(int ScrapeRunId, string InstanceId);
