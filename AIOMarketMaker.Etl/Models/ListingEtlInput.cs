@@ -113,7 +113,7 @@ public record ScrapeUrlInput(
 );
 
 // Batch scrape job submission DTOs
-public record SubmitScrapeJobsInput(List<string> ListingIds);
+public record SubmitScrapeJobsInput(int ScrapeRunId, List<string> ListingIds);
 public record SubmitScrapeJobsResult(int SubmittedCount, int FailedCount);
 
 // Parsing DTOs
