@@ -21,8 +21,8 @@ public class CheckBlobsActivity
     {
         var container = _blobService.GetBlobContainerClient("html");
 
-        var listingBlobPath = $"{input.ListingId}/listing.html";
-        var descriptionBlobPath = $"{input.ListingId}/description.html";
+        var listingBlobPath = $"{input.ScrapeRunId}/{input.ListingId}/listing.html";
+        var descriptionBlobPath = $"{input.ScrapeRunId}/{input.ListingId}/description.html";
 
         var listingBlob = container.GetBlobClient(listingBlobPath);
         var descriptionBlob = container.GetBlobClient(descriptionBlobPath);
@@ -31,8 +31,8 @@ public class CheckBlobsActivity
         var hasDescription = await descriptionBlob.ExistsAsync();
 
         _logger.LogInformation(
-            "Blob check for {ListingId}: listing={HasListing}, description={HasDescription}",
-            input.ListingId, hasListing.Value, hasDescription.Value);
+            "Blob check for ScrapeRun {ScrapeRunId}, Listing {ListingId}: listing={HasListing}, description={HasDescription}",
+            input.ScrapeRunId, input.ListingId, hasListing.Value, hasDescription.Value);
 
         string? missingBlob = null;
         if (!hasListing.Value) missingBlob = "listing";
