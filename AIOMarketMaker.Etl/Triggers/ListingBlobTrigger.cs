@@ -33,10 +33,19 @@ public class ListingBlobTrigger
                 new ListingEtlInput(listingId, TriggerSource.Listing),
                 new StartOrchestrationOptions { InstanceId = instanceId });
         }
+        else if (existingInstance.RuntimeStatus == OrchestrationRuntimeStatus.Running ||
+                 existingInstance.RuntimeStatus == OrchestrationRuntimeStatus.Pending ||
+                 existingInstance.RuntimeStatus == OrchestrationRuntimeStatus.Suspended)
+        {
+            _logger.LogInformation("Orchestration {InstanceId} is {Status}, raising event",
+                instanceId, existingInstance.RuntimeStatus);
+            await client.RaiseEventAsync(instanceId, "listing-ready", true);
+        }
         else
         {
-            _logger.LogInformation("Orchestration {InstanceId} already exists, raising event", instanceId);
-            await client.RaiseEventAsync(instanceId, "listing-ready", true);
+            _logger.LogInformation(
+                "Orchestration {InstanceId} already completed with status {Status}, skipping event",
+                instanceId, existingInstance.RuntimeStatus);
         }
     }
 }
