@@ -88,11 +88,18 @@ public class StartScrapeTrigger
                 nameof(JobOrchestrator), orchestratorInput,
                 new StartOrchestrationOptions { InstanceId = instanceId });
 
+            // Start sweep orchestrator to handle missed blob triggers (fire-and-forget)
+            var sweepInstanceId = $"sweep-{scrapeRun.Id}";
+            await client.ScheduleNewOrchestrationInstanceAsync(
+                nameof(SweepOrchestrator),
+                new SweepOrchestratorInput(scrapeRun.Id),
+                new StartOrchestrationOptions { InstanceId = sweepInstanceId });
+
             scrapeRun.InstanceId = instanceId;
             await _dbContext.SaveChangesAsync();
 
-            _logger.LogInformation("Started JobOrchestrator {InstanceId} for job {JobId}: {SearchTerm}",
-                instanceId, job.Id, job.SearchTerm);
+            _logger.LogInformation("Started JobOrchestrator {InstanceId} and SweepOrchestrator {SweepInstanceId} for job {JobId}: {SearchTerm}",
+                instanceId, sweepInstanceId, job.Id, job.SearchTerm);
 
             startedRuns.Add(new { runId = scrapeRun.Id, instanceId, jobId = job.Id, searchTerm = job.SearchTerm });
         }

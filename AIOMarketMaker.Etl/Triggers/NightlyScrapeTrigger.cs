@@ -69,11 +69,18 @@ public class NightlyScrapeTrigger
                 nameof(JobOrchestrator), orchestratorInput,
                 new StartOrchestrationOptions { InstanceId = instanceId });
 
+            // Start sweep orchestrator to handle missed blob triggers (fire-and-forget)
+            var sweepInstanceId = $"sweep-{scrapeRun.Id}";
+            await client.ScheduleNewOrchestrationInstanceAsync(
+                nameof(SweepOrchestrator),
+                new SweepOrchestratorInput(scrapeRun.Id),
+                new StartOrchestrationOptions { InstanceId = sweepInstanceId });
+
             scrapeRun.InstanceId = instanceId;
             await _dbContext.SaveChangesAsync();
 
-            _logger.LogInformation("Started nightly JobOrchestrator {InstanceId} for job {JobId}: {SearchTerm}",
-                instanceId, job.Id, job.SearchTerm);
+            _logger.LogInformation("Started nightly JobOrchestrator {InstanceId} and SweepOrchestrator {SweepInstanceId} for job {JobId}: {SearchTerm}",
+                instanceId, sweepInstanceId, job.Id, job.SearchTerm);
         }
 
         _logger.LogInformation("Nightly scrape started {Count} job orchestrations", enabledJobs.Count);

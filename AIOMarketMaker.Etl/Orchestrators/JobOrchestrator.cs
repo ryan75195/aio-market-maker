@@ -177,14 +177,8 @@ public class JobOrchestrator
             logger.LogInformation("Job {JobId}: Submitted {Submitted} scrape jobs ({Failed} failed)",
                 jobId, submitResult.SubmittedCount, submitResult.FailedCount);
 
-            // Step 7b: Start sweep orchestrator to handle missed blob triggers
-            var sweepInstanceId = $"sweep-{scrapeRunId}";
-            await context.CallActivityAsync(
-                nameof(StartSweepOrchestratorActivity),
-                new StartSweepInput(scrapeRunId, sweepInstanceId));
-
-            logger.LogInformation("Job {JobId}: Started sweep orchestrator {SweepInstanceId}",
-                jobId, sweepInstanceId);
+            // Note: SweepOrchestrator is started by StartScrapeTrigger, not here
+            // (activities cannot inject DurableTaskClient)
 
             // Step 8: Update job timestamp
             await context.CallActivityAsync(nameof(UpdateJobTimestampActivity), jobId);
