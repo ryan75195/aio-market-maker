@@ -17,6 +17,7 @@ namespace AIOMarketMaker.Core.Services
            string? correlationId = null,
            string? groupId = null,
            string? fileKey = null,
+           int? scrapeRunId = null,
            CancellationToken ct = default);
 
         Task<string> GetPageHtmlAsync(
@@ -90,9 +91,10 @@ namespace AIOMarketMaker.Core.Services
             string? correlationId = null,
             string? groupId = null,
             string? fileKey = null,
+            int? scrapeRunId = null,
             CancellationToken ct = default)
         {
-            var req = new StartRequest(urls.ToArray(), null, groupId, fileKey);
+            var req = new StartRequest(urls.ToArray(), null, groupId, fileKey, scrapeRunId);
 
             var request = new HttpRequestMessage(HttpMethod.Post, AppendApiKey("api/NewJob"))
             {

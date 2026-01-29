@@ -93,7 +93,7 @@ namespace AIOMarketMaker.Tests.Unit
             var descriptionHtml = "<div class=\"x-item-description-child\">summy description text</div>";
 
             this._mockFetcher
-                .Setup(x => x.NewJobAsync(It.IsAny<IEnumerable<string>>(), It.IsAny<IEnumerable<object>>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+                .Setup(x => x.NewJobAsync(It.IsAny<IEnumerable<string>>(), It.IsAny<IEnumerable<object>>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<int?>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync(new StartResponse(id));
 
             this._mockFetcher
@@ -128,7 +128,7 @@ namespace AIOMarketMaker.Tests.Unit
                 .ReturnsAsync(html);
 
             this._mockFetcher
-                .Setup(x => x.NewJobAsync(It.IsAny<IEnumerable<string>>(), It.IsAny<IEnumerable<object>>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+                .Setup(x => x.NewJobAsync(It.IsAny<IEnumerable<string>>(), It.IsAny<IEnumerable<object>>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<int?>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync(new StartResponse("dummy_id"));
 
             this._mockFetcher

@@ -40,6 +40,7 @@ public class EnqueueScrapeRetryActivityTests
                 It.IsAny<string>(),
                 listingId,
                 "listing",
+                It.IsAny<int?>(),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(new StartResponse("job-1"));
 
@@ -56,6 +57,7 @@ public class EnqueueScrapeRetryActivityTests
             It.IsAny<string>(),
             listingId,
             "listing",
+            It.IsAny<int?>(),
             It.IsAny<CancellationToken>()), Times.Once);
     }
 
@@ -73,6 +75,7 @@ public class EnqueueScrapeRetryActivityTests
                 It.IsAny<string>(),
                 listingId,
                 "description",
+                It.IsAny<int?>(),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(new StartResponse("job-2"));
 
@@ -89,6 +92,7 @@ public class EnqueueScrapeRetryActivityTests
             It.IsAny<string>(),
             listingId,
             "description",
+            It.IsAny<int?>(),
             It.IsAny<CancellationToken>()), Times.Once);
     }
 
@@ -149,6 +153,7 @@ public class EnqueueScrapeRetryActivityTests
                 It.IsAny<string>(),
                 It.IsAny<string>(),
                 It.IsAny<string>(),
+                It.IsAny<int?>(),
                 It.IsAny<CancellationToken>()))
             .ThrowsAsync(new HttpRequestException("Connection refused"));
 

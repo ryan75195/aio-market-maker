@@ -46,7 +46,8 @@ public record StartRequest(
        string[] Urls,
        IEnumerable<ProxyConfig>? Proxies = null,
        string? GroupId = null,
-       string? FileKey = null
+       string? FileKey = null,
+       int? ScrapeRunId = null
    );
 
 public record UrlRequest(
