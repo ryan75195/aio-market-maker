@@ -162,6 +162,64 @@ namespace AIOMarketMaker.Tests.Unit
             });
         }
 
+        [TestCaseSource(nameof(ShortOrFakeListingIdCases))]
+        public async Task Should_return_null_for_short_or_fake_listing_ids(string url, string description)
+        {
+            var html = $"<html><body><li class=\"s-card\" data-viewport><a class=\"s-card__link\" href=\"{url}\"></a></li></body></html>";
+            var doc = await LoadDocumentAsync(html);
+            var parser = (EbaySearchParser)_serviceUnderTest;
+            var li = doc.QuerySelector("li.s-card")!;
+
+            var id = parser.GetListingId(li);
+
+            Assert.That(id, Is.Null, $"Expected null for {description}, but got '{id}'");
+        }
+
+        private static IEnumerable<TestCaseData> ShortOrFakeListingIdCases()
+        {
+            yield return new TestCaseData("https://ebay.com/itm/123456", "eBay 'Shop on eBay' promo card with short fake ID")
+                .SetDescription("Promo card with 6-digit placeholder ID");
+            yield return new TestCaseData("https://ebay.com/itm/999", "very short numeric ID")
+                .SetDescription("3-digit ID that cannot be a real listing");
+            yield return new TestCaseData("https://ebay.com/itm/abc123", "non-numeric ID")
+                .SetDescription("ID containing letters is not a real eBay listing ID");
+        }
+
+        [Test]
+        public async Task Should_return_id_for_valid_listing_ids()
+        {
+            var html = "<html><body><li class=\"s-card\" data-viewport><a class=\"s-card__link\" href=\"https://ebay.com/itm/355182111959\"></a></li></body></html>";
+            var doc = await LoadDocumentAsync(html);
+            var parser = (EbaySearchParser)_serviceUnderTest;
+            var li = doc.QuerySelector("li.s-card")!;
+
+            var id = parser.GetListingId(li);
+
+            Assert.That(id, Is.EqualTo("355182111959"));
+        }
+
+        [Test]
+        public async Task Should_detect_ebay_error_page()
+        {
+            var doc = await LoadTestHtmlDocumentAsync("SearchErrorPage");
+            var parser = (EbaySearchParser)_serviceUnderTest;
+
+            var isError = parser.IsErrorPage(doc);
+
+            Assert.That(isError, Is.True);
+        }
+
+        [Test]
+        public async Task Should_not_detect_error_on_normal_search_page()
+        {
+            var doc = await LoadTestHtmlDocumentAsync("Sold_With_Small_Number_of_Real_Results");
+            var parser = (EbaySearchParser)_serviceUnderTest;
+
+            var isError = parser.IsErrorPage(doc);
+
+            Assert.That(isError, Is.False);
+        }
+
         private async Task<IDocument> LoadTestHtmlDocumentAsync(string testCaseName)
         {
             var dataDir = Path.GetFullPath(Path.Combine(TestContext.CurrentContext.TestDirectory, "../../../Data/Search"));

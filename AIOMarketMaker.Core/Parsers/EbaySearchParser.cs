@@ -15,6 +15,12 @@ namespace AIOMarketMaker.Core.Parsers
 
     public sealed class EbaySearchParser : ISearchParser
     {
+        public bool IsErrorPage(IDocument doc)
+        {
+            var errorDiv = doc.QuerySelector(".s-error");
+            return errorDiv != null;
+        }
+
         public IEnumerable<IEbayProductSummary> ParseSearchResults(IDocument doc)
         {
             // Try new eBay structure first (2024+): li.s-card[data-viewport]
@@ -65,6 +71,8 @@ namespace AIOMarketMaker.Core.Parsers
                 return null;
 
             var id = url.Split("/itm/")[1].Split("?").First().Trim();
+            if (id.Length < 10 || !id.All(char.IsDigit))
+                return null;
             return id;
         }
 
