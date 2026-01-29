@@ -7,7 +7,8 @@
     "baseUrl": "http://localhost:7126"
   },
   "scraping": {
-    "maxListingsToFetch": null,
+    "maxSoldListings": null,
+    "maxActiveListings": null,
     "defaultLookbackDays": 180
   },
   "storage": {

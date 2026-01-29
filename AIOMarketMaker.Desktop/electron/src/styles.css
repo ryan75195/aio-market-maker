@@ -386,6 +386,10 @@ body {
   background: rgba(204, 68, 68, 0.1);
 }
 
+.data-table td.failed-count {
+  color: #f87171;
+}
+
 .data-table code.small {
   font-size: 11px;
   color: #808080;

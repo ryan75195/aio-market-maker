@@ -173,7 +173,8 @@
                 <th>Status</th>
                 <th>Phase</th>
                 <th>Progress</th>
-                <th>Listings Added</th>
+                <th>Added</th>
+                <th>Failed</th>
               </tr>
             </thead>
             <tbody>
@@ -196,9 +197,10 @@
                   <span v-else>-</span>
                 </td>
                 <td class="number">{{ run.listingsAdded }}</td>
+                <td class="number" :class="{ 'failed-count': run.listingsFailed > 0 }">{{ run.listingsFailed || 0 }}</td>
               </tr>
               <tr v-if="history.length === 0">
-                <td colspan="7" class="empty">No run history</td>
+                <td colspan="8" class="empty">No run history</td>
               </tr>
             </tbody>
           </table>
