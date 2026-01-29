@@ -17,12 +17,13 @@ public class ListingBlobTrigger
 
     [Function("OnListingBlobCreated")]
     public async Task Run(
-        [BlobTrigger("html/{listingId}/listing.html", Connection = "blobStorageConnectionString")] string html,
+        [BlobTrigger("html/{scrapeRunId}/{listingId}/listing.html", Connection = "blobStorageConnectionString")] string html,
         [DurableClient] DurableTaskClient client,
+        int scrapeRunId,
         string listingId)
     {
-        var instanceId = $"etl-{listingId}";
-        _logger.LogInformation("Listing blob trigger fired for {ListingId}", listingId);
+        var instanceId = $"etl-{scrapeRunId}-{listingId}";
+        _logger.LogInformation("Listing blob trigger fired for ScrapeRun {ScrapeRunId}, Listing {ListingId}", scrapeRunId, listingId);
 
         var existingInstance = await client.GetInstanceAsync(instanceId);
         if (existingInstance == null)
@@ -30,7 +31,7 @@ public class ListingBlobTrigger
             _logger.LogInformation("Starting new orchestration {InstanceId}", instanceId);
             await client.ScheduleNewOrchestrationInstanceAsync(
                 "ListingEtlOrchestrator",
-                new ListingEtlInput(listingId, TriggerSource.Listing),
+                new ListingEtlInput(scrapeRunId, listingId, TriggerSource.Listing),
                 new StartOrchestrationOptions { InstanceId = instanceId });
         }
         else if (existingInstance.RuntimeStatus == OrchestrationRuntimeStatus.Running ||
