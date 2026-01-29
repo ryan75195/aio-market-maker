@@ -115,13 +115,13 @@ Both `AIOMarketMaker.Functions` and `AIOMarketMaker.Etl` require `local.settings
 {
   "Values": {
     "AzureWebJobsStorage": "UseDevelopmentStorage=true",
-    "SqlConnectionString": "Server=(localdb)\\MSSQLLocalDB;Database=AIOMarketMaker;...",
+    "SqlConnectionString": "Server=(localdb)\\MSSQLLocalDB;Database=AIOMarketMaker;Trusted_Connection=True;TrustServerCertificate=True;",
     "Scraping:MaxListingsToFetch": "100",
     "Scraping:DefaultLookbackDays": "180"
   }
 }
 ```
-- Use `SqlConnectionString` for SQL Server or `SqliteConnectionString` for SQLite (not both)
+- `SqlConnectionString` points to SQL Server LocalDB for local development
 - `Scraping:MaxListingsToFetch` limits listings per job (can be overridden via UI Settings)
 
 ### External Dependencies
@@ -309,13 +309,34 @@ traces
 
 ## Database Management
 
+### Database Architecture
+- **Local development**: SQL Server LocalDB (`(localdb)\MSSQLLocalDB`, database `AIOMarketMaker`)
+- **Azure deployment**: Azure SQL Database
+- **Connection string**: `SqlConnectionString` in `local.settings.json`
+- **ORM**: Entity Framework Core with `EtlDbContext`
+
+### Querying the Database Locally
+Use `sqlcmd` to query the LocalDB instance:
+```bash
+# View scrape runs
+sqlcmd -S "(localdb)\MSSQLLocalDB" -d AIOMarketMaker -Q "SELECT Id, Status, CurrentPhase, TotalListingsFound, ListingsProcessed FROM ScrapeRuns ORDER BY Id DESC" -W
+
+# View scrape run listings status
+sqlcmd -S "(localdb)\MSSQLLocalDB" -d AIOMarketMaker -Q "SELECT ScrapeRunId, Status, COUNT(*) as Count FROM ScrapeRunListings GROUP BY ScrapeRunId, Status ORDER BY ScrapeRunId" -W
+
+# View listings count by job
+sqlcmd -S "(localdb)\MSSQLLocalDB" -d AIOMarketMaker -Q "SELECT ScrapeJobId, COUNT(*) as Count FROM Listings GROUP BY ScrapeJobId" -W
+
+# View scrape jobs
+sqlcmd -S "(localdb)\MSSQLLocalDB" -d AIOMarketMaker -Q "SELECT Id, SearchTerm, IsEnabled FROM ScrapeJobs" -W
+```
+
 ### CRITICAL: Never Delete the Database
-The SQLite database (`etl.db`) contains valuable production data. **NEVER** suggest deleting or recreating the database to fix schema issues. Always use migrations instead.
+The database contains valuable production data. **NEVER** suggest deleting or recreating the database to fix schema issues. Always use migrations instead.
 
 ### Migration System
 This project uses a custom SQL migration system with **embedded resources**:
-- **SQLite migrations**: `AIOMarketMaker.Core/Data/Migrations/*.sql` (embedded in Core assembly)
-- **SQL Server migrations**: `AIOMarketMaker.Core/Data/Migrations/SqlServer/*.sql` (for Azure deployment)
+- **SQL Server migrations**: `AIOMarketMaker.Core/Data/Migrations/SqlServer/*.sql` (used for both local and Azure)
 - The `MigrationRunner` in `AIOMarketMaker.Core.Data.Migrations` applies pending migrations on startup
 - Applied migrations are tracked in the `__MigrationHistory` table
 - **IMPORTANT**: After adding a migration file, rebuild the Core project to embed it
@@ -325,24 +346,28 @@ When adding new EF Core entities or modifying the schema:
 1. Create the model class in `AIOMarketMaker.Core/Data/Models/`
 2. Add the `DbSet<T>` to `EtlDbContext`
 3. Configure the entity in `OnModelCreating()`
-4. **Create migration SQL file** in `AIOMarketMaker.Core/Data/Migrations/` with next sequence number
-5. **Create SQL Server version** in `SqlServer/` subfolder with idempotent syntax (IF NOT EXISTS)
-6. Use `CREATE TABLE IF NOT EXISTS` and `CREATE INDEX IF NOT EXISTS` for idempotency
-7. **Rebuild Core project** to embed the new migration
-8. The migration will be applied automatically on next application restart
+4. **Create migration SQL file** in `AIOMarketMaker.Core/Data/Migrations/SqlServer/` with next sequence number
+5. Use `IF NOT EXISTS` patterns for idempotency (SQL Server syntax)
+6. **Rebuild Core project** to embed the new migration
+7. The migration will be applied automatically on next application restart
 
-### Example Migration Format
+### Example Migration Format (SQL Server)
 ```sql
 -- Migration: 003_CreateProductStatusHistoryTable
 -- Description: Creates the ProductStatusHistory table
 -- Date: 2025-11-28
 
-CREATE TABLE IF NOT EXISTS ProductStatusHistory (
-    Id INTEGER PRIMARY KEY AUTOINCREMENT,
-    -- columns...
-    FOREIGN KEY (ProductId) REFERENCES Products(Id) ON DELETE CASCADE
-);
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'ProductStatusHistory')
+BEGIN
+    CREATE TABLE ProductStatusHistory (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        -- columns...
+        CONSTRAINT FK_ProductStatusHistory_Products FOREIGN KEY (ProductId) REFERENCES Products(Id) ON DELETE CASCADE
+    );
+END
 
-CREATE INDEX IF NOT EXISTS IX_ProductStatusHistory_ProductId
-ON ProductStatusHistory (ProductId);
+IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_ProductStatusHistory_ProductId')
+BEGIN
+    CREATE INDEX IX_ProductStatusHistory_ProductId ON ProductStatusHistory (ProductId);
+END
 ```

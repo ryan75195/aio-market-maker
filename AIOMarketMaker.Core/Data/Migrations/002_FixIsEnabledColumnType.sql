@@ -3,6 +3,8 @@
 -- Date: 2025-12-24
 
 -- Only run if IsEnabled is currently INT type
+-- Note: Uses dynamic SQL (EXEC) to work around SQL Server batch compilation issues
+-- where column references inside IF blocks are validated at compile time
 IF EXISTS (
     SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
     WHERE TABLE_NAME = 'ScrapeJobs'
@@ -22,13 +24,13 @@ BEGIN
         EXEC('ALTER TABLE ScrapeJobs DROP CONSTRAINT ' + @constraintName);
 
     IF COL_LENGTH('ScrapeJobs', 'IsEnabled_Temp') IS NOT NULL
-        ALTER TABLE ScrapeJobs DROP COLUMN IsEnabled_Temp;
+        EXEC('ALTER TABLE ScrapeJobs DROP COLUMN IsEnabled_Temp');
 
     -- Add temp column with BIT type
-    ALTER TABLE ScrapeJobs ADD IsEnabled_Temp BIT NOT NULL DEFAULT 1;
+    EXEC('ALTER TABLE ScrapeJobs ADD IsEnabled_Temp BIT NOT NULL DEFAULT 1');
 
     -- Copy data, converting INT to BIT
-    UPDATE ScrapeJobs SET IsEnabled_Temp = CAST(IsEnabled AS BIT);
+    EXEC('UPDATE ScrapeJobs SET IsEnabled_Temp = CAST(IsEnabled AS BIT)');
 
     -- Drop any indexes on IsEnabled
     DECLARE @sql NVARCHAR(MAX) = '';
@@ -50,7 +52,7 @@ BEGIN
         EXEC('ALTER TABLE ScrapeJobs DROP CONSTRAINT ' + @oldConstraintName);
 
     -- Drop old column
-    ALTER TABLE ScrapeJobs DROP COLUMN IsEnabled;
+    EXEC('ALTER TABLE ScrapeJobs DROP COLUMN IsEnabled');
 
     -- Rename temp to IsEnabled
     EXEC sp_rename 'ScrapeJobs.IsEnabled_Temp', 'IsEnabled', 'COLUMN';
