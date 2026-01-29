@@ -150,6 +150,7 @@ public class ListingEtlOrchestrator
         var processInput = new ProcessListingInput(
             input.ListingId,
             ScrapeJobId: lookupResult.ScrapeJobId ?? 0,
+            ScrapeRunId: input.ScrapeRunId,
             HasDescription: state.HasDescription
         );
 

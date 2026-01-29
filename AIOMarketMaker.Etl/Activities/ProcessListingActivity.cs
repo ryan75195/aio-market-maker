@@ -36,7 +36,7 @@ public class ProcessListingActivity
         var container = _blobService.GetBlobContainerClient("html");
 
         // Fetch listing HTML (required)
-        var listingBlobPath = $"{input.ListingId}/listing.html";
+        var listingBlobPath = $"{input.ScrapeRunId}/{input.ListingId}/listing.html";
         var listingBlob = container.GetBlobClient(listingBlobPath);
         var listingContent = await listingBlob.DownloadContentAsync();
         var listingHtml = listingContent.Value.Content.ToString();
@@ -61,7 +61,7 @@ public class ProcessListingActivity
         {
             try
             {
-                var descBlobPath = $"{input.ListingId}/description.html";
+                var descBlobPath = $"{input.ScrapeRunId}/{input.ListingId}/description.html";
                 var descBlob = container.GetBlobClient(descBlobPath);
                 var descContent = await descBlob.DownloadContentAsync();
                 var descHtml = descContent.Value.Content.ToString();

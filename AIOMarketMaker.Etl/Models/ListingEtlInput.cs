@@ -24,6 +24,7 @@ public record BlobState(
 public record ProcessListingInput(
     string ListingId,
     int ScrapeJobId,
+    int ScrapeRunId,
     bool HasDescription
 );
 
