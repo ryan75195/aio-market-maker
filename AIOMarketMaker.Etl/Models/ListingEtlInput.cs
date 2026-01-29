@@ -3,7 +3,8 @@ namespace AIOMarketMaker.Etl.Models;
 public enum TriggerSource
 {
     Listing,
-    Description
+    Description,
+    Sweep
 }
 
 public record ListingEtlInput(
