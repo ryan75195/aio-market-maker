@@ -17,8 +17,8 @@ public class ListingEtlOrchestrator
         var input = context.GetInput<ListingEtlInput>()!;
 
         logger.LogInformation(
-            "Starting ETL orchestration for listing {ListingId} (triggered by {Source})",
-            input.ListingId, input.TriggerSource);
+            "Starting ETL orchestration for listing {ListingId} in ScrapeRun {ScrapeRunId} (triggered by {Source})",
+            input.ListingId, input.ScrapeRunId, input.TriggerSource);
 
         // Lookup ScrapeRun and ScrapeJob from junction table
         var lookupResult = await context.CallActivityAsync<ScrapeRunLookupResult>(
@@ -77,7 +77,7 @@ public class ListingEtlOrchestrator
             // Check retry count
             var retryResult = await context.CallActivityAsync<IncrementRetryCountResult>(
                 nameof(IncrementRetryCountActivity),
-                new IncrementRetryCountInput(lookupResult.ScrapeRunId!.Value, input.ListingId));
+                new IncrementRetryCountInput(input.ScrapeRunId, input.ListingId));
 
             if (retryResult.NewRetryCount > 1)
             {
@@ -85,7 +85,7 @@ public class ListingEtlOrchestrator
                     "Max retries exceeded for {ListingId}/{MissingBlob}, marking as Failed",
                     input.ListingId, missingBlob);
 
-                await MarkFailed(context, lookupResult.ScrapeRunId!.Value, input.ListingId,
+                await MarkFailed(context, input.ScrapeRunId, input.ListingId,
                     $"Missing {missingBlob} blob after {retryResult.NewRetryCount} retries");
                 return;
             }
@@ -132,7 +132,7 @@ public class ListingEtlOrchestrator
                     "Listing blob still missing for {ListingId} after retry, marking as Failed",
                     input.ListingId);
 
-                await MarkFailed(context, lookupResult.ScrapeRunId!.Value, input.ListingId,
+                await MarkFailed(context, input.ScrapeRunId, input.ListingId,
                     "Missing listing blob after timeout and retry");
                 return;
             }
@@ -161,14 +161,14 @@ public class ListingEtlOrchestrator
                 "Listing {ListingId} failed processing: {Error}",
                 input.ListingId, result.ErrorMessage);
 
-            await MarkFailed(context, lookupResult.ScrapeRunId!.Value, input.ListingId,
+            await MarkFailed(context, input.ScrapeRunId, input.ListingId,
                 result.ErrorMessage ?? "Processing failed");
             return;
         }
 
         // Update junction table with completion status
         var updateInput = new UpdateScrapeRunListingInput(
-            lookupResult.ScrapeRunId!.Value,
+            input.ScrapeRunId,
             input.ListingId,
             "Complete",
             IsNewListing: result.IsNewListing

@@ -7,6 +7,7 @@ public enum TriggerSource
 }
 
 public record ListingEtlInput(
+    int ScrapeRunId,
     string ListingId,
     TriggerSource TriggerSource
 );
