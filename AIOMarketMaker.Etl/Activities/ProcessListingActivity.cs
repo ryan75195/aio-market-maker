@@ -84,58 +84,53 @@ public class ProcessListingActivity
             imagesJson = JsonSerializer.Serialize(extractedListing.images);
         }
 
-        // Save to database - use LINQ query since primary key is Id, not ListingId
-        var existing = await _dbContext.Listings
-            .FirstOrDefaultAsync(l => l.ListingId == input.ListingId);
+        // Save to database using SQL MERGE for atomic upsert (handles concurrent writes)
+        var mergeActionResult = await _dbContext.Database.SqlQueryRaw<string>(@"
+            MERGE INTO Listings WITH (HOLDLOCK) AS target
+            USING (SELECT @p0 AS ListingId) AS source
+            ON target.ListingId = source.ListingId
+            WHEN MATCHED THEN
+                UPDATE SET
+                    Title = @p1,
+                    Price = @p2,
+                    Currency = @p3,
+                    ShippingCost = @p4,
+                    Condition = @p5,
+                    ListingStatus = @p6,
+                    PurchaseFormat = @p7,
+                    ItemSpecifics = @p8,
+                    Images = @p9,
+                    Location = @p10,
+                    EndDateUtc = @p11,
+                    Url = @p12,
+                    Description = @p13,
+                    DescriptionStatus = @p14,
+                    UpdatedUtc = GETUTCDATE()
+            WHEN NOT MATCHED THEN
+                INSERT (ListingId, ScrapeJobId, Title, Price, Currency, ShippingCost,
+                        Condition, ListingStatus, PurchaseFormat, ItemSpecifics, Images,
+                        Location, EndDateUtc, Url, Description, DescriptionStatus, CreatedUtc)
+                VALUES (@p0, @p15, @p1, @p2, @p3, @p4, @p5, @p6, @p7, @p8, @p9, @p10, @p11, @p12, @p13, @p14, GETUTCDATE())
+            OUTPUT $action;",
+            input.ListingId,                              // @p0
+            extractedListing.title,                       // @p1
+            extractedListing.price,                       // @p2
+            extractedListing.currency,                    // @p3
+            extractedListing.shippingCost,                // @p4
+            extractedListing.Condition?.ToString(),       // @p5
+            extractedListing.listingStatus?.ToString(),   // @p6
+            extractedListing.purchaseFormat?.ToString(),  // @p7
+            extractedListing.ItemSpecifics,               // @p8
+            imagesJson,                                   // @p9
+            extractedListing.Location,                    // @p10
+            extractedListing.SoldDateUtc,                 // @p11
+            extractedListing.Url,                         // @p12
+            description,                                  // @p13
+            descriptionStatus,                            // @p14
+            input.ScrapeJobId                             // @p15
+        ).ToListAsync();
 
-        if (existing != null)
-        {
-            // Update existing
-            existing.Title = extractedListing.title;
-            existing.Price = extractedListing.price;
-            existing.Currency = extractedListing.currency;
-            existing.ShippingCost = extractedListing.shippingCost;
-            existing.Condition = extractedListing.Condition?.ToString();
-            existing.ListingStatus = extractedListing.listingStatus?.ToString();
-            existing.PurchaseFormat = extractedListing.purchaseFormat?.ToString();
-            existing.ItemSpecifics = extractedListing.ItemSpecifics;
-            existing.Images = imagesJson;
-            existing.Location = extractedListing.Location;
-            existing.EndDateUtc = extractedListing.SoldDateUtc;
-            existing.Url = extractedListing.Url;
-            existing.Description = description;
-            existing.DescriptionStatus = descriptionStatus;
-            existing.UpdatedUtc = DateTime.UtcNow;
-        }
-        else
-        {
-            // Insert new
-            var listing = new Listing
-            {
-                ListingId = input.ListingId,
-                ScrapeJobId = input.ScrapeJobId,
-                Title = extractedListing.title,
-                Price = extractedListing.price,
-                Currency = extractedListing.currency,
-                ShippingCost = extractedListing.shippingCost,
-                Condition = extractedListing.Condition?.ToString(),
-                ListingStatus = extractedListing.listingStatus?.ToString(),
-                PurchaseFormat = extractedListing.purchaseFormat?.ToString(),
-                ItemSpecifics = extractedListing.ItemSpecifics,
-                Images = imagesJson,
-                Location = extractedListing.Location,
-                EndDateUtc = extractedListing.SoldDateUtc,
-                Url = extractedListing.Url,
-                Description = description,
-                DescriptionStatus = descriptionStatus,
-                CreatedUtc = DateTime.UtcNow
-            };
-            _dbContext.Listings.Add(listing);
-        }
-
-        var isNew = existing == null;
-
-        await _dbContext.SaveChangesAsync();
+        var isNew = mergeActionResult.FirstOrDefault() == "INSERT";
 
         _logger.LogInformation(
             "Processed listing {ListingId}: {Action}, descriptionStatus={Status}",
