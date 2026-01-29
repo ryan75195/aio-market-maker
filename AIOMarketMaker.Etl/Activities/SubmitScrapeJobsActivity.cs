@@ -45,14 +45,16 @@ public class SubmitScrapeJobsActivity
                 await _webScraper.NewJobAsync(
                     new[] { listingUrl },
                     groupId: listingId,
-                    fileKey: "listing");
+                    fileKey: "listing",
+                    scrapeRunId: input.ScrapeRunId);
 
                 // Submit description page scrape
                 var descriptionUrl = _urlBuilder.BuildDescriptionUrl(listingId);
                 await _webScraper.NewJobAsync(
                     new[] { descriptionUrl },
                     groupId: listingId,
-                    fileKey: "description");
+                    fileKey: "description",
+                    scrapeRunId: input.ScrapeRunId);
 
                 submittedCount++;
             }
