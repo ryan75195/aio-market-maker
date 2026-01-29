@@ -177,6 +177,11 @@ public class ListingEtlOrchestrator
 
         await context.CallActivityAsync(nameof(UpdateScrapeRunListingActivity), updateInput);
 
+        // Clean up blobs after successful processing
+        await context.CallActivityAsync(
+            nameof(DeleteListingBlobsActivity),
+            new DeleteBlobsInput(input.ScrapeRunId, input.ListingId));
+
         logger.LogInformation(
             "ETL orchestration completed for listing {ListingId} (hasDescription={HasDescription})",
             input.ListingId, state.HasDescription);
