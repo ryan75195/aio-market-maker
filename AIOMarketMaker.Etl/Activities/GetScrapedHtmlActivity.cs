@@ -44,7 +44,9 @@ public class GetScrapedHtmlActivity
         }
 
         // Fetch HTML from blob storage
-        var html = await _jobRepository.GetFileContentsAsync(input.JobId, firstResult.Url, CancellationToken.None);
+        // Pass GroupId/FileKey if available (for simple blob path format)
+        var html = await _jobRepository.GetFileContentsAsync(
+            input.JobId, firstResult.Url, input.GroupId, input.FileKey, CancellationToken.None);
 
         if (string.IsNullOrEmpty(html))
         {

@@ -26,6 +26,12 @@ public record ProcessListingInput(
     bool HasDescription
 );
 
+public record ProcessListingResult(
+    bool Success,
+    bool IsNewListing = false,
+    string? ErrorMessage = null
+);
+
 // Activity DTOs for orchestration
 public record ScrapeJobInfo(int Id, string SearchTerm);
 public record SearchPageResult(bool Success, List<string> ListingIds, string? Error);
@@ -46,7 +52,7 @@ public record UpdateProgressInput(
     string? CurrentPhase = null);
 
 // Orchestrator DTOs
-public record ScrapeOrchestratorInput(int ScrapeRunId, int? MaxListingsToFetch, int? LookbackDays);
+public record ScrapeOrchestratorInput(int ScrapeRunId, int? MaxSoldListings, int? MaxActiveListings, int? LookbackDays);
 public record OrchestratorResult(
     int SucceededJobs,
     int FailedJobs,
@@ -55,10 +61,10 @@ public record OrchestratorResult(
     List<string> Errors);
 
 // Job orchestration DTOs
-public record JobDetails(int Id, string SearchTerm, int LookbackDays, int? MaxListingsToFetch);
+public record JobDetails(int Id, string SearchTerm, int LookbackDays, int? MaxSoldListings, int? MaxActiveListings);
 public record JobResult(int JobId, bool Success, int ListingsFound, string? Error);
-public record JobOrchestratorInput(int JobId, string ScrapeInstanceId, int? MaxListingsToFetch = null, int? LookbackDays = null);
-public record GetJobDetailsInput(int JobId, int? MaxListingsToFetch = null, int? LookbackDays = null);
+public record JobOrchestratorInput(int JobId, string ScrapeInstanceId, int? MaxSoldListings = null, int? MaxActiveListings = null, int? LookbackDays = null);
+public record GetJobDetailsInput(int JobId, int? MaxSoldListings = null, int? MaxActiveListings = null, int? LookbackDays = null);
 
 // URL building DTOs
 public record BuildSearchUrlInput(string SearchTerm, bool IsSold, int Page);
@@ -90,7 +96,7 @@ public record UpdateSoldListingsInput(int JobId, List<ListingData> SoldListings)
 
 // Scrape job status DTOs
 public record ScrapeJobStatusResult(string JobId, string Status, bool IsComplete);
-public record GetScrapedHtmlInput(string JobId);
+public record GetScrapedHtmlInput(string JobId, string? GroupId = null, string? FileKey = null);
 
 // Scrape submission DTOs
 public record SubmitScrapeJobInput(

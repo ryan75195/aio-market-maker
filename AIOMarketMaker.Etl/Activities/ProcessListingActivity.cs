@@ -31,7 +31,7 @@ public class ProcessListingActivity
     }
 
     [Function(nameof(ProcessListingActivity))]
-    public async Task<bool> Run([ActivityTrigger] ProcessListingInput input)
+    public async Task<ProcessListingResult> Run([ActivityTrigger] ProcessListingInput input)
     {
         var container = _blobService.GetBlobContainerClient("html");
 
@@ -44,6 +44,13 @@ public class ProcessListingActivity
         // Parse listing
         var parser = new HtmlParser();
         var listingDoc = await parser.ParseDocumentAsync(listingHtml);
+
+        // Detect eBay error pages before attempting to parse listing data
+        if (listingDoc.QuerySelector(".s-error") != null)
+        {
+            _logger.LogWarning("eBay error page detected for listing {ListingId}, marking as failed", input.ListingId);
+            return new ProcessListingResult(Success: false, ErrorMessage: "eBay error page");
+        }
         var extractedListing = _listingParser.ParseProductListing(listingDoc, $"https://ebay.com/itm/{input.ListingId}");
 
         // Try to fetch description (optional)
@@ -134,6 +141,6 @@ public class ProcessListingActivity
             "Processed listing {ListingId}: {Action}, descriptionStatus={Status}",
             input.ListingId, isNew ? "added" : "updated", descriptionStatus);
 
-        return isNew;
+        return new ProcessListingResult(Success: true, IsNewListing: isNew);
     }
 }

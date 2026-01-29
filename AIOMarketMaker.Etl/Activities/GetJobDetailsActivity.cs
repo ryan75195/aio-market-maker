@@ -11,7 +11,8 @@ public class GetJobDetailsActivity
     private readonly EtlDbContext _dbContext;
     private readonly ILogger<GetJobDetailsActivity> _logger;
     private readonly int _defaultLookbackDays;
-    private readonly int? _maxListingsToFetch;
+    private readonly int? _maxSoldListings;
+    private readonly int? _maxActiveListings;
 
     public GetJobDetailsActivity(
         EtlDbContext dbContext,
@@ -21,7 +22,8 @@ public class GetJobDetailsActivity
         _dbContext = dbContext;
         _logger = logger;
         _defaultLookbackDays = configuration.GetValue<int>("Scraping:DefaultLookbackDays", 90);
-        _maxListingsToFetch = configuration.GetValue<int?>("Scraping:MaxListingsToFetch");
+        _maxSoldListings = configuration.GetValue<int?>("Scraping:MaxSoldListings");
+        _maxActiveListings = configuration.GetValue<int?>("Scraping:MaxActiveListings");
     }
 
     [Function(nameof(GetJobDetailsActivity))]
@@ -56,12 +58,17 @@ public class GetJobDetailsActivity
         }
 
         // Use runtime override for max listings if provided, otherwise fall back to config
-        var maxListings = input.MaxListingsToFetch ?? _maxListingsToFetch;
-        if (input.MaxListingsToFetch.HasValue)
+        var maxSold = input.MaxSoldListings ?? _maxSoldListings;
+        var maxActive = input.MaxActiveListings ?? _maxActiveListings;
+        if (input.MaxSoldListings.HasValue)
         {
-            _logger.LogInformation("Job {JobId}: Using runtime maxListings override: {Max}", input.JobId, maxListings);
+            _logger.LogInformation("Job {JobId}: Using runtime maxSoldListings override: {Max}", input.JobId, maxSold);
+        }
+        if (input.MaxActiveListings.HasValue)
+        {
+            _logger.LogInformation("Job {JobId}: Using runtime maxActiveListings override: {Max}", input.JobId, maxActive);
         }
 
-        return new JobDetails(job.Id, job.SearchTerm, lookbackDays, maxListings);
+        return new JobDetails(job.Id, job.SearchTerm, lookbackDays, maxSold, maxActive);
     }
 }

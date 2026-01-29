@@ -21,10 +21,10 @@ public class ScrapeOrchestrator
 
         // Get optional input for runtime overrides
         var input = context.GetInput<ScrapeOrchestratorInput>();
-        if (input?.MaxListingsToFetch.HasValue == true || input?.LookbackDays.HasValue == true)
+        if (input?.MaxSoldListings.HasValue == true || input?.MaxActiveListings.HasValue == true || input?.LookbackDays.HasValue == true)
         {
-            logger.LogInformation("Scrape with overrides: MaxListings={Max}, LookbackDays={Days}",
-                input?.MaxListingsToFetch, input?.LookbackDays);
+            logger.LogInformation("Scrape with overrides: MaxSold={MaxSold}, MaxActive={MaxActive}, LookbackDays={Days}",
+                input?.MaxSoldListings, input?.MaxActiveListings, input?.LookbackDays);
         }
 
         logger.LogInformation("Starting scrape orchestration at {Time}", startTime);
@@ -53,7 +53,7 @@ public class ScrapeOrchestrator
             {
                 var result = await context.CallSubOrchestratorAsync<JobResult>(
                     nameof(JobOrchestrator),
-                    new JobOrchestratorInput(job.Id, context.InstanceId, input?.MaxListingsToFetch, input?.LookbackDays));
+                    new JobOrchestratorInput(job.Id, context.InstanceId, input?.MaxSoldListings, input?.MaxActiveListings, input?.LookbackDays));
                 results.Add(result);
                 logger.LogInformation("Job {JobId} completed: {Success}, {ListingsFound} listings",
                     job.Id, result.Success, result.ListingsFound);

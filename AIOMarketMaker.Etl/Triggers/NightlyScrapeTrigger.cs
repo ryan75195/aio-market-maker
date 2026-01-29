@@ -62,9 +62,7 @@ public class NightlyScrapeTrigger
             var instanceId = $"scrape-run-{scrapeRun.Id}";
             var orchestratorInput = new JobOrchestratorInput(
                 job.Id,
-                instanceId,
-                null, // Use default MaxListingsToFetch
-                null  // Use default LookbackDays
+                instanceId
             );
 
             await client.ScheduleNewOrchestrationInstanceAsync(

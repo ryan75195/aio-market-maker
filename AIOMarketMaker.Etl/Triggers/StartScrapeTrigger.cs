@@ -80,7 +80,8 @@ public class StartScrapeTrigger
             var orchestratorInput = new JobOrchestratorInput(
                 job.Id,
                 instanceId,
-                scrapeRequest?.MaxListingsToFetch,
+                scrapeRequest?.MaxSoldListings,
+                scrapeRequest?.MaxActiveListings,
                 scrapeRequest?.LookbackDays);
 
             await client.ScheduleNewOrchestrationInstanceAsync(
@@ -181,4 +182,4 @@ public class StartScrapeTrigger
     }
 }
 
-public record StartScrapeRequest(int? MaxListingsToFetch, int? LookbackDays);
+public record StartScrapeRequest(int? MaxSoldListings, int? MaxActiveListings, int? LookbackDays);

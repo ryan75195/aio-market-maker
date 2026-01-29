@@ -54,12 +54,14 @@ public class UpdateScrapeRunListingActivity
         {
             var addedIncrement = input.Status == "Complete" && input.IsNewListing ? 1 : 0;
             var skippedIncrement = input.Status == "Complete" && !input.IsNewListing ? 1 : 0;
+            var failedIncrement = input.Status == "Failed" ? 1 : 0;
 
             await _dbContext.Database.ExecuteSqlRawAsync(@"
                 UPDATE ScrapeRuns
                 SET ListingsProcessed = ListingsProcessed + 1,
                     ListingsAdded = ListingsAdded + {1},
                     ListingsSkipped = ListingsSkipped + {2},
+                    ListingsFailed = ListingsFailed + {3},
                     Status = CASE WHEN ListingsProcessed + 1 >= TotalListingsFound
                                   AND TotalListingsFound > 0
                                   AND Status = 'Running' THEN 'Completed' ELSE Status END,
@@ -69,7 +71,7 @@ public class UpdateScrapeRunListingActivity
                     CurrentPhase = CASE WHEN ListingsProcessed + 1 >= TotalListingsFound
                                         AND TotalListingsFound > 0
                                         AND Status = 'Running' THEN 'Completed' ELSE CurrentPhase END
-                WHERE Id = {0}", input.ScrapeRunId, addedIncrement, skippedIncrement);
+                WHERE Id = {0}", input.ScrapeRunId, addedIncrement, skippedIncrement, failedIncrement);
         }
 
         _logger.LogInformation("Updated ScrapeRunListing {ListingId} to {Status}", input.ListingId, input.Status);

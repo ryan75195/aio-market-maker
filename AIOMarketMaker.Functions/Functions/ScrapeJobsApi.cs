@@ -267,6 +267,7 @@ public class ScrapeJobsApi
                 r.Status,
                 r.ListingsAdded,
                 r.ListingsSkipped,
+                r.ListingsFailed,
                 r.TotalListingsFound,
                 r.ListingsProcessed,
                 r.CurrentPhase,

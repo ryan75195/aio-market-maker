@@ -49,6 +49,11 @@ public class ScrapeRun
     public int ListingsSkipped { get; set; }
 
     /// <summary>
+    /// Number of listings that failed processing (error pages, parse failures)
+    /// </summary>
+    public int ListingsFailed { get; set; }
+
+    /// <summary>
     /// Error message if the run failed
     /// </summary>
     public string? ErrorMessage { get; set; }

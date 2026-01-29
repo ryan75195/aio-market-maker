@@ -153,14 +153,25 @@ public class ListingEtlOrchestrator
             HasDescription: state.HasDescription
         );
 
-        var isNewListing = await context.CallActivityAsync<bool>(nameof(ProcessListingActivity), processInput);
+        var result = await context.CallActivityAsync<ProcessListingResult>(nameof(ProcessListingActivity), processInput);
+
+        if (!result.Success)
+        {
+            logger.LogWarning(
+                "Listing {ListingId} failed processing: {Error}",
+                input.ListingId, result.ErrorMessage);
+
+            await MarkFailed(context, lookupResult.ScrapeRunId!.Value, input.ListingId,
+                result.ErrorMessage ?? "Processing failed");
+            return;
+        }
 
         // Update junction table with completion status
         var updateInput = new UpdateScrapeRunListingInput(
             lookupResult.ScrapeRunId!.Value,
             input.ListingId,
             "Complete",
-            IsNewListing: isNewListing
+            IsNewListing: result.IsNewListing
         );
 
         await context.CallActivityAsync(nameof(UpdateScrapeRunListingActivity), updateInput);
