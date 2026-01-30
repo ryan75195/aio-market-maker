@@ -352,8 +352,13 @@ body {
   color: #fff;
 }
 
+.status-badge.retrying {
+  background: #f59e0b;  /* amber */
+  color: #fff;
+}
+
 .status-badge.failed {
-  background: #c44;
+  background: #ef4444;  /* red */
   color: #fff;
 }
 
