@@ -10,7 +10,11 @@ public record UpdateScrapeRunListingInput(
     string ListingId,
     string Status,
     bool IsNewListing = false,
-    string? ErrorMessage = null);
+    string? ErrorMessage = null,
+    int? IncrementParseAttempts = null,
+    string? FailureReason = null,
+    string? FailureDetails = null,
+    string? ListingStatus = null);
 
 public class UpdateScrapeRunListingActivity
 {
@@ -37,7 +41,7 @@ public class UpdateScrapeRunListingActivity
         }
 
         mapping.Status = input.Status;
-        if (input.Status == "Complete" || input.Status == "Failed")
+        if (input.Status == "Complete" || input.Status == "Failed" || input.Status == "Skipped")
         {
             mapping.CompletedUtc = DateTime.UtcNow;
         }
@@ -47,21 +51,40 @@ public class UpdateScrapeRunListingActivity
             mapping.ErrorMessage = input.ErrorMessage;
         }
 
+        // Handle parse retry tracking
+        if (input.IncrementParseAttempts.HasValue)
+        {
+            mapping.ParseAttempts += input.IncrementParseAttempts.Value;
+        }
+
+        if (input.FailureReason != null)
+        {
+            mapping.FailureReason = input.FailureReason;
+        }
+
+        if (input.FailureDetails != null)
+        {
+            mapping.FailureDetails = input.FailureDetails;
+        }
+
         await _dbContext.SaveChangesAsync();
 
-        // If completing or failing, increment ScrapeRun progress so the run can finish
-        if (input.Status == "Complete" || input.Status == "Failed")
+        // If completing, skipping, or failing, increment ScrapeRun progress so the run can finish
+        if (input.Status == "Complete" || input.Status == "Failed" || input.Status == "Skipped")
         {
-            var addedIncrement = input.Status == "Complete" && input.IsNewListing ? 1 : 0;
-            var skippedIncrement = input.Status == "Complete" && !input.IsNewListing ? 1 : 0;
+            var isSold = input.ListingStatus == "Sold";
+            var addedActiveIncrement = input.Status == "Complete" && input.IsNewListing && !isSold ? 1 : 0;
+            var addedSoldIncrement = input.Status == "Complete" && input.IsNewListing && isSold ? 1 : 0;
+            var skippedIncrement = (input.Status == "Complete" && !input.IsNewListing) || input.Status == "Skipped" ? 1 : 0;
             var failedIncrement = input.Status == "Failed" ? 1 : 0;
 
             await _dbContext.Database.ExecuteSqlRawAsync(@"
                 UPDATE ScrapeRuns
                 SET ListingsProcessed = ListingsProcessed + 1,
-                    ListingsAdded = ListingsAdded + {1},
-                    ListingsSkipped = ListingsSkipped + {2},
-                    ListingsFailed = ListingsFailed + {3},
+                    ListingsAddedActive = ListingsAddedActive + {1},
+                    ListingsAddedSold = ListingsAddedSold + {2},
+                    ListingsSkipped = ListingsSkipped + {3},
+                    ListingsFailed = ListingsFailed + {4},
                     Status = CASE WHEN ListingsProcessed + 1 >= TotalListingsFound
                                   AND TotalListingsFound > 0
                                   AND Status = 'Running' THEN 'Completed' ELSE Status END,
@@ -71,7 +94,7 @@ public class UpdateScrapeRunListingActivity
                     CurrentPhase = CASE WHEN ListingsProcessed + 1 >= TotalListingsFound
                                         AND TotalListingsFound > 0
                                         AND Status = 'Running' THEN 'Completed' ELSE CurrentPhase END
-                WHERE Id = {0}", input.ScrapeRunId, addedIncrement, skippedIncrement, failedIncrement);
+                WHERE Id = {0}", input.ScrapeRunId, addedActiveIncrement, addedSoldIncrement, skippedIncrement, failedIncrement);
         }
 
         _logger.LogInformation("Updated ScrapeRunListing {ListingId} to {Status}", input.ListingId, input.Status);

@@ -170,8 +170,149 @@ public class ListingEtlOrchestrator
 
         var result = await context.CallActivityAsync<ProcessListingResult>(nameof(ProcessListingActivity), processInput);
 
+        // Handle skipped listings (delisted or product page redirects)
+        if (result.IsDelisted || result.IsProductPageRedirect)
+        {
+            var skipReason = result.IsDelisted ? "Delisted" : "ProductPageRedirect";
+            logger.LogInformation(
+                "Listing {ListingId} skipped: {Reason}",
+                input.ListingId, skipReason);
+
+            await context.CallActivityAsync(nameof(UpdateScrapeRunListingActivity),
+                new UpdateScrapeRunListingInput(
+                    input.ScrapeRunId,
+                    input.ListingId,
+                    "Skipped",
+                    FailureReason: skipReason));
+
+            // Clean up blobs
+            await context.CallActivityAsync(
+                nameof(DeleteListingBlobsActivity),
+                new DeleteBlobsInput(input.ScrapeRunId, input.ListingId));
+
+            return;
+        }
+
         if (!result.Success)
         {
+            // Handle parse failures with retry loop
+            if (result.IsParseFailure)
+            {
+                const int MaxParseAttempts = 3;
+                var currentAttempt = lookupResult.ParseAttempts;
+
+                // Retry loop - keep trying until max attempts reached
+                while (currentAttempt < MaxParseAttempts)
+                {
+                    currentAttempt++;
+                    logger.LogInformation(
+                        "Parse failed for {ListingId} (attempt {Attempt}/{Max}), re-enqueueing for retry",
+                        input.ListingId, currentAttempt, MaxParseAttempts);
+
+                    // Update parse attempts in DB
+                    await context.CallActivityAsync(nameof(UpdateScrapeRunListingActivity),
+                        new UpdateScrapeRunListingInput(
+                            input.ScrapeRunId,
+                            input.ListingId,
+                            "Pending",
+                            IncrementParseAttempts: 1));
+
+                    // Re-enqueue the listing scrape for retry
+                    await context.CallActivityAsync(nameof(EnqueueScrapeRetryActivity),
+                        new EnqueueScrapeRetryInput(input.ListingId, "listing", input.ScrapeRunId));
+
+                    // Wait for the retry blob
+                    var retryTimeout = context.CurrentUtcDateTime.AddMinutes(TimeoutMinutes);
+                    using var retryCts = new CancellationTokenSource();
+
+                    var retryTimeoutTask = context.CreateTimer(retryTimeout, retryCts.Token);
+                    var retryEvent = context.WaitForExternalEvent<bool>("listing-ready");
+
+                    var retryWinner = await Task.WhenAny(retryTimeoutTask, retryEvent);
+
+                    if (retryWinner == retryEvent)
+                    {
+                        retryCts.Cancel();
+                        logger.LogInformation("Retry listing blob arrived for {ListingId}", input.ListingId);
+
+                        // Re-check blob state and re-process
+                        state = await context.CallActivityAsync<BlobState>(nameof(CheckBlobsActivity), input);
+
+                        if (state.HasListing)
+                        {
+                            // Try processing again
+                            processInput = new ProcessListingInput(
+                                input.ListingId,
+                                ScrapeJobId: lookupResult.ScrapeJobId ?? 0,
+                                ScrapeRunId: input.ScrapeRunId,
+                                HasDescription: state.HasDescription
+                            );
+
+                            result = await context.CallActivityAsync<ProcessListingResult>(
+                                nameof(ProcessListingActivity), processInput);
+
+                            if (result.Success)
+                            {
+                                // Success! Update and return
+                                var retryUpdateInput = new UpdateScrapeRunListingInput(
+                                    input.ScrapeRunId,
+                                    input.ListingId,
+                                    "Complete",
+                                    IsNewListing: result.IsNewListing,
+                                    ListingStatus: result.ListingStatus
+                                );
+                                await context.CallActivityAsync(nameof(UpdateScrapeRunListingActivity), retryUpdateInput);
+
+                                await context.CallActivityAsync(
+                                    nameof(DeleteListingBlobsActivity),
+                                    new DeleteBlobsInput(input.ScrapeRunId, input.ListingId));
+
+                                logger.LogInformation(
+                                    "ETL orchestration completed for listing {ListingId} after {Attempts} attempts",
+                                    input.ListingId, currentAttempt);
+                                return;
+                            }
+                            // Parse still failed - continue loop to try again
+                        }
+                    }
+                    else
+                    {
+                        logger.LogWarning(
+                            "Retry timeout for {ListingId} (attempt {Attempt}/{Max})",
+                            input.ListingId, currentAttempt, MaxParseAttempts);
+                        // Continue loop to try again
+                    }
+                }
+
+                // Parse retries exhausted - record detailed failure
+                logger.LogWarning(
+                    "Parse retries exhausted for {ListingId} after {Attempts} attempts: {MissingFields}",
+                    input.ListingId, currentAttempt, string.Join(", ", result.MissingFields ?? new List<string>()));
+
+                var failureDetails = result.MissingFields != null
+                    ? $"Missing: {string.Join(", ", result.MissingFields)}"
+                    : result.ErrorMessage ?? "Parse failed";
+
+                await context.CallActivityAsync(nameof(UpdateScrapeRunListingActivity),
+                    new UpdateScrapeRunListingInput(
+                        input.ScrapeRunId,
+                        input.ListingId,
+                        "Failed",
+                        ErrorMessage: failureDetails,
+                        FailureReason: "PARSE_EXHAUSTED",
+                        FailureDetails: failureDetails));
+
+                await context.CallActivityAsync(nameof(RecordIssueActivity),
+                    new RecordIssueRequest(
+                        input.ScrapeRunId,
+                        input.ListingId,
+                        "PARSE_FAILED",
+                        failureDetails));
+
+                return;
+            }
+
+            // Non-parse failure (e.g., eBay error page)
             logger.LogWarning(
                 "Listing {ListingId} failed processing: {Error}",
                 input.ListingId, result.ErrorMessage);
@@ -186,7 +327,8 @@ public class ListingEtlOrchestrator
             input.ScrapeRunId,
             input.ListingId,
             "Complete",
-            IsNewListing: result.IsNewListing
+            IsNewListing: result.IsNewListing,
+            ListingStatus: result.ListingStatus
         );
 
         await context.CallActivityAsync(nameof(UpdateScrapeRunListingActivity), updateInput);

@@ -32,7 +32,12 @@ public record ProcessListingInput(
 public record ProcessListingResult(
     bool Success,
     bool IsNewListing = false,
-    string? ErrorMessage = null
+    string? ErrorMessage = null,
+    bool IsParseFailure = false,
+    List<string>? MissingFields = null,
+    bool IsDelisted = false,
+    bool IsProductPageRedirect = false,
+    string? ListingStatus = null
 );
 
 // Activity DTOs for orchestration
@@ -44,8 +49,6 @@ public record FilterNewListingsInput(int JobId, List<string> ListingIds);
 public record UpdateScrapeRunInput(
     string InstanceId,
     bool Success,
-    int ListingsAdded,
-    int ListingsSkipped,
     string? ErrorMessage);
 
 public record UpdateProgressInput(

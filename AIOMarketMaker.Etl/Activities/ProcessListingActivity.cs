@@ -51,7 +51,60 @@ public class ProcessListingActivity
             _logger.LogWarning("eBay error page detected for listing {ListingId}, marking as failed", input.ListingId);
             return new ProcessListingResult(Success: false, ErrorMessage: "eBay error page");
         }
+
+        // Detect product page redirects (eBay sometimes redirects /itm/ to /p/ catalog pages)
+        // Product pages aggregate multiple sellers and don't have individual item data
+        var canonicalUrl = listingDoc.QuerySelector("link[rel='canonical']")?.GetAttribute("href");
+        if (canonicalUrl != null && canonicalUrl.Contains("/p/") && !canonicalUrl.Contains("/itm/"))
+        {
+            _logger.LogInformation(
+                "Listing {ListingId} redirected to product page ({CanonicalUrl}), skipping",
+                input.ListingId, canonicalUrl);
+            return new ProcessListingResult(Success: true, IsProductPageRedirect: true);
+        }
+
         var extractedListing = _listingParser.ParseProductListing(listingDoc, $"https://ebay.com/itm/{input.ListingId}");
+
+        // Detect redirected listings - eBay sometimes redirects unavailable listings to similar items
+        // This means the original listing was delisted/removed
+        if (extractedListing.id != null && extractedListing.id != input.ListingId)
+        {
+            _logger.LogInformation(
+                "Listing {ListingId} was delisted (redirected to {ActualId})",
+                input.ListingId, extractedListing.id);
+            return new ProcessListingResult(Success: true, IsDelisted: true);
+        }
+
+        // Validate all required fields are present
+        var missingFields = new List<string>();
+        if (extractedListing.id == null) missingFields.Add("id");
+        if (extractedListing.title == null) missingFields.Add("title");
+        if (extractedListing.price == null) missingFields.Add("price");
+        if (extractedListing.currency == null) missingFields.Add("currency");
+        if (extractedListing.Condition == null) missingFields.Add("condition");
+        if (extractedListing.images == null || !extractedListing.images.Any()) missingFields.Add("images");
+        if (extractedListing.listingStatus == null) missingFields.Add("listingStatus");
+
+        // purchaseFormat is only required for active listings - sold/ended listings don't have
+        // buy buttons in the HTML so the parser can't determine the format
+        var isActiveListing = extractedListing.listingStatus == AIOMarketMaker.Models.Ebay.EbayListingStatus.Active
+            || extractedListing.listingStatus == AIOMarketMaker.Models.Ebay.EbayListingStatus.OutOfStock;
+        if (isActiveListing && extractedListing.purchaseFormat == AIOMarketMaker.Models.Ebay.PurchaseFormat.Unknown)
+        {
+            missingFields.Add("purchaseFormat");
+        }
+
+        if (missingFields.Any())
+        {
+            _logger.LogWarning(
+                "Parse validation failed for listing {ListingId}: missing {Fields}",
+                input.ListingId, string.Join(", ", missingFields));
+            return new ProcessListingResult(
+                Success: false,
+                IsParseFailure: true,
+                MissingFields: missingFields,
+                ErrorMessage: $"Missing: {string.Join(", ", missingFields)}");
+        }
 
         // Try to fetch description (optional)
         string? description = null;
@@ -136,6 +189,9 @@ public class ProcessListingActivity
             "Processed listing {ListingId}: {Action}, descriptionStatus={Status}",
             input.ListingId, isNew ? "added" : "updated", descriptionStatus);
 
-        return new ProcessListingResult(Success: true, IsNewListing: isNew);
+        return new ProcessListingResult(
+            Success: true,
+            IsNewListing: isNew,
+            ListingStatus: extractedListing.listingStatus?.ToString());
     }
 }
