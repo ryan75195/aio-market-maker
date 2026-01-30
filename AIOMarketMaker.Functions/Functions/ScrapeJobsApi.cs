@@ -311,6 +311,7 @@ public class ScrapeJobsApi
 
     /// <summary>
     /// GET /api/history/{runId}/issues - Get issues for a specific scrape run
+    /// Returns both retrying listings (ParseAttempts > 0, not terminal) and failed listings (from ScrapeRunIssues)
     /// </summary>
     [Function("GetHistoryIssues")]
     public async Task<HttpResponseData> GetHistoryIssues(
@@ -320,25 +321,54 @@ public class ScrapeJobsApi
         var runExists = await _dbContext.ScrapeRuns.AnyAsync(r => r.Id == runId);
         if (!runExists)
         {
-            var notFound = req.CreateResponse(HttpStatusCode.NotFound);
-            await notFound.WriteAsJsonAsync(new { error = $"Run {runId} not found" });
+            var notFound = req.CreateResponse();
+            await notFound.WriteAsJsonAsync(new { error = $"Run {runId} not found" }, HttpStatusCode.NotFound);
             return notFound;
         }
 
-        var issues = await _dbContext.ScrapeRunIssues
-            .Where(i => i.ScrapeRunId == runId)
-            .OrderBy(i => i.CreatedUtc)
-            .Select(i => new
+        // Query 1: Retrying listings (ParseAttempts > 0, Status NOT in terminal states)
+        var retryingListings = await _dbContext.ScrapeRunListings
+            .Where(l => l.ScrapeRunId == runId
+                && l.ParseAttempts > 0
+                && l.Status != "Complete"
+                && l.Status != "Failed")
+            .Select(l => new HistoryIssueResponse
             {
-                ListingId = i.ListingId,
-                IssueType = i.IssueType,
-                ErrorMessage = i.ErrorMessage,
-                CreatedUtc = i.CreatedUtc
+                ListingId = l.ListingId,
+                Status = "Retrying",
+                ParseAttempts = l.ParseAttempts,
+                IssueType = null,
+                ErrorMessage = l.FailureDetails,
+                CreatedUtc = l.CreatedUtc
             })
             .ToListAsync();
 
+        // Query 2: Failed listings (from ScrapeRunIssues joined with ScrapeRunListings for ParseAttempts)
+        var failedListings = await _dbContext.ScrapeRunIssues
+            .Where(i => i.ScrapeRunId == runId)
+            .Join(
+                _dbContext.ScrapeRunListings.Where(l => l.ScrapeRunId == runId),
+                issue => issue.ListingId,
+                listing => listing.ListingId,
+                (issue, listing) => new HistoryIssueResponse
+                {
+                    ListingId = issue.ListingId,
+                    Status = "Failed",
+                    ParseAttempts = listing.ParseAttempts,
+                    IssueType = issue.IssueType,
+                    ErrorMessage = issue.ErrorMessage,
+                    CreatedUtc = issue.CreatedUtc
+                })
+            .ToListAsync();
+
+        // Combine both sets and order by CreatedUtc
+        var allIssues = retryingListings
+            .Concat(failedListings)
+            .OrderBy(i => i.CreatedUtc)
+            .ToList();
+
         var response = req.CreateResponse(HttpStatusCode.OK);
-        await response.WriteAsJsonAsync(issues);
+        await response.WriteAsJsonAsync(allIssues);
         return response;
     }
 
@@ -548,3 +578,16 @@ public class ScrapeJobsApi
 
 public record CreateJobRequest(string? SearchTerm, string? FilterInstructions, bool? IsEnabled);
 public record UpdateJobRequest(string? SearchTerm, string? FilterInstructions, bool? IsEnabled);
+
+/// <summary>
+/// Response DTO for GetHistoryIssues endpoint
+/// </summary>
+public class HistoryIssueResponse
+{
+    public string ListingId { get; set; } = string.Empty;
+    public string Status { get; set; } = string.Empty;
+    public int ParseAttempts { get; set; }
+    public string? IssueType { get; set; }
+    public string? ErrorMessage { get; set; }
+    public DateTime CreatedUtc { get; set; }
+}
