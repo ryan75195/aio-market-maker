@@ -277,11 +277,28 @@ public class ScrapeJobsApi
 
         // Get issue counts for the retrieved runs
         var runIds = runs.Select(r => r.Id).ToList();
-        var issueCounts = await _dbContext.ScrapeRunIssues
+
+        // Count failed issues from ScrapeRunIssues table
+        var failedIssueCounts = await _dbContext.ScrapeRunIssues
             .Where(i => runIds.Contains(i.ScrapeRunId))
             .GroupBy(i => i.ScrapeRunId)
             .Select(g => new { ScrapeRunId = g.Key, Count = g.Count() })
             .ToDictionaryAsync(x => x.ScrapeRunId, x => x.Count);
+
+        // Count retrying listings (ParseAttempts > 0, Status not Complete/Failed)
+        var retryingCounts = await _dbContext.ScrapeRunListings
+            .Where(l => runIds.Contains(l.ScrapeRunId)
+                && l.ParseAttempts > 0
+                && l.Status != "Complete"
+                && l.Status != "Failed")
+            .GroupBy(l => l.ScrapeRunId)
+            .Select(g => new { ScrapeRunId = g.Key, Count = g.Count() })
+            .ToDictionaryAsync(x => x.ScrapeRunId, x => x.Count);
+
+        // Combine both counts
+        var issueCounts = runIds.ToDictionary(
+            id => id,
+            id => failedIssueCounts.GetValueOrDefault(id, 0) + retryingCounts.GetValueOrDefault(id, 0));
 
         // Add issue counts to the response
         var runsWithIssues = runs.Select(r => new
