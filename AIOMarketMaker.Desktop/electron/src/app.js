@@ -385,8 +385,15 @@ createApp({
 
     startAutoRefresh() {
       this.refreshInterval = setInterval(() => {
-        if (this.currentView === 'history' && this.history.some(r => r.status === 'Running')) {
-          this.loadHistory();
+        if (this.currentView === 'history') {
+          const hasRunning = this.history.some(r => r.status === 'Running');
+          if (hasRunning) {
+            this.loadHistory();
+            // Also refresh issues for any expanded running runs
+            this.history
+              .filter(r => r.status === 'Running' && this.expandedRuns[r.id])
+              .forEach(r => this.loadRunIssues(r.id));
+          }
         }
       }, 2000);
     },
