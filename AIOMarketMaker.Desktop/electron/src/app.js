@@ -9,6 +9,8 @@ createApp({
       jobs: [],
       opportunities: [],
       history: [],
+      expandedRuns: {},
+      runIssues: {},
       loading: false,
       toast: null,
       showJobForm: false,
@@ -422,6 +424,45 @@ createApp({
       } finally {
         this.savingSettings = false;
       }
+    },
+
+    async toggleRunExpanded(run) {
+      if (!run.issueCount || run.issueCount === 0) return;
+
+      const runId = run.id;
+      if (this.expandedRuns[runId]) {
+        // Collapse
+        this.expandedRuns[runId] = false;
+      } else {
+        // Expand and fetch issues if not already loaded
+        this.expandedRuns[runId] = true;
+        if (!this.runIssues[runId]) {
+          await this.loadRunIssues(runId);
+        }
+      }
+    },
+
+    async loadRunIssues(runId) {
+      try {
+        const data = await this.apiCall(`/history/${runId}/issues`);
+        this.runIssues[runId] = this.toCamelCase(data);
+      } catch (err) {
+        this.showToast(`Failed to load issues: ${err.message}`, 'error');
+        this.runIssues[runId] = [];
+      }
+    },
+
+    formatIssueType(issueType) {
+      if (!issueType) return 'Unknown issue';
+      // Convert SCREAMING_SNAKE_CASE to "Sentence case"
+      return issueType
+        .toLowerCase()
+        .replace(/_/g, ' ')
+        .replace(/^\w/, c => c.toUpperCase());
+    },
+
+    getEbayListingUrl(listingId) {
+      return `https://www.ebay.com/itm/${listingId}`;
     }
   }
 }).mount('#app');

@@ -540,3 +540,108 @@ body {
   font-weight: 500;
   color: #4ade80;
 }
+
+/* History table expandable issues */
+.history-table .icon-cell {
+  width: 30px;
+  padding: 12px 8px;
+  text-align: center;
+}
+
+.history-table .expand-cell {
+  width: 60px;
+  padding: 12px 8px;
+  text-align: right;
+}
+
+.warning-icon {
+  color: #f59e0b;
+  font-size: 16px;
+}
+
+.expand-indicator {
+  color: #808080;
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.expandable-row {
+  cursor: pointer;
+}
+
+.expandable-row:hover {
+  background: #2d2d2d;
+}
+
+.expandable-row.expanded {
+  background: #2a2a2a;
+}
+
+.issues-row {
+  background: #1e1e1e;
+}
+
+.issues-row td {
+  padding: 0 !important;
+  border-bottom: 1px solid #3c3c3c;
+}
+
+.issues-container {
+  margin: 10px 15px 15px 40px;
+  padding: 15px;
+  background: #252526;
+  border-radius: 6px;
+  border: 1px solid #3c3c3c;
+}
+
+.issues-loading,
+.issues-empty {
+  color: #808080;
+  font-size: 13px;
+  padding: 10px;
+  text-align: center;
+}
+
+.issues-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.issues-table th,
+.issues-table td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #3c3c3c;
+}
+
+.issues-table th {
+  background: #2d2d2d;
+  font-weight: 500;
+  font-size: 11px;
+  text-transform: uppercase;
+  color: #808080;
+}
+
+.issues-table tr:last-child td {
+  border-bottom: none;
+}
+
+.listing-link {
+  color: #4a9eff;
+  text-decoration: none;
+  font-family: monospace;
+}
+
+.listing-link:hover {
+  text-decoration: underline;
+}
+
+.error-message-cell {
+  max-width: 300px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: #a0a0a0;
+}
