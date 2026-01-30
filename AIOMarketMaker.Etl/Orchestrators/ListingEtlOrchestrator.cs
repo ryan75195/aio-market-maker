@@ -143,6 +143,20 @@ public class ListingEtlOrchestrator
                 logger.LogWarning(
                     "Description blob still missing for {ListingId} after retry, proceeding without it",
                     input.ListingId);
+
+                try
+                {
+                    await context.CallActivityAsync(nameof(RecordIssueActivity), new RecordIssueRequest(
+                        input.ScrapeRunId,
+                        input.ListingId,
+                        "DESCRIPTION_FETCH_FAILED",
+                        "Description blob not found after timeout"));
+                }
+                catch (Exception ex)
+                {
+                    logger.LogWarning(ex, "Failed to record issue for listing {ListingId}", input.ListingId);
+                    // Continue - don't fail the listing processing
+                }
             }
         }
 
