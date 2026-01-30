@@ -219,7 +219,8 @@
                         <thead>
                           <tr>
                             <th>Listing ID</th>
-                            <th>Issue Type</th>
+                            <th>Status</th>
+                            <th>Attempts</th>
                             <th>Error Message</th>
                             <th>Time</th>
                           </tr>
@@ -229,7 +230,8 @@
                             <td>
                               <a :href="getEbayListingUrl(issue.listingId)" target="_blank" class="listing-link">{{ issue.listingId }}</a>
                             </td>
-                            <td>{{ formatIssueType(issue.issueType) }}</td>
+                            <td><span class="status-badge" :class="issue.status.toLowerCase()">{{ issue.status }}</span></td>
+                            <td>{{ issue.parseAttempts }}/3</td>
                             <td class="error-message-cell" :title="issue.errorMessage">{{ truncate(issue.errorMessage, 60) }}</td>
                             <td>{{ formatDate(issue.createdUtc) }}</td>
                           </tr>
