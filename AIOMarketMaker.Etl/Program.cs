@@ -11,6 +11,29 @@ using AIOMarketMaker.Core.Parsers;
 using ScraperWorker.Services;
 using Azure.Data.Tables;
 using Azure.Storage.Blobs;
+using Serilog;
+using Serilog.Formatting.Compact;
+
+// Configure Serilog with optional file sink
+var logSessionPath = Environment.GetEnvironmentVariable("LOG_SESSION_PATH");
+
+var loggerConfig = new LoggerConfiguration()
+    .Enrich.FromLogContext()
+    .Enrich.WithProperty("Component", "AIOMarketMaker.Etl")
+    .WriteTo.Console();
+
+if (!string.IsNullOrEmpty(logSessionPath))
+{
+    Directory.CreateDirectory(logSessionPath);
+    var logFile = Path.Combine(logSessionPath, "etl.json");
+    loggerConfig.WriteTo.File(
+        new CompactJsonFormatter(),
+        logFile,
+        rollingInterval: RollingInterval.Hour,
+        retainedFileCountLimit: null);
+}
+
+Log.Logger = loggerConfig.CreateLogger();
 
 var host = new HostBuilder()
     .ConfigureFunctionsWorkerDefaults()
@@ -117,6 +140,7 @@ var host = new HostBuilder()
         logging.AddFilter("Microsoft.EntityFrameworkCore", LogLevel.Warning);
         logging.AddFilter("System.Net.Http.HttpClient", LogLevel.Warning);
     })
+    .UseSerilog()
     .Build();
 
 host.Run();
