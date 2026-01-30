@@ -310,6 +310,37 @@ public class ScrapeJobsApi
     }
 
     /// <summary>
+    /// GET /api/history/{runId}/issues - Get issues for a specific scrape run
+    /// </summary>
+    [Function("GetHistoryIssues")]
+    public async Task<HttpResponseData> GetHistoryIssues(
+        [HttpTrigger(AuthorizationLevel.Function, "get", Route = "history/{runId:int}/issues")] HttpRequestData req,
+        int runId)
+    {
+        var runExists = await _dbContext.ScrapeRuns.AnyAsync(r => r.Id == runId);
+        if (!runExists)
+        {
+            return req.CreateResponse(HttpStatusCode.NotFound);
+        }
+
+        var issues = await _dbContext.ScrapeRunIssues
+            .Where(i => i.ScrapeRunId == runId)
+            .OrderBy(i => i.CreatedUtc)
+            .Select(i => new
+            {
+                ListingId = i.ListingId,
+                IssueType = i.IssueType,
+                ErrorMessage = i.ErrorMessage,
+                CreatedUtc = i.CreatedUtc
+            })
+            .ToListAsync();
+
+        var response = req.CreateResponse(HttpStatusCode.OK);
+        await response.WriteAsJsonAsync(issues);
+        return response;
+    }
+
+    /// <summary>
     /// GET /api/listings/active - List active listings (opportunities)
     /// </summary>
     [Function("GetActiveListings")]
