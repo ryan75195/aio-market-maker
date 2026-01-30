@@ -11,6 +11,7 @@ using AIOMarketMaker.Core.Parsers;
 using ScraperWorker.Services;
 using Azure.Data.Tables;
 using Azure.Storage.Blobs;
+using Azure.Storage.Queues;
 using Serilog;
 using Serilog.Formatting.Compact;
 
@@ -56,6 +57,14 @@ var host = new HostBuilder()
         // Azure Storage clients
         services.AddSingleton(_ => new BlobServiceClient(blobConnectionString));
         services.AddSingleton(_ => new TableServiceClient(tableConnectionString));
+
+        // Azure Queue client for direct queue writes
+        var queueConnectionString = configuration.GetValue<string>("queueStorageConnectionString")
+            ?? configuration.GetValue<string>("AzureWebJobsStorage")
+            ?? "UseDevelopmentStorage=true";
+        services.AddSingleton(_ => new QueueServiceClient(queueConnectionString));
+        services.AddSingleton<IQueueService, AzureStorageQueueService>();
+
         services.AddSingleton<IJobRepository>(sp =>
             new AzureJobRepository(
                 sp.GetRequiredService<TableServiceClient>(),
