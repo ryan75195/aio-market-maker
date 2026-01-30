@@ -275,8 +275,37 @@ public class ScrapeJobsApi
             })
             .ToListAsync();
 
+        // Get issue counts for the retrieved runs
+        var runIds = runs.Select(r => r.Id).ToList();
+        var issueCounts = await _dbContext.ScrapeRunIssues
+            .Where(i => runIds.Contains(i.ScrapeRunId))
+            .GroupBy(i => i.ScrapeRunId)
+            .Select(g => new { ScrapeRunId = g.Key, Count = g.Count() })
+            .ToDictionaryAsync(x => x.ScrapeRunId, x => x.Count);
+
+        // Add issue counts to the response
+        var runsWithIssues = runs.Select(r => new
+        {
+            r.Id,
+            r.InstanceId,
+            r.JobId,
+            r.JobSearchTerm,
+            r.TriggerType,
+            r.StartedUtc,
+            r.CompletedUtc,
+            r.Status,
+            r.ListingsAdded,
+            r.ListingsSkipped,
+            r.ListingsFailed,
+            r.TotalListingsFound,
+            r.ListingsProcessed,
+            r.CurrentPhase,
+            r.ErrorMessage,
+            IssueCount = issueCounts.GetValueOrDefault(r.Id, 0)
+        });
+
         var response = req.CreateResponse(HttpStatusCode.OK);
-        await response.WriteAsJsonAsync(runs);
+        await response.WriteAsJsonAsync(runsWithIssues);
         return response;
     }
 
