@@ -2,13 +2,12 @@ namespace AIOMarketMaker.Etl.Models;
 
 public record SweepOrchestratorInput(int ScrapeRunId);
 
-public record StaleListingInfo(
+public record PendingListingInfo(
     string ListingId,
-    bool BlobExists,
-    bool OrchestrationExists
+    bool BlobExists
 );
 
-public record FindStalePendingListingsResult(List<StaleListingInfo> StaleListings);
+public record FindPendingListingsResult(List<PendingListingInfo> PendingListings);
 
 public record StartOrchestrationInput(int ScrapeRunId, string ListingId);
 
