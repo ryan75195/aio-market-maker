@@ -22,6 +22,7 @@ public class EtlDbContext : DbContext
     public DbSet<ListingStatusHistory> ListingStatusHistory { get; set; } = null!;
     public DbSet<ScrapeRun> ScrapeRuns { get; set; } = null!;
     public DbSet<ScrapeRunListing> ScrapeRunListings { get; set; } = null!;
+    public DbSet<ScrapeRunIssue> ScrapeRunIssues { get; set; } = null!;
 
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
     {
@@ -119,6 +120,24 @@ public class EtlDbContext : DbContext
             entity.HasOne(e => e.ScrapeJob)
                 .WithMany()
                 .HasForeignKey(e => e.ScrapeJobId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<ScrapeRunIssue>(entity =>
+        {
+            entity.ToTable("ScrapeRunIssues");
+            entity.HasKey(e => e.Id);
+
+            entity.Property(e => e.ListingId).IsRequired().HasMaxLength(50);
+            entity.Property(e => e.IssueType).IsRequired().HasMaxLength(50);
+            entity.Property(e => e.ErrorMessage).HasMaxLength(500);
+            entity.Property(e => e.CreatedUtc).HasDefaultValueSql(dateDefaultSql);
+
+            entity.HasIndex(e => e.ScrapeRunId);
+
+            entity.HasOne(e => e.ScrapeRun)
+                .WithMany()
+                .HasForeignKey(e => e.ScrapeRunId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
     }
