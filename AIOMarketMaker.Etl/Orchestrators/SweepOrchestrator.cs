@@ -55,7 +55,6 @@ public class SweepOrchestrator
                 input.ScrapeRunId);
 
             // Only exit when pendingCount == 0 if we're past the Indexing phase start
-            // (ScrapeRunListings are created during Indexing, so before that pendingCount is always 0)
             var isInIndexingOrLater = runStatus.CurrentPhase is "Indexing" or "Completed";
 
             if (pendingCount == 0 && isInIndexingOrLater)
@@ -79,24 +78,39 @@ public class SweepOrchestrator
                 "Sweep iteration {Iteration} for ScrapeRun {ScrapeRunId}: {PendingCount} pending listings",
                 iteration + 1, input.ScrapeRunId, pendingCount);
 
-            // Find stale listings (blob exists but no orchestration)
-            var result = await context.CallActivityAsync<FindStalePendingListingsResult>(
+            // Find pending listings and their blob status
+            var result = await context.CallActivityAsync<FindPendingListingsResult>(
                 nameof(FindStalePendingListingsActivity),
                 input.ScrapeRunId);
 
-            if (result.StaleListings.Count > 0)
+            // Find listings where blob exists (potential missed triggers)
+            var listingsWithBlobs = result.PendingListings
+                .Where(p => p.BlobExists)
+                .ToList();
+
+            if (listingsWithBlobs.Count > 0)
             {
                 logger.LogInformation(
-                    "Found {Count} stale listings for ScrapeRun {ScrapeRunId}, starting orchestrations",
-                    result.StaleListings.Count, input.ScrapeRunId);
+                    "Found {Count} pending listings with blobs for ScrapeRun {ScrapeRunId}, starting orchestrations",
+                    listingsWithBlobs.Count, input.ScrapeRunId);
 
-                // Start missing orchestrations
-                foreach (var staleListing in result.StaleListings)
+                int startedCount = 0;
+                foreach (var pending in listingsWithBlobs)
                 {
-                    await context.CallActivityAsync<bool>(
-                        nameof(StartMissingOrchestrationActivity),
-                        new StartOrchestrationInput(input.ScrapeRunId, staleListing.ListingId));
+                    // Use sub-orchestrator to start if not exists
+                    var started = await context.CallSubOrchestratorAsync<bool>(
+                        nameof(StartOrchestrationIfNotExistsOrchestrator),
+                        new StartOrchestrationInput(input.ScrapeRunId, pending.ListingId));
+
+                    if (started)
+                    {
+                        startedCount++;
+                    }
                 }
+
+                logger.LogInformation(
+                    "Sweep started {StartedCount} missing orchestrations for ScrapeRun {ScrapeRunId}",
+                    startedCount, input.ScrapeRunId);
             }
         }
 
