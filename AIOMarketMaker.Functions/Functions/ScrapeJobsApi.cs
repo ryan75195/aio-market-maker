@@ -320,7 +320,9 @@ public class ScrapeJobsApi
         var runExists = await _dbContext.ScrapeRuns.AnyAsync(r => r.Id == runId);
         if (!runExists)
         {
-            return req.CreateResponse(HttpStatusCode.NotFound);
+            var notFound = req.CreateResponse(HttpStatusCode.NotFound);
+            await notFound.WriteAsJsonAsync(new { error = $"Run {runId} not found" });
+            return notFound;
         }
 
         var issues = await _dbContext.ScrapeRunIssues

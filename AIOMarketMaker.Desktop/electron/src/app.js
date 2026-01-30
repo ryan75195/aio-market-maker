@@ -462,7 +462,7 @@ createApp({
     },
 
     getEbayListingUrl(listingId) {
-      return `https://www.ebay.com/itm/${listingId}`;
+      return `https://www.ebay.co.uk/itm/${listingId}`;
     }
   }
 }).mount('#app');
