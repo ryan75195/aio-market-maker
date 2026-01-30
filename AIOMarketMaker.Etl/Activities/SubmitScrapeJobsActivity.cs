@@ -2,26 +2,28 @@ using Microsoft.Azure.Functions.Worker;
 using Microsoft.Extensions.Logging;
 using AIOMarketMaker.Core.Services;
 using AIOMarketMaker.Etl.Models;
+using ScraperWorker.Services;
 
 namespace AIOMarketMaker.Etl.Activities;
 
 /// <summary>
-/// Submits fire-and-forget scrape jobs for listing and description pages.
-/// For each listing ID, two scrape jobs are submitted (listing + description).
-/// This activity does NOT wait for scrapes to complete - it just queues them.
+/// Submits fire-and-forget scrape jobs by writing directly to the queue.
+/// For each listing ID, two queue messages are created (listing + description).
+/// This bypasses the WebScraper HTTP API for performance - no job tracking records
+/// are created since this flow uses blob triggers and ScrapeRunListings for tracking.
 /// </summary>
 public class SubmitScrapeJobsActivity
 {
-    private readonly IWebscraperClient _webScraper;
+    private readonly IQueueService _queueService;
     private readonly IEbayUrlBuilder _urlBuilder;
     private readonly ILogger<SubmitScrapeJobsActivity> _logger;
 
     public SubmitScrapeJobsActivity(
-        IWebscraperClient webScraper,
+        IQueueService queueService,
         IEbayUrlBuilder urlBuilder,
         ILogger<SubmitScrapeJobsActivity> logger)
     {
-        _webScraper = webScraper;
+        _queueService = queueService;
         _urlBuilder = urlBuilder;
         _logger = logger;
     }
@@ -31,45 +33,53 @@ public class SubmitScrapeJobsActivity
         [ActivityTrigger] SubmitScrapeJobsInput input,
         FunctionContext context)
     {
-        _logger.LogInformation("Submitting scrape jobs for {Count} listings", input.ListingIds.Count);
+        _logger.LogInformation("Submitting scrape jobs for {Count} listings via direct queue write",
+            input.ListingIds.Count);
 
-        var submittedCount = 0;
-        var failedCount = 0;
+        var messages = new List<ScrapeQueueMessage>();
 
         foreach (var listingId in input.ListingIds)
         {
-            try
-            {
-                // Submit listing page scrape
-                var listingUrl = _urlBuilder.BuildListingUrl(listingId);
-                await _webScraper.NewJobAsync(
-                    new[] { listingUrl },
-                    groupId: listingId,
-                    fileKey: "listing",
-                    scrapeRunId: input.ScrapeRunId);
+            // Generate a unique job ID for this listing (used for blob path fallback)
+            var jobId = Guid.NewGuid().ToString("N");
 
-                // Submit description page scrape
-                var descriptionUrl = _urlBuilder.BuildDescriptionUrl(listingId);
-                await _webScraper.NewJobAsync(
-                    new[] { descriptionUrl },
-                    groupId: listingId,
-                    fileKey: "description",
-                    scrapeRunId: input.ScrapeRunId);
-
-                submittedCount++;
-            }
-            catch (Exception ex)
+            // Listing page message
+            messages.Add(new ScrapeQueueMessage
             {
-                failedCount++;
-                _logger.LogWarning(ex, "Failed to submit scrape jobs for listing {ListingId}", listingId);
-                // Continue with other listings - don't fail the whole batch
-            }
+                JobId = jobId,
+                Url = _urlBuilder.BuildListingUrl(listingId),
+                GroupId = listingId,
+                FileKey = "listing",
+                ScrapeRunId = input.ScrapeRunId,
+                EnqueuedAt = DateTimeOffset.UtcNow
+            });
+
+            // Description page message
+            messages.Add(new ScrapeQueueMessage
+            {
+                JobId = jobId,
+                Url = _urlBuilder.BuildDescriptionUrl(listingId),
+                GroupId = listingId,
+                FileKey = "description",
+                ScrapeRunId = input.ScrapeRunId,
+                EnqueuedAt = DateTimeOffset.UtcNow
+            });
         }
 
-        _logger.LogInformation(
-            "Submitted scrape jobs: {Submitted} succeeded, {Failed} failed",
-            submittedCount, failedCount);
+        try
+        {
+            await _queueService.EnqueueBatchAsync(messages, CancellationToken.None);
 
-        return new SubmitScrapeJobsResult(submittedCount, failedCount);
+            _logger.LogInformation(
+                "Successfully enqueued {MessageCount} messages for {ListingCount} listings",
+                messages.Count, input.ListingIds.Count);
+
+            return new SubmitScrapeJobsResult(input.ListingIds.Count, 0);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to enqueue scrape jobs batch");
+            return new SubmitScrapeJobsResult(0, input.ListingIds.Count);
+        }
     }
 }
