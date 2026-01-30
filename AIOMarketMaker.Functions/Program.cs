@@ -4,7 +4,30 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Serilog;
+using Serilog.Formatting.Compact;
 using AIOMarketMaker.Core.Data;
+
+// Configure Serilog with optional file logging based on LOG_SESSION_PATH
+var logSessionPath = Environment.GetEnvironmentVariable("LOG_SESSION_PATH");
+
+var loggerConfig = new LoggerConfiguration()
+    .Enrich.FromLogContext()
+    .Enrich.WithProperty("Component", "AIOMarketMaker.Functions")
+    .WriteTo.Console();
+
+if (!string.IsNullOrEmpty(logSessionPath))
+{
+    Directory.CreateDirectory(logSessionPath);
+    var logFile = Path.Combine(logSessionPath, "functions.json");
+    loggerConfig.WriteTo.File(
+        new CompactJsonFormatter(),
+        logFile,
+        rollingInterval: RollingInterval.Hour,
+        retainedFileCountLimit: null);
+}
+
+Log.Logger = loggerConfig.CreateLogger();
 
 var host = new HostBuilder()
     .ConfigureFunctionsWorkerDefaults()
@@ -27,6 +50,7 @@ var host = new HostBuilder()
     .ConfigureLogging(logging =>
     {
         logging.AddFilter("Microsoft.EntityFrameworkCore", LogLevel.Warning);
+        logging.AddSerilog(Log.Logger);
     })
     .Build();
 
