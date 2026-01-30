@@ -385,3 +385,4 @@ deploy.zip
 publish.zip
 *.zip
 !.github/**/*.zip
+logs/
