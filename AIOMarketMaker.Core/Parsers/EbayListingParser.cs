@@ -75,24 +75,43 @@ namespace AIOMarketMaker.Core.Parsers
         internal PurchaseFormat GetPurchaseFormat(IDocument document)
         {
             var buyingComponentText = document.QuerySelector(".x-buybox-cta")?.TextContent;
-            
-            if (buyingComponentText == null)
-                return PurchaseFormat.Unknown;
 
-            if (buyingComponentText.Contains("Submit bid") && buyingComponentText.Contains("Make offer")) 
+            // Try old-style HTML where buttons are in x-buybox-cta
+            if (buyingComponentText != null)
             {
-                return PurchaseFormat.AuctionWithBestOffer;
+                if (buyingComponentText.Contains("Submit bid") && buyingComponentText.Contains("Make offer"))
+                {
+                    return PurchaseFormat.AuctionWithBestOffer;
+                }
+                if (buyingComponentText.Contains("Buy it now") && buyingComponentText.Contains("Make offer"))
+                {
+                    return PurchaseFormat.BuyItNowWithBestOffer;
+                }
+                if (buyingComponentText.Contains("Submit bid"))
+                {
+                    return PurchaseFormat.Auction;
+                }
+                if (buyingComponentText.Contains("Buy it now"))
+                {
+                    return PurchaseFormat.BuyItNow;
+                }
             }
-            if (buyingComponentText.Contains("Buy it now") && buyingComponentText.Contains("Make offer")) 
+
+            // Fallback for new-style HTML where buttons are rendered client-side
+            // Check the price section for "or Best Offer" text
+            var priceText = document.QuerySelector(".x-price-primary")?.TextContent;
+            if (priceText != null)
             {
-                return PurchaseFormat.BuyItNowWithBestOffer;
-            }
-            if (buyingComponentText.Contains("Submit bid")) 
-            {
-                return PurchaseFormat.Auction;
-            }
-            if (buyingComponentText.Contains("Buy it now")) 
-            {
+                var hasBestOffer = priceText.Contains("Best Offer", StringComparison.OrdinalIgnoreCase);
+
+                // If we have a price, it's at minimum a BuyItNow listing
+                // Check for "Best Offer" to determine if offers are accepted
+                if (hasBestOffer)
+                {
+                    return PurchaseFormat.BuyItNowWithBestOffer;
+                }
+
+                // Has price but no Best Offer text - assume BuyItNow
                 return PurchaseFormat.BuyItNow;
             }
 
@@ -164,10 +183,17 @@ namespace AIOMarketMaker.Core.Parsers
 
         internal IEnumerable<string> GetProductImages(IDocument document)
         {
+            // Try ux-image-grid first (older eBay HTML structure)
             var container = document.QuerySelector(".ux-image-grid.no-scrollbar");
 
+            // Fallback to ux-image-carousel (newer eBay HTML structure)
             if (container == null)
-                return new List<string>(); // return empty list if not found
+            {
+                container = document.QuerySelector(".ux-image-carousel");
+            }
+
+            if (container == null)
+                return new List<string>();
 
             // Select all <img> tags inside that container
             var images = container

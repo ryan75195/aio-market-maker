@@ -574,5 +574,43 @@ namespace AIOMarketMaker.Tests.Unit
                 Assert.That(title, Does.Contain("PlayStation 5"), "Title should contain PlayStation 5");
             });
         }
+
+        [Test]
+        public void Should_parse_images_from_carousel_structure()
+        {
+            // Listing 366162570215 uses ux-image-carousel instead of ux-image-grid
+            // This is a newer eBay HTML structure that some listings have
+            var doc = PageBuilder.LoadVerificationHtmlDocument("366162570215");
+            var parser = (EbayListingParser)_serviceUnderTest;
+
+            var images = parser.GetProductImages(doc);
+
+            Assert.That(images, Is.Not.Empty, "Should extract images from carousel structure");
+            Assert.That(images.First(), Does.Contain("ebayimg.com"), "Image URL should be from eBay CDN");
+        }
+
+        [Test]
+        public void Should_parse_purchase_format_from_price_section_when_buybox_cta_lacks_buttons()
+        {
+            // Listing 168079608263 - "Apple Mac Mini m2 (2023) - 8gb RAM 256gb SSD"
+            // New eBay HTML structure where:
+            // - x-buybox-cta only contains "Add to Watchlist" (no Buy/Bid buttons)
+            // - x-price-primary contains "£349.00 or Best Offer"
+            // The purchase format should be detected from the price section
+            var doc = PageBuilder.LoadVerificationHtmlDocument("168079608263");
+            var parser = (EbayListingParser)_serviceUnderTest;
+
+            var purchaseFormat = parser.GetPurchaseFormat(doc);
+            var price = parser.GetProductPrice(doc);
+            var title = parser.GetProductTitle(doc);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(purchaseFormat, Is.EqualTo(PurchaseFormat.BuyItNowWithBestOffer),
+                    "Should detect BuyItNowWithBestOffer from 'or Best Offer' in price section");
+                Assert.That(price, Is.EqualTo(349.00m), "Price should be 349.00");
+                Assert.That(title, Does.Contain("Mac Mini"), "Title should contain Mac Mini");
+            });
+        }
     }
 }
