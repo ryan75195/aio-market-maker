@@ -114,7 +114,7 @@ public class SimplifiedPipeline_IntegrationTests
         {
             // Act - Trigger manual scrape via HTTP
             var triggerResponse = await _httpClient.PostAsJsonAsync(
-                "/api/scrape/manual",
+                "/api/scrape/start",
                 new { jobId = testJobId });
 
             Assert.That(triggerResponse.StatusCode, Is.EqualTo(HttpStatusCode.OK),

@@ -206,7 +206,7 @@ public class SimplifiedScrapeTrigger
     /// </summary>
     [Function("ManualScrape")]
     public async Task<HttpResponseData> RunManual(
-        [HttpTrigger(AuthorizationLevel.Function, "post", Route = "scrape/manual")] HttpRequestData req)
+        [HttpTrigger(AuthorizationLevel.Function, "post", Route = "scrape/start")] HttpRequestData req)
     {
         _logger.LogInformation("Manual scrape trigger fired at {Time}", DateTime.UtcNow);
 
@@ -265,14 +265,32 @@ public class SimplifiedScrapeTrigger
             jobsToRun = enabledJobs.Select(j => (j.Id, j.SearchTerm));
         }
 
-        // Run scrape for each job
+        // Run scrape for each job and track the first run for UI response
         var results = new List<object>();
+        int? firstRunId = null;
+        string? firstInstanceId = null;
+
         foreach (var (jobId, searchTerm) in jobsToRun)
         {
             try
             {
+                // Get the run info before calling (we need the ID created in RunScrapeForJobAsync)
                 var listingsCount = await RunScrapeForJobAsync(jobId, searchTerm, "Manual");
-                results.Add(new { jobId, searchTerm, success = true, listingsFound = listingsCount });
+
+                // Get the most recent run for this job to get its ID and instanceId
+                var latestRun = await _dbContext.ScrapeRuns
+                    .Where(r => r.JobId == jobId && r.TriggerType == "Manual")
+                    .OrderByDescending(r => r.Id)
+                    .Select(r => new { r.Id, r.InstanceId })
+                    .FirstOrDefaultAsync();
+
+                if (latestRun != null)
+                {
+                    firstRunId ??= latestRun.Id;
+                    firstInstanceId ??= latestRun.InstanceId;
+                }
+
+                results.Add(new { jobId, searchTerm, success = true, listingsFound = listingsCount, runId = latestRun?.Id });
                 _logger.LogInformation("Manual scrape for job {JobId} completed. Found {Count} new listings.",
                     jobId, listingsCount);
             }
@@ -285,7 +303,13 @@ public class SimplifiedScrapeTrigger
         }
 
         var response = req.CreateResponse(HttpStatusCode.OK);
-        await response.WriteAsJsonAsync(new { results });
+        // Return format expected by UI: { instanceId, runId, results }
+        await response.WriteAsJsonAsync(new
+        {
+            instanceId = firstInstanceId ?? Guid.NewGuid().ToString(),
+            runId = firstRunId ?? 0,
+            results
+        });
         return response;
     }
 }
