@@ -6,6 +6,7 @@ using AIOMarketMaker.Core.Data;
 using AIOMarketMaker.Core.Parsers;
 using AIOMarketMaker.Etl.Endpoints;
 using AIOMarketMaker.Tests.Utils;
+using System.Text.Json;
 
 namespace AIOMarketMaker.Tests.Unit.Endpoints;
 
@@ -102,6 +103,56 @@ public class ProcessListingEndpoint_UnitTests
             Assert.That(response.Success, Is.False);
             Assert.That(response.Status, Is.EqualTo("failed"));
             Assert.That(response.ErrorMessage, Is.EqualTo("Blob not found"));
+        });
+    }
+
+    [Test]
+    public void ProcessListingRequest_should_deserialize_from_json()
+    {
+        // Arrange
+        var json = @"{""scrapeRunId"":123,""scrapeRunListingId"":456,""listingId"":""itm789"",""scrapeJobId"":1,""blobPath"":""123/itm789/listing.html""}";
+
+        // Act
+        var request = JsonSerializer.Deserialize<ProcessListingRequest>(json,
+            new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+
+        // Assert
+        Assert.That(request, Is.Not.Null);
+        Assert.Multiple(() =>
+        {
+            Assert.That(request!.ScrapeRunId, Is.EqualTo(123));
+            Assert.That(request.ScrapeRunListingId, Is.EqualTo(456));
+            Assert.That(request.ListingId, Is.EqualTo("itm789"));
+            Assert.That(request.ScrapeJobId, Is.EqualTo(1));
+            Assert.That(request.BlobPath, Is.EqualTo("123/itm789/listing.html"));
+        });
+    }
+
+    [Test]
+    public void Invalid_json_should_throw_JsonException()
+    {
+        // Arrange
+        var invalidJson = "{invalid}";
+
+        // Act & Assert
+        Assert.Throws<JsonException>(() =>
+        {
+            JsonSerializer.Deserialize<ProcessListingRequest>(invalidJson,
+                new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+        });
+    }
+
+    [Test]
+    public void Empty_string_should_throw_JsonException()
+    {
+        // Arrange
+        var emptyJson = "";
+
+        // Act & Assert
+        Assert.Throws<JsonException>(() =>
+        {
+            JsonSerializer.Deserialize<ProcessListingRequest>(emptyJson,
+                new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
         });
     }
 }
