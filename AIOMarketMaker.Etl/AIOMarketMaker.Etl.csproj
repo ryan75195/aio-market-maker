@@ -8,6 +8,11 @@
     <FunctionsEnableWorkerIndexing>false</FunctionsEnableWorkerIndexing>
   </PropertyGroup>
 
+  <!-- Exclude archived Durable Functions code from compilation -->
+  <ItemGroup>
+    <Compile Remove="_archived\**" />
+  </ItemGroup>
+
   <ItemGroup>
     <PackageReference Include="Microsoft.Azure.Functions.Worker" Version="1.23.0" />
     <PackageReference Include="Microsoft.Azure.Functions.Worker.Extensions.Http" Version="3.2.0" />

@@ -1,6 +1,7 @@
 using AIOMarketMaker.Core.Data;
 using AIOMarketMaker.Core.Data.Models;
-using AIOMarketMaker.Functions.Activities;
+using AIOMarketMaker.Etl.Activities;
+using AIOMarketMaker.Etl.Models;
 using AIOMarketMaker.Tests.Utils;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -29,24 +30,131 @@ public class UpdateScrapeRunActivityTests
     }
 
     [Test]
-    public async Task Should_update_run_to_completed_when_success_is_true()
+    public async Task Should_not_mark_complete_when_phase_is_not_completed_even_if_total_is_zero()
     {
-        // Arrange
+        // Arrange - This is the bug scenario: TotalListingsFound=0 but CurrentPhase="Searching"
+        // The old logic would mark this as Completed, which is wrong
         var run = new ScrapeRun
         {
-            InstanceId = "test-instance-123",
+            InstanceId = "test-instance-phase-check",
             TriggerType = "Manual",
             StartedUtc = DateTime.UtcNow.AddMinutes(-5),
-            Status = "Running"
+            Status = "Running",
+            CurrentPhase = "Searching",  // NOT "Completed"
+            TotalListingsFound = 0,      // Would trigger old bug
+            ListingsProcessed = 0
         };
         _dbContext.ScrapeRuns.Add(run);
         await _dbContext.SaveChangesAsync();
 
         var input = new UpdateScrapeRunInput(
-            InstanceId: "test-instance-123",
+            InstanceId: "test-instance-phase-check",
             Success: true,
-            ListingsAdded: 42,
-            ListingsSkipped: 5,
+            ErrorMessage: null);
+
+        // Act
+        await _activity.Run(input);
+
+        // Assert - Status should remain "Running" because phase is not "Completed"
+        var updatedRun = await _dbContext.ScrapeRuns.FindAsync(run.Id);
+        Assert.Multiple(() =>
+        {
+            Assert.That(updatedRun!.Status, Is.EqualTo("Running"),
+                "Status should remain Running when CurrentPhase is not Completed");
+            Assert.That(updatedRun.CompletedUtc, Is.Null,
+                "CompletedUtc should not be set when phase is incomplete");
+        });
+    }
+
+    [Test]
+    public async Task Should_mark_complete_when_phase_is_completed_and_total_is_zero()
+    {
+        // Arrange - Legitimate completion: phase IS "Completed" and no listings to process
+        var run = new ScrapeRun
+        {
+            InstanceId = "test-instance-legit-complete",
+            TriggerType = "Manual",
+            StartedUtc = DateTime.UtcNow.AddMinutes(-5),
+            Status = "Running",
+            CurrentPhase = "Completed",  // Phase indicates completion is valid
+            TotalListingsFound = 0,
+            ListingsProcessed = 0
+        };
+        _dbContext.ScrapeRuns.Add(run);
+        await _dbContext.SaveChangesAsync();
+
+        var input = new UpdateScrapeRunInput(
+            InstanceId: "test-instance-legit-complete",
+            Success: true,
+            ErrorMessage: null);
+
+        // Act
+        await _activity.Run(input);
+
+        // Assert - Should be marked Completed because phase confirms it
+        var updatedRun = await _dbContext.ScrapeRuns.FindAsync(run.Id);
+        Assert.Multiple(() =>
+        {
+            Assert.That(updatedRun!.Status, Is.EqualTo("Completed"));
+            Assert.That(updatedRun.CompletedUtc, Is.Not.Null);
+        });
+    }
+
+    [Test]
+    public async Task Should_not_mark_complete_when_phase_is_indexing_and_listings_still_pending()
+    {
+        // Arrange - Bug scenario from docs: TotalListingsFound=1047, ListingsProcessed=21, CurrentPhase="Searching"
+        var run = new ScrapeRun
+        {
+            InstanceId = "test-instance-partial-progress",
+            TriggerType = "Manual",
+            StartedUtc = DateTime.UtcNow.AddMinutes(-5),
+            Status = "Running",
+            CurrentPhase = "Indexing",   // Still processing
+            TotalListingsFound = 1047,
+            ListingsProcessed = 21       // Only 21 of 1047 processed
+        };
+        _dbContext.ScrapeRuns.Add(run);
+        await _dbContext.SaveChangesAsync();
+
+        var input = new UpdateScrapeRunInput(
+            InstanceId: "test-instance-partial-progress",
+            Success: true,
+            ErrorMessage: null);
+
+        // Act
+        await _activity.Run(input);
+
+        // Assert - Should remain Running
+        var updatedRun = await _dbContext.ScrapeRuns.FindAsync(run.Id);
+        Assert.Multiple(() =>
+        {
+            Assert.That(updatedRun!.Status, Is.EqualTo("Running"),
+                "Status should remain Running when listings are still being processed");
+            Assert.That(updatedRun.CompletedUtc, Is.Null);
+        });
+    }
+
+    [Test]
+    public async Task Should_mark_complete_when_phase_is_completed_and_all_listings_processed()
+    {
+        // Arrange - Legitimate completion with all listings processed
+        var run = new ScrapeRun
+        {
+            InstanceId = "test-instance-all-processed",
+            TriggerType = "Manual",
+            StartedUtc = DateTime.UtcNow.AddMinutes(-5),
+            Status = "Running",
+            CurrentPhase = "Completed",
+            TotalListingsFound = 100,
+            ListingsProcessed = 100  // All processed
+        };
+        _dbContext.ScrapeRuns.Add(run);
+        await _dbContext.SaveChangesAsync();
+
+        var input = new UpdateScrapeRunInput(
+            InstanceId: "test-instance-all-processed",
+            Success: true,
             ErrorMessage: null);
 
         // Act
@@ -58,31 +166,27 @@ public class UpdateScrapeRunActivityTests
         {
             Assert.That(updatedRun!.Status, Is.EqualTo("Completed"));
             Assert.That(updatedRun.CompletedUtc, Is.Not.Null);
-            Assert.That(updatedRun.ListingsAdded, Is.EqualTo(42));
-            Assert.That(updatedRun.ListingsSkipped, Is.EqualTo(5));
-            Assert.That(updatedRun.ErrorMessage, Is.Null);
         });
     }
 
     [Test]
-    public async Task Should_update_run_to_failed_when_success_is_false()
+    public async Task Should_mark_failed_regardless_of_phase_when_success_is_false()
     {
-        // Arrange
+        // Arrange - Failed runs should always be marked Failed
         var run = new ScrapeRun
         {
-            InstanceId = "test-instance-456",
+            InstanceId = "test-instance-failed",
             TriggerType = "Nightly",
             StartedUtc = DateTime.UtcNow.AddMinutes(-10),
-            Status = "Running"
+            Status = "Running",
+            CurrentPhase = "Searching"  // Could be any phase
         };
         _dbContext.ScrapeRuns.Add(run);
         await _dbContext.SaveChangesAsync();
 
         var input = new UpdateScrapeRunInput(
-            InstanceId: "test-instance-456",
+            InstanceId: "test-instance-failed",
             Success: false,
-            ListingsAdded: 10,
-            ListingsSkipped: 0,
             ErrorMessage: "Job 1: Bot detection; Job 2: Timeout");
 
         // Act
@@ -94,7 +198,6 @@ public class UpdateScrapeRunActivityTests
         {
             Assert.That(updatedRun!.Status, Is.EqualTo("Failed"));
             Assert.That(updatedRun.CompletedUtc, Is.Not.Null);
-            Assert.That(updatedRun.ListingsAdded, Is.EqualTo(10));
             Assert.That(updatedRun.ErrorMessage, Is.EqualTo("Job 1: Bot detection; Job 2: Timeout"));
         });
     }
@@ -106,40 +209,9 @@ public class UpdateScrapeRunActivityTests
         var input = new UpdateScrapeRunInput(
             InstanceId: "non-existent-instance",
             Success: true,
-            ListingsAdded: 0,
-            ListingsSkipped: 0,
             ErrorMessage: null);
 
         // Act & Assert - should not throw
         Assert.DoesNotThrowAsync(async () => await _activity.Run(input));
-    }
-
-    [Test]
-    public async Task Should_preserve_trigger_type_when_updating()
-    {
-        // Arrange
-        var run = new ScrapeRun
-        {
-            InstanceId = "nightly-run-789",
-            TriggerType = "Nightly",
-            StartedUtc = DateTime.UtcNow.AddMinutes(-15),
-            Status = "Running"
-        };
-        _dbContext.ScrapeRuns.Add(run);
-        await _dbContext.SaveChangesAsync();
-
-        var input = new UpdateScrapeRunInput(
-            InstanceId: "nightly-run-789",
-            Success: true,
-            ListingsAdded: 100,
-            ListingsSkipped: 20,
-            ErrorMessage: null);
-
-        // Act
-        await _activity.Run(input);
-
-        // Assert
-        var updatedRun = await _dbContext.ScrapeRuns.FindAsync(run.Id);
-        Assert.That(updatedRun!.TriggerType, Is.EqualTo("Nightly"));
     }
 }

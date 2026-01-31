@@ -1,7 +1,7 @@
 using AIOMarketMaker.Core.Data;
 using AIOMarketMaker.Core.Data.Models;
-using AIOMarketMaker.Functions.Activities;
-using AIOMarketMaker.Functions.Contracts;
+using AIOMarketMaker.Etl.Activities;
+using AIOMarketMaker.Etl.Models;
 using AIOMarketMaker.Tests.Utils;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -13,25 +13,12 @@ namespace AIOMarketMaker.Tests.UnitTests.Activities;
 public class GetJobDetailsActivityTests
 {
     private EtlDbContext _dbContext = null!;
-    private GetJobDetailsActivity _activity = null!;
     private const int DefaultLookbackDays = 90;
 
     [SetUp]
     public void SetUp()
     {
         _dbContext = InMemoryDbContextFactory.Create();
-
-        var config = new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?>
-            {
-                ["Scraping:DefaultLookbackDays"] = DefaultLookbackDays.ToString()
-            })
-            .Build();
-
-        _activity = new GetJobDetailsActivity(
-            _dbContext,
-            config,
-            NullLogger<GetJobDetailsActivity>.Instance);
     }
 
     [TearDown]
@@ -40,28 +27,47 @@ public class GetJobDetailsActivityTests
         _dbContext.Dispose();
     }
 
+    private GetJobDetailsActivity CreateActivity(
+        int? maxSoldListings = null,
+        int? maxActiveListings = null)
+    {
+        var configValues = new Dictionary<string, string?>
+        {
+            ["Scraping:DefaultLookbackDays"] = DefaultLookbackDays.ToString()
+        };
+        if (maxSoldListings.HasValue)
+            configValues["Scraping:MaxSoldListings"] = maxSoldListings.Value.ToString();
+        if (maxActiveListings.HasValue)
+            configValues["Scraping:MaxActiveListings"] = maxActiveListings.Value.ToString();
+
+        var config = new ConfigurationBuilder()
+            .AddInMemoryCollection(configValues)
+            .Build();
+
+        return new GetJobDetailsActivity(
+            _dbContext,
+            config,
+            NullLogger<GetJobDetailsActivity>.Instance);
+    }
+
     [Test]
     public async Task Should_return_null_when_job_not_found()
     {
-        // Act
-        var result = await _activity.Run(new GetJobDetailsInput(999), null!);
-
-        // Assert
+        var activity = CreateActivity();
+        var result = await activity.Run(new GetJobDetailsInput(999), null!);
         Assert.That(result, Is.Null);
     }
 
     [Test]
     public async Task Should_use_default_lookback_when_never_run()
     {
-        // Arrange
         var job = new ScrapeJob { SearchTerm = "test", LastRunUtc = null };
         _dbContext.ScrapeJobs.Add(job);
         await _dbContext.SaveChangesAsync();
 
-        // Act
-        var result = await _activity.Run(new GetJobDetailsInput(job.Id), null!);
+        var activity = CreateActivity();
+        var result = await activity.Run(new GetJobDetailsInput(job.Id), null!);
 
-        // Assert
         Assert.Multiple(() =>
         {
             Assert.That(result, Is.Not.Null);
@@ -71,61 +77,73 @@ public class GetJobDetailsActivityTests
     }
 
     [Test]
-    public async Task Should_calculate_lookback_as_days_since_last_run_plus_one()
+    public async Task Should_return_configured_max_sold_listings()
     {
-        // Arrange - ran 5 days ago
-        var job = new ScrapeJob
-        {
-            SearchTerm = "test",
-            LastRunUtc = DateTime.UtcNow.AddDays(-5)
-        };
+        var job = new ScrapeJob { SearchTerm = "test" };
         _dbContext.ScrapeJobs.Add(job);
         await _dbContext.SaveChangesAsync();
 
-        // Act
-        var result = await _activity.Run(new GetJobDetailsInput(job.Id), null!);
+        var activity = CreateActivity(maxSoldListings: 50);
+        var result = await activity.Run(new GetJobDetailsInput(job.Id), null!);
 
-        // Assert - implementation uses Math.Ceiling on TotalDays, then adds 1
-        // For -5 days: Ceiling(~5.0) = 5 or 6 depending on fractional part, then +1
-        Assert.That(result!.LookbackDays, Is.InRange(6, 7));
+        Assert.That(result!.MaxSoldListings, Is.EqualTo(50));
     }
 
     [Test]
-    public async Task Should_return_minimum_of_one_lookback_day_when_ran_today()
+    public async Task Should_return_configured_max_active_listings()
     {
-        // Arrange - ran just now
-        var job = new ScrapeJob
-        {
-            SearchTerm = "test",
-            LastRunUtc = DateTime.UtcNow
-        };
+        var job = new ScrapeJob { SearchTerm = "test" };
         _dbContext.ScrapeJobs.Add(job);
         await _dbContext.SaveChangesAsync();
 
-        // Act
-        var result = await _activity.Run(new GetJobDetailsInput(job.Id), null!);
+        var activity = CreateActivity(maxActiveListings: 75);
+        var result = await activity.Run(new GetJobDetailsInput(job.Id), null!);
 
-        // Assert
-        Assert.That(result!.LookbackDays, Is.GreaterThanOrEqualTo(1));
+        Assert.That(result!.MaxActiveListings, Is.EqualTo(75));
     }
 
     [Test]
-    public async Task Should_calculate_lookback_when_ran_yesterday()
+    public async Task Should_return_null_limits_when_not_configured()
     {
-        // Arrange - ran yesterday
-        var job = new ScrapeJob
-        {
-            SearchTerm = "test",
-            LastRunUtc = DateTime.UtcNow.AddDays(-1)
-        };
+        var job = new ScrapeJob { SearchTerm = "test" };
         _dbContext.ScrapeJobs.Add(job);
         await _dbContext.SaveChangesAsync();
 
-        // Act
-        var result = await _activity.Run(new GetJobDetailsInput(job.Id), null!);
+        var activity = CreateActivity();
+        var result = await activity.Run(new GetJobDetailsInput(job.Id), null!);
 
-        // Assert - implementation uses Math.Ceiling on TotalDays, then adds 1
-        // For -1 days: Ceiling(~1.0) = 1 or 2, then +1
-        Assert.That(result!.LookbackDays, Is.InRange(2, 3));
+        Assert.Multiple(() =>
+        {
+            Assert.That(result!.MaxSoldListings, Is.Null);
+            Assert.That(result!.MaxActiveListings, Is.Null);
+        });
+    }
+
+    [Test]
+    public async Task Should_use_runtime_override_for_max_sold_listings()
+    {
+        var job = new ScrapeJob { SearchTerm = "test" };
+        _dbContext.ScrapeJobs.Add(job);
+        await _dbContext.SaveChangesAsync();
+
+        var activity = CreateActivity(maxSoldListings: 50);
+        var input = new GetJobDetailsInput(job.Id, MaxSoldListings: 25);
+        var result = await activity.Run(input, null!);
+
+        Assert.That(result!.MaxSoldListings, Is.EqualTo(25));
+    }
+
+    [Test]
+    public async Task Should_use_runtime_override_for_max_active_listings()
+    {
+        var job = new ScrapeJob { SearchTerm = "test" };
+        _dbContext.ScrapeJobs.Add(job);
+        await _dbContext.SaveChangesAsync();
+
+        var activity = CreateActivity(maxActiveListings: 75);
+        var input = new GetJobDetailsInput(job.Id, MaxActiveListings: 30);
+        var result = await activity.Run(input, null!);
+
+        Assert.That(result!.MaxActiveListings, Is.EqualTo(30));
     }
 }
