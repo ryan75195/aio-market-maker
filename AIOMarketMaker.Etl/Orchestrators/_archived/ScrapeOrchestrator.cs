@@ -92,8 +92,6 @@ public class ScrapeOrchestrator
             new UpdateScrapeRunInput(
                 instanceId,
                 failed == 0,
-                totalListings,
-                0, // We don't currently track skipped at orchestrator level
                 errors.Count > 0 ? string.Join("; ", errors) : null));
 
         return new OrchestratorResult(succeeded, failed, totalListings, duration, errors);

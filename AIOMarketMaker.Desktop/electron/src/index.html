@@ -174,7 +174,9 @@
                 <th>Status</th>
                 <th>Phase</th>
                 <th>Progress</th>
-                <th>Added</th>
+                <th>Active</th>
+                <th>Sold</th>
+                <th>Skipped</th>
                 <th>Failed</th>
                 <th></th>
               </tr>
@@ -202,7 +204,9 @@
                     <span v-else-if="run.status === 'Completed' && run.totalListingsFound > 0">{{ run.totalListingsFound }} processed</span>
                     <span v-else>-</span>
                   </td>
-                  <td class="number">{{ run.listingsAdded }}</td>
+                  <td class="number">{{ run.listingsAddedActive }}</td>
+                  <td class="number">{{ run.listingsAddedSold }}</td>
+                  <td class="number">{{ run.listingsSkipped || 0 }}</td>
                   <td class="number" :class="{ 'failed-count': run.listingsFailed > 0 }">{{ run.listingsFailed || 0 }}</td>
                   <td class="expand-cell">
                     <span v-if="run.issueCount > 0" class="expand-indicator">
@@ -211,7 +215,7 @@
                   </td>
                 </tr>
                 <tr v-if="expandedRuns[run.id] && run.issueCount > 0" class="issues-row">
-                  <td colspan="10">
+                  <td colspan="12">
                     <div class="issues-container">
                       <div v-if="!runIssues[run.id]" class="issues-loading">Loading issues...</div>
                       <div v-else-if="runIssues[run.id].length === 0" class="issues-empty">No issues found</div>
@@ -242,7 +246,7 @@
                 </tr>
               </template>
               <tr v-if="history.length === 0">
-                <td colspan="10" class="empty">No run history</td>
+                <td colspan="12" class="empty">No run history</td>
               </tr>
             </tbody>
           </table>
@@ -292,17 +296,27 @@
                 Scraping
               </h3>
               <div class="section-content" v-show="!collapsedSections.scraping">
-                <div class="form-group">
-                  <label>Max Sold Listings <span class="hint">(blank = unlimited)</span></label>
-                  <input v-model.number="settings.scraping.maxSoldListings" type="number" placeholder="100">
+                <div class="form-group toggle-input">
+                  <label>
+                    <input type="checkbox" v-model="settings.scraping.limitSoldEnabled">
+                    Limit Sold Listings
+                  </label>
+                  <input v-model.number="settings.scraping.maxSoldListings" type="number" placeholder="100" :disabled="!settings.scraping.limitSoldEnabled">
                 </div>
-                <div class="form-group">
-                  <label>Max Active Listings <span class="hint">(blank = unlimited)</span></label>
-                  <input v-model.number="settings.scraping.maxActiveListings" type="number" placeholder="100">
+                <div class="form-group toggle-input">
+                  <label>
+                    <input type="checkbox" v-model="settings.scraping.limitActiveEnabled">
+                    Limit Active Listings
+                  </label>
+                  <input v-model.number="settings.scraping.maxActiveListings" type="number" placeholder="100" :disabled="!settings.scraping.limitActiveEnabled">
                 </div>
-                <div class="form-group">
-                  <label>Default Lookback Days</label>
-                  <input v-model.number="settings.scraping.defaultLookbackDays" type="number" placeholder="180">
+                <div class="form-group toggle-input">
+                  <label>
+                    <input type="checkbox" v-model="settings.scraping.limitLookbackEnabled">
+                    Limit Lookback Days
+                  </label>
+                  <input v-model.number="settings.scraping.defaultLookbackDays" type="number" placeholder="180" :disabled="!settings.scraping.limitLookbackEnabled">
+                  <span class="hint">When disabled, uses days since last run</span>
                 </div>
               </div>
             </div>

@@ -73,9 +73,11 @@ public class UpdateScrapeRunListingActivity
         if (input.Status == "Complete" || input.Status == "Failed" || input.Status == "Skipped")
         {
             var isSold = input.ListingStatus == "Sold";
-            var addedActiveIncrement = input.Status == "Complete" && input.IsNewListing && !isSold ? 1 : 0;
-            var addedSoldIncrement = input.Status == "Complete" && input.IsNewListing && isSold ? 1 : 0;
-            var skippedIncrement = (input.Status == "Complete" && !input.IsNewListing) || input.Status == "Skipped" ? 1 : 0;
+            // Count all completed active/sold listings (both new inserts and updates)
+            var addedActiveIncrement = input.Status == "Complete" && !isSold ? 1 : 0;
+            var addedSoldIncrement = input.Status == "Complete" && isSold ? 1 : 0;
+            // Only count as skipped if actually skipped (not processed)
+            var skippedIncrement = input.Status == "Skipped" ? 1 : 0;
             var failedIncrement = input.Status == "Failed" ? 1 : 0;
 
             await _dbContext.Database.ExecuteSqlRawAsync(@"

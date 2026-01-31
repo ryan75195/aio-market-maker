@@ -48,12 +48,9 @@ public class UpdateScrapeRunActivity
         }
         // else: listings still being processed by blob triggers, leave status as Running
 
-        run.ListingsAdded = input.ListingsAdded;
-        run.ListingsSkipped = input.ListingsSkipped;
-
         await _dbContext.SaveChangesAsync();
 
-        _logger.LogInformation("Updated ScrapeRun {Id} for instance {InstanceId}: {Status}, {Added} added, {Skipped} skipped, {Processed}/{Total} processed",
-            run.Id, input.InstanceId, run.Status, run.ListingsAdded, run.ListingsSkipped, run.ListingsProcessed, run.TotalListingsFound);
+        _logger.LogInformation("Updated ScrapeRun {Id} for instance {InstanceId}: {Status}, {Processed}/{Total} processed",
+            run.Id, input.InstanceId, run.Status, run.ListingsProcessed, run.TotalListingsFound);
     }
 }

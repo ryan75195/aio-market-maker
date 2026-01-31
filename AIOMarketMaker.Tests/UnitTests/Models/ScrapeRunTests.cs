@@ -21,10 +21,17 @@ public class ScrapeRunTests
     }
 
     [Test]
-    public void Should_have_zero_listings_added_by_default()
+    public void Should_have_zero_listings_added_active_by_default()
     {
         var run = new ScrapeRun();
-        Assert.That(run.ListingsAdded, Is.EqualTo(0));
+        Assert.That(run.ListingsAddedActive, Is.EqualTo(0));
+    }
+
+    [Test]
+    public void Should_have_zero_listings_added_sold_by_default()
+    {
+        var run = new ScrapeRun();
+        Assert.That(run.ListingsAddedSold, Is.EqualTo(0));
     }
 
     [Test]

@@ -5,7 +5,7 @@ using AIOMarketMaker.Core.Data;
 
 namespace AIOMarketMaker.Etl.Activities;
 
-public record ScrapeRunLookupResult(int? ScrapeRunId, int? ScrapeJobId, bool Found);
+public record ScrapeRunLookupResult(int? ScrapeRunId, int? ScrapeJobId, bool Found, int ParseAttempts = 0);
 
 public class LookupScrapeRunActivity
 {
@@ -32,9 +32,9 @@ public class LookupScrapeRunActivity
             return new ScrapeRunLookupResult(null, null, false);
         }
 
-        _logger.LogInformation("Found ScrapeRunListing for {ListingId}: ScrapeRunId={ScrapeRunId}, ScrapeJobId={ScrapeJobId}",
-            listingId, mapping.ScrapeRunId, mapping.ScrapeJobId);
+        _logger.LogInformation("Found ScrapeRunListing for {ListingId}: ScrapeRunId={ScrapeRunId}, ScrapeJobId={ScrapeJobId}, ParseAttempts={ParseAttempts}",
+            listingId, mapping.ScrapeRunId, mapping.ScrapeJobId, mapping.ParseAttempts);
 
-        return new ScrapeRunLookupResult(mapping.ScrapeRunId, mapping.ScrapeJobId, true);
+        return new ScrapeRunLookupResult(mapping.ScrapeRunId, mapping.ScrapeJobId, true, mapping.ParseAttempts);
     }
 }

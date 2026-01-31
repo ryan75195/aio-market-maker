@@ -49,7 +49,8 @@ public class EnqueueScrapeRetryActivity
             await _webScraper.NewJobAsync(
                 new[] { url },
                 groupId: input.ListingId,
-                fileKey: input.FileKey);
+                fileKey: input.FileKey,
+                scrapeRunId: input.ScrapeRunId);
         }
         catch (Exception ex)
         {

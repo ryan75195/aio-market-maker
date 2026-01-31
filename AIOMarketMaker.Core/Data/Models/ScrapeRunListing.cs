@@ -46,6 +46,21 @@ public class ScrapeRunListing
     /// </summary>
     public string? ErrorMessage { get; set; }
 
+    /// <summary>
+    /// Number of parse attempts for this listing (incremented on each re-scrape due to parse failure)
+    /// </summary>
+    public int ParseAttempts { get; set; } = 0;
+
+    /// <summary>
+    /// Failure reason code: PARSE_INCOMPLETE, PARSE_EXHAUSTED
+    /// </summary>
+    public string? FailureReason { get; set; }
+
+    /// <summary>
+    /// Details about the failure (e.g., "Missing: title, price, images")
+    /// </summary>
+    public string? FailureDetails { get; set; }
+
     // Navigation properties
 
     /// <summary>

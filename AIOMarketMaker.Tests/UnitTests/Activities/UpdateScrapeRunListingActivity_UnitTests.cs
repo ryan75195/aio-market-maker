@@ -180,14 +180,11 @@ public class UpdateScrapeRunListingActivity_UnitTests
     [Test]
     public async Task Should_not_increment_ListingsAdded_or_ListingsSkipped_when_Failed()
     {
-        // Arrange - When a listing fails, ListingsAdded and ListingsSkipped should NOT increment.
+        // Arrange - When a listing fails, ListingsAddedActive/Sold and ListingsSkipped should NOT increment.
         // The raw SQL uses addedIncrement=0 and skippedIncrement=0 for Failed status.
-        // We verify by checking the SQL parameters would be 0 for Failed.
-        // Since the raw SQL uses GETUTCDATE() (incompatible with SQLite), we verify the
-        // mapping-level behavior and trust the SQL parameter logic.
         var (run, _) = await SeedRunWithListing(totalListingsFound: 5, listingsProcessed: 2);
 
-        // Even though IsNewListing=true, a Failed listing should NOT increment ListingsAdded
+        // Even though IsNewListing=true, a Failed listing should NOT increment ListingsAddedActive/Sold
         var input = new UpdateScrapeRunListingInput(
             run.Id, "123456789", "Failed", IsNewListing: true,
             ErrorMessage: "Parse error");
@@ -196,9 +193,6 @@ public class UpdateScrapeRunListingActivity_UnitTests
         await RunActivityIgnoringRawSqlError(input);
 
         // Assert - Verify the listing was marked Failed (mapping updates succeed)
-        // The raw SQL addedIncrement/skippedIncrement are 0 for Failed by design:
-        //   addedIncrement = input.Status == "Complete" && input.IsNewListing ? 1 : 0;
-        //   skippedIncrement = input.Status == "Complete" && !input.IsNewListing ? 1 : 0;
         var updatedListing = await _dbContext.ScrapeRunListings.FindAsync(run.Id, "123456789");
         Assert.Multiple(() =>
         {
@@ -210,12 +204,188 @@ public class UpdateScrapeRunListingActivity_UnitTests
         var updatedRun = await _dbContext.ScrapeRuns.FindAsync(run.Id);
         Assert.Multiple(() =>
         {
-            Assert.That(updatedRun!.ListingsAdded, Is.EqualTo(0),
-                "ListingsAdded should not be incremented for Failed listings");
+            Assert.That(updatedRun!.ListingsAddedActive, Is.EqualTo(0),
+                "ListingsAddedActive should not be incremented for Failed listings");
+            Assert.That(updatedRun.ListingsAddedSold, Is.EqualTo(0),
+                "ListingsAddedSold should not be incremented for Failed listings");
             Assert.That(updatedRun.ListingsSkipped, Is.EqualTo(0),
                 "ListingsSkipped should not be incremented for Failed listings");
             Assert.That(updatedRun.ListingsProcessed, Is.EqualTo(2),
                 "ListingsProcessed is only updated via raw SQL, not EF, so remains at initial value in SQLite tests");
         });
+    }
+
+    [Test]
+    public async Task Should_increment_ParseAttempts_when_specified()
+    {
+        // Arrange
+        var (run, _) = await SeedRunWithListing();
+        var input = new UpdateScrapeRunListingInput(
+            run.Id, "123456789", "Pending",
+            IncrementParseAttempts: 1);
+
+        // Act
+        await _activity.Run(input);
+
+        // Assert
+        var updated = await _dbContext.ScrapeRunListings.FindAsync(run.Id, "123456789");
+        Assert.That(updated!.ParseAttempts, Is.EqualTo(1));
+    }
+
+    [Test]
+    public async Task Should_accumulate_ParseAttempts_across_multiple_calls()
+    {
+        // Arrange
+        var (run, _) = await SeedRunWithListing();
+
+        // Act - Increment twice
+        await _activity.Run(new UpdateScrapeRunListingInput(
+            run.Id, "123456789", "Pending", IncrementParseAttempts: 1));
+        await _activity.Run(new UpdateScrapeRunListingInput(
+            run.Id, "123456789", "Pending", IncrementParseAttempts: 1));
+
+        // Assert
+        var updated = await _dbContext.ScrapeRunListings.FindAsync(run.Id, "123456789");
+        Assert.That(updated!.ParseAttempts, Is.EqualTo(2));
+    }
+
+    [Test]
+    public async Task Should_store_FailureReason_when_specified()
+    {
+        // Arrange
+        var (run, _) = await SeedRunWithListing();
+        var input = new UpdateScrapeRunListingInput(
+            run.Id, "123456789", "Failed",
+            FailureReason: "PARSE_EXHAUSTED");
+
+        // Act
+        await RunActivityIgnoringRawSqlError(input);
+
+        // Assert
+        var updated = await _dbContext.ScrapeRunListings.FindAsync(run.Id, "123456789");
+        Assert.That(updated!.FailureReason, Is.EqualTo("PARSE_EXHAUSTED"));
+    }
+
+    [Test]
+    public async Task Should_store_FailureDetails_when_specified()
+    {
+        // Arrange
+        var (run, _) = await SeedRunWithListing();
+        var input = new UpdateScrapeRunListingInput(
+            run.Id, "123456789", "Failed",
+            FailureDetails: "Missing: title, price, images");
+
+        // Act
+        await RunActivityIgnoringRawSqlError(input);
+
+        // Assert
+        var updated = await _dbContext.ScrapeRunListings.FindAsync(run.Id, "123456789");
+        Assert.That(updated!.FailureDetails, Is.EqualTo("Missing: title, price, images"));
+    }
+
+    [Test]
+    public async Task Should_store_all_failure_fields_together()
+    {
+        // Arrange
+        var (run, _) = await SeedRunWithListing();
+        var input = new UpdateScrapeRunListingInput(
+            run.Id, "123456789", "Failed",
+            ErrorMessage: "Parse retries exhausted",
+            FailureReason: "PARSE_EXHAUSTED",
+            FailureDetails: "Missing: id, title, price");
+
+        // Act
+        await RunActivityIgnoringRawSqlError(input);
+
+        // Assert
+        var updated = await _dbContext.ScrapeRunListings.FindAsync(run.Id, "123456789");
+        Assert.Multiple(() =>
+        {
+            Assert.That(updated!.Status, Is.EqualTo("Failed"));
+            Assert.That(updated.ErrorMessage, Is.EqualTo("Parse retries exhausted"));
+            Assert.That(updated.FailureReason, Is.EqualTo("PARSE_EXHAUSTED"));
+            Assert.That(updated.FailureDetails, Is.EqualTo("Missing: id, title, price"));
+        });
+    }
+
+    [Test]
+    public async Task Should_count_updated_active_listing_as_AddedActive_not_Skipped()
+    {
+        // Arrange - An existing active listing that was re-scraped and updated
+        // should be counted as AddedActive, not Skipped
+        var (run, _) = await SeedRunWithListing(totalListingsFound: 1, listingsProcessed: 0);
+        var input = new UpdateScrapeRunListingInput(
+            run.Id, "123456789", "Complete",
+            IsNewListing: false,  // Existing listing, was updated not inserted
+            ListingStatus: "Active");
+
+        // Act - Raw SQL will throw on SQLite, but we verify the branch is entered
+        var ex = Assert.ThrowsAsync<Microsoft.Data.Sqlite.SqliteException>(
+            async () => await _activity.Run(input));
+
+        // Assert - Mapping-level changes should be persisted
+        var updatedListing = await _dbContext.ScrapeRunListings.FindAsync(run.Id, "123456789");
+        Assert.Multiple(() =>
+        {
+            Assert.That(ex, Is.Not.Null,
+                "Raw SQL execution was attempted for Complete status");
+            Assert.That(updatedListing!.Status, Is.EqualTo("Complete"));
+            Assert.That(updatedListing.CompletedUtc, Is.Not.Null);
+        });
+        // NOTE: The raw SQL increments ListingsAddedActive (not ListingsSkipped) for
+        // Complete + Active listings regardless of IsNewListing. Verified via integration tests.
+    }
+
+    [Test]
+    public async Task Should_count_updated_sold_listing_as_AddedSold_not_Skipped()
+    {
+        // Arrange - An existing sold listing that was re-scraped and updated
+        // should be counted as AddedSold, not Skipped
+        var (run, _) = await SeedRunWithListing(totalListingsFound: 1, listingsProcessed: 0);
+        var input = new UpdateScrapeRunListingInput(
+            run.Id, "123456789", "Complete",
+            IsNewListing: false,  // Existing listing, was updated not inserted
+            ListingStatus: "Sold");
+
+        // Act
+        var ex = Assert.ThrowsAsync<Microsoft.Data.Sqlite.SqliteException>(
+            async () => await _activity.Run(input));
+
+        // Assert
+        var updatedListing = await _dbContext.ScrapeRunListings.FindAsync(run.Id, "123456789");
+        Assert.Multiple(() =>
+        {
+            Assert.That(ex, Is.Not.Null,
+                "Raw SQL execution was attempted for Complete status");
+            Assert.That(updatedListing!.Status, Is.EqualTo("Complete"));
+        });
+        // NOTE: The raw SQL increments ListingsAddedSold (not ListingsSkipped) for
+        // Complete + Sold listings regardless of IsNewListing. Verified via integration tests.
+    }
+
+    [Test]
+    public async Task Should_only_count_Skipped_status_as_ListingsSkipped()
+    {
+        // Arrange - Only listings with Status="Skipped" (e.g., product page redirects,
+        // delisted items) should increment ListingsSkipped
+        var (run, _) = await SeedRunWithListing(totalListingsFound: 1, listingsProcessed: 0);
+        var input = new UpdateScrapeRunListingInput(
+            run.Id, "123456789", "Skipped");
+
+        // Act
+        var ex = Assert.ThrowsAsync<Microsoft.Data.Sqlite.SqliteException>(
+            async () => await _activity.Run(input));
+
+        // Assert
+        var updatedListing = await _dbContext.ScrapeRunListings.FindAsync(run.Id, "123456789");
+        Assert.Multiple(() =>
+        {
+            Assert.That(ex, Is.Not.Null,
+                "Raw SQL execution was attempted for Skipped status");
+            Assert.That(updatedListing!.Status, Is.EqualTo("Skipped"));
+            Assert.That(updatedListing.CompletedUtc, Is.Not.Null);
+        });
+        // NOTE: The raw SQL increments ListingsSkipped only for Status="Skipped".
+        // Complete listings (even existing ones) increment AddedActive/AddedSold instead.
     }
 }

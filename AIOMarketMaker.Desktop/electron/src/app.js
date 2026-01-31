@@ -26,7 +26,14 @@ createApp({
         marketMakerApi: { baseUrl: '', functionKey: '' },
         etlApi: { baseUrl: '' },
         scraperApi: { baseUrl: '' },
-        scraping: { maxSoldListings: null, maxActiveListings: null, defaultLookbackDays: 180 },
+        scraping: {
+          maxSoldListings: 100,
+          maxActiveListings: 100,
+          defaultLookbackDays: 180,
+          limitSoldEnabled: true,
+          limitActiveEnabled: true,
+          limitLookbackEnabled: false
+        },
         storage: { connectionString: '' },
         openAi: { apiKey: '', model: '' },
         pinecone: { apiKey: '', indexName: '' }
@@ -258,20 +265,17 @@ createApp({
     async startScrape() {
       this.loading = true;
       try {
-        const body = {};
-        if (this.settings.scraping?.maxSoldListings) {
-          body.maxSoldListings = this.settings.scraping.maxSoldListings;
-        }
-        if (this.settings.scraping?.maxActiveListings) {
-          body.maxActiveListings = this.settings.scraping.maxActiveListings;
-        }
-        if (this.settings.scraping?.defaultLookbackDays) {
-          body.lookbackDays = this.settings.scraping.defaultLookbackDays;
-        }
+        const scraping = this.settings.scraping || {};
+        const body = {
+          // Send 0 when toggle is off (unlimited), otherwise send the value
+          maxSoldListings: scraping.limitSoldEnabled ? (scraping.maxSoldListings || 100) : 0,
+          maxActiveListings: scraping.limitActiveEnabled ? (scraping.maxActiveListings || 100) : 0,
+          lookbackDays: scraping.limitLookbackEnabled ? (scraping.defaultLookbackDays || 180) : 0
+        };
 
         const data = await this.etlApiCall('/scrape/start', {
           method: 'POST',
-          body: Object.keys(body).length > 0 ? JSON.stringify(body) : undefined
+          body: JSON.stringify(body)
         });
         const result = this.toCamelCase(data);
         this.lastInstanceId = result.instanceId;

@@ -50,8 +50,6 @@ public class UpdateScrapeRunActivityTests
         var input = new UpdateScrapeRunInput(
             InstanceId: "test-instance-phase-check",
             Success: true,
-            ListingsAdded: 0,
-            ListingsSkipped: 0,
             ErrorMessage: null);
 
         // Act
@@ -88,8 +86,6 @@ public class UpdateScrapeRunActivityTests
         var input = new UpdateScrapeRunInput(
             InstanceId: "test-instance-legit-complete",
             Success: true,
-            ListingsAdded: 0,
-            ListingsSkipped: 0,
             ErrorMessage: null);
 
         // Act
@@ -124,8 +120,6 @@ public class UpdateScrapeRunActivityTests
         var input = new UpdateScrapeRunInput(
             InstanceId: "test-instance-partial-progress",
             Success: true,
-            ListingsAdded: 0,
-            ListingsSkipped: 0,
             ErrorMessage: null);
 
         // Act
@@ -161,8 +155,6 @@ public class UpdateScrapeRunActivityTests
         var input = new UpdateScrapeRunInput(
             InstanceId: "test-instance-all-processed",
             Success: true,
-            ListingsAdded: 100,
-            ListingsSkipped: 0,
             ErrorMessage: null);
 
         // Act
@@ -174,7 +166,6 @@ public class UpdateScrapeRunActivityTests
         {
             Assert.That(updatedRun!.Status, Is.EqualTo("Completed"));
             Assert.That(updatedRun.CompletedUtc, Is.Not.Null);
-            Assert.That(updatedRun.ListingsAdded, Is.EqualTo(100));
         });
     }
 
@@ -196,8 +187,6 @@ public class UpdateScrapeRunActivityTests
         var input = new UpdateScrapeRunInput(
             InstanceId: "test-instance-failed",
             Success: false,
-            ListingsAdded: 10,
-            ListingsSkipped: 0,
             ErrorMessage: "Job 1: Bot detection; Job 2: Timeout");
 
         // Act
@@ -220,8 +209,6 @@ public class UpdateScrapeRunActivityTests
         var input = new UpdateScrapeRunInput(
             InstanceId: "non-existent-instance",
             Success: true,
-            ListingsAdded: 0,
-            ListingsSkipped: 0,
             ErrorMessage: null);
 
         // Act & Assert - should not throw

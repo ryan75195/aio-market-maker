@@ -39,9 +39,14 @@ public class ScrapeRun
     public string Status { get; set; } = "Running";
 
     /// <summary>
-    /// Number of new listings added to the database
+    /// Number of new active listings added to the database
     /// </summary>
-    public int ListingsAdded { get; set; }
+    public int ListingsAddedActive { get; set; }
+
+    /// <summary>
+    /// Number of new sold listings added to the database
+    /// </summary>
+    public int ListingsAddedSold { get; set; }
 
     /// <summary>
     /// Number of listings that were duplicates (already in DB)

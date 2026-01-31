@@ -143,10 +143,15 @@ public class JobOrchestrator
 
             if (newListingIds.Count == 0)
             {
+                logger.LogInformation("Job {JobId}: No new listings after filtering, marking run as completed", jobId);
                 await context.CallActivityAsync(nameof(UpdateJobTimestampActivity), jobId);
+                // Set phase to Completed first, then mark status as Completed
                 await context.CallActivityAsync(
                     nameof(UpdateScrapeRunProgressActivity),
                     new UpdateProgressInput(scrapeInstanceId, CurrentPhase: "Completed"));
+                await context.CallActivityAsync(
+                    nameof(UpdateScrapeRunActivity),
+                    new UpdateScrapeRunInput(scrapeInstanceId, Success: true, ErrorMessage: null));
                 return new JobResult(jobId, true, allListingIds.Count, null);
             }
 
@@ -196,7 +201,7 @@ public class JobOrchestrator
             {
                 await context.CallActivityAsync(
                     nameof(UpdateScrapeRunActivity),
-                    new UpdateScrapeRunInput(scrapeInstanceId, false, 0, 0, ex.Message));
+                    new UpdateScrapeRunInput(scrapeInstanceId, false, ex.Message));
             }
             catch (Exception updateEx)
             {

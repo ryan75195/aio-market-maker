@@ -11,8 +11,6 @@ public class GetJobDetailsActivity
     private readonly EtlDbContext _dbContext;
     private readonly ILogger<GetJobDetailsActivity> _logger;
     private readonly int _defaultLookbackDays;
-    private readonly int? _maxSoldListings;
-    private readonly int? _maxActiveListings;
 
     public GetJobDetailsActivity(
         EtlDbContext dbContext,
@@ -22,8 +20,6 @@ public class GetJobDetailsActivity
         _dbContext = dbContext;
         _logger = logger;
         _defaultLookbackDays = configuration.GetValue<int>("Scraping:DefaultLookbackDays", 90);
-        _maxSoldListings = configuration.GetValue<int?>("Scraping:MaxSoldListings");
-        _maxActiveListings = configuration.GetValue<int?>("Scraping:MaxActiveListings");
     }
 
     [Function(nameof(GetJobDetailsActivity))]
@@ -40,33 +36,38 @@ public class GetJobDetailsActivity
             return null;
         }
 
-        // Calculate lookback days based on last run, or use runtime override
+        // Calculate lookback days: if > 0 use runtime override, otherwise calculate dynamically
         int lookbackDays;
-        if (input.LookbackDays.HasValue)
+        if (input.LookbackDays > 0)
         {
             lookbackDays = input.LookbackDays.Value;
-            _logger.LogInformation("Job {JobId}: Using runtime lookback override: {Days} days", input.JobId, lookbackDays);
+            _logger.LogInformation("Job {JobId}: Using lookback override: {Days} days", input.JobId, lookbackDays);
         }
         else if (job.LastRunUtc == null)
         {
+            // First run ever - use config default
             lookbackDays = _defaultLookbackDays;
+            _logger.LogInformation("Job {JobId}: First run, using default lookback: {Days} days", input.JobId, lookbackDays);
         }
         else
         {
+            // Dynamic: days since last run + 1 buffer
             var daysSinceLastRun = (int)Math.Ceiling((DateTime.UtcNow - job.LastRunUtc.Value).TotalDays);
             lookbackDays = Math.Max(1, daysSinceLastRun + 1);
+            _logger.LogInformation("Job {JobId}: Dynamic lookback: {Days} days (last run: {LastRun})",
+                input.JobId, lookbackDays, job.LastRunUtc.Value);
         }
 
-        // Use runtime override for max listings if provided, otherwise fall back to config
-        var maxSold = input.MaxSoldListings ?? _maxSoldListings;
-        var maxActive = input.MaxActiveListings ?? _maxActiveListings;
-        if (input.MaxSoldListings.HasValue)
+        // Use runtime value if provided and > 0, otherwise no limit (0 means unlimited)
+        var maxSold = input.MaxSoldListings > 0 ? input.MaxSoldListings : null;
+        var maxActive = input.MaxActiveListings > 0 ? input.MaxActiveListings : null;
+        if (maxSold.HasValue)
         {
-            _logger.LogInformation("Job {JobId}: Using runtime maxSoldListings override: {Max}", input.JobId, maxSold);
+            _logger.LogInformation("Job {JobId}: Limiting sold listings to {Max}", input.JobId, maxSold);
         }
-        if (input.MaxActiveListings.HasValue)
+        if (maxActive.HasValue)
         {
-            _logger.LogInformation("Job {JobId}: Using runtime maxActiveListings override: {Max}", input.JobId, maxActive);
+            _logger.LogInformation("Job {JobId}: Limiting active listings to {Max}", input.JobId, maxActive);
         }
 
         return new JobDetails(job.Id, job.SearchTerm, lookbackDays, maxSold, maxActive);

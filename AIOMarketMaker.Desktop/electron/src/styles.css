@@ -383,7 +383,7 @@ body {
 
 /* Table enhancements */
 .data-table td.number {
-  text-align: right;
+  text-align: left;
   font-variant-numeric: tabular-nums;
 }
 
@@ -649,4 +649,33 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
   color: #a0a0a0;
+}
+
+/* Toggle input groups */
+.toggle-input {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+}
+
+.toggle-input label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 180px;
+  margin-bottom: 0;
+}
+
+.toggle-input input[type="number"] {
+  width: 100px;
+  flex-shrink: 0;
+}
+
+.toggle-input input[type="number"]:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.toggle-input .hint {
+  margin-left: auto;
 }
