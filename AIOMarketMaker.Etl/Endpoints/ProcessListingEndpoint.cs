@@ -194,7 +194,12 @@ public class ProcessListingEndpoint
 
         // Increment ScrapeRun.ListingsProcessed
         var scrapeRun = await _dbContext.ScrapeRuns.FirstOrDefaultAsync(sr => sr.Id == input.ScrapeRunId);
-        if (scrapeRun != null)
+        if (scrapeRun == null)
+        {
+            _logger.LogWarning("ScrapeRun {ScrapeRunId} not found while processing listing {ListingId}",
+                input.ScrapeRunId, input.ListingId);
+        }
+        else
         {
             scrapeRun.ListingsProcessed++;
         }

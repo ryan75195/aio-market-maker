@@ -422,6 +422,102 @@ public class ProcessListingEndpoint_UnitTests
         Assert.That(updatedRun!.ListingsProcessed, Is.EqualTo(1));
     }
 
+    [Test]
+    public async Task Run_should_return_updated_when_listing_exists()
+    {
+        // Arrange - HTML must be > 100KB to pass error page detection
+        var largeHtml = new string('x', 101 * 1024);
+
+        var scrapeRun = new ScrapeRun { Id = 1, Status = "Running", ListingsProcessed = 0 };
+        var scrapeJob = new ScrapeJob { Id = 1, SearchTerm = "test" };
+        _dbContext.ScrapeRuns.Add(scrapeRun);
+        _dbContext.ScrapeJobs.Add(scrapeJob);
+
+        // Create an existing listing that will be updated
+        var existingListing = new Listing
+        {
+            ListingId = "123456789",
+            ScrapeJobId = 1,
+            Title = "Old Title",
+            Price = 50.00m,
+            Currency = "GBP",
+            CreatedUtc = DateTime.UtcNow.AddDays(-1)
+        };
+        _dbContext.Listings.Add(existingListing);
+
+        var scrapeRunListing = new ScrapeRunListing
+        {
+            ScrapeRunId = 1,
+            ScrapeJobId = 1,
+            ListingId = "123456789",
+            Status = "Pending"
+        };
+        _dbContext.ScrapeRunListings.Add(scrapeRunListing);
+        await _dbContext.SaveChangesAsync();
+
+        SetupBlobWithContent(largeHtml);
+
+        // Setup parser to return an updated listing
+        var parsedListing = new ExtractedEbayListing(
+            id: "123456789",
+            title: "New Title",  // Changed
+            price: 99.99m,       // Changed
+            currency: "GBP",
+            shippingCost: 5.00m,
+            Condition: Condition.NEW,
+            images: new[] { "http://example.com/image1.jpg" },
+            listingStatus: EbayListingStatus.Active,
+            purchaseFormat: PurchaseFormat.BuyItNow,
+            ItemSpecifics: "Brand: Test",
+            descriptionSource: null,
+            SoldDateUtc: null,
+            Location: "London, UK",
+            Url: "http://www.ebay.co.uk/itm/123456789"
+        );
+
+        _listingParserMock
+            .Setup(p => p.ParseProductListing(It.IsAny<IDocument>(), It.IsAny<string>()))
+            .Returns(parsedListing);
+
+        var endpoint = new ProcessListingEndpoint(
+            _blobServiceMock.Object,
+            _dbContext,
+            _listingParserMock.Object,
+            _loggerMock.Object);
+
+        var request = new ProcessListingRequest(
+            ScrapeRunId: 1,
+            ScrapeRunListingId: 0,
+            ListingId: "123456789",
+            ScrapeJobId: 1,
+            BlobPath: "1/123456789/listing.html");
+
+        var httpRequest = MockHttpRequestData.Create(request);
+
+        // Act
+        var response = await endpoint.Run(httpRequest);
+
+        // Assert - response indicates updated
+        Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK));
+
+        var responseBody = await MockHttpRequestData.ReadResponseAsync<ProcessListingResponse>(response);
+        Assert.Multiple(() =>
+        {
+            Assert.That(responseBody.Success, Is.True);
+            Assert.That(responseBody.Status, Is.EqualTo("updated"));
+        });
+
+        // Assert - listing was updated in database
+        var updatedListing = await _dbContext.Listings
+            .FirstOrDefaultAsync(l => l.ListingId == "123456789");
+        Assert.That(updatedListing, Is.Not.Null);
+        Assert.Multiple(() =>
+        {
+            Assert.That(updatedListing!.Title, Is.EqualTo("New Title"));
+            Assert.That(updatedListing.Price, Is.EqualTo(99.99m));
+        });
+    }
+
     private void SetupBlobWithContent(string htmlContent)
     {
         var mockBlobContainerClient = new Mock<BlobContainerClient>();
