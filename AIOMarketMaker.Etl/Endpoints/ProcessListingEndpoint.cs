@@ -5,6 +5,18 @@ using AIOMarketMaker.Core.Parsers;
 
 namespace AIOMarketMaker.Etl.Endpoints;
 
+public record ProcessListingRequest(
+    int ScrapeRunId,
+    int ScrapeRunListingId,
+    string ListingId,
+    int ScrapeJobId,
+    string BlobPath);
+
+public record ProcessListingResponse(
+    bool Success,
+    string? Status,  // "added", "updated", "skipped", "failed"
+    string? ErrorMessage);
+
 public class ProcessListingEndpoint
 {
     private readonly BlobServiceClient _blobService;
