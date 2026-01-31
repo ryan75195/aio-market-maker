@@ -8,8 +8,11 @@ using AIOMarketMaker.Core.Data.Models;
 using AIOMarketMaker.Core.Parsers;
 using AIOMarketMaker.Etl.Endpoints;
 using AIOMarketMaker.Tests.Utils;
+using AIOMarketMaker.Models.Ebay;
+using AngleSharp.Dom;
 using System.Text.Json;
 using System.Net;
+using Microsoft.EntityFrameworkCore;
 
 namespace AIOMarketMaker.Tests.Unit.Endpoints;
 
@@ -323,6 +326,100 @@ public class ProcessListingEndpoint_UnitTests
             Assert.That(responseBody.Status, Is.EqualTo("failed"));
             Assert.That(responseBody.ErrorMessage, Does.Contain("error page"));
         });
+    }
+
+    [Test]
+    public async Task Run_should_return_added_when_new_listing_processed()
+    {
+        // Arrange - HTML must be > 100KB to pass error page detection
+        var largeHtml = new string('x', 101 * 1024); // 101KB of content
+
+        var scrapeRun = new ScrapeRun { Id = 1, Status = "Running", ListingsProcessed = 0 };
+        var scrapeJob = new ScrapeJob { Id = 1, SearchTerm = "test" };
+        _dbContext.ScrapeRuns.Add(scrapeRun);
+        _dbContext.ScrapeJobs.Add(scrapeJob);
+
+        var scrapeRunListing = new ScrapeRunListing
+        {
+            ScrapeRunId = 1,
+            ScrapeJobId = 1,
+            ListingId = "123456789",
+            Status = "Pending"
+        };
+        _dbContext.ScrapeRunListings.Add(scrapeRunListing);
+        await _dbContext.SaveChangesAsync();
+
+        SetupBlobWithContent(largeHtml);
+
+        // Setup parser to return a valid listing
+        var parsedListing = new ExtractedEbayListing(
+            id: "123456789",
+            title: "Test Product",
+            price: 99.99m,
+            currency: "GBP",
+            shippingCost: 5.00m,
+            Condition: Condition.NEW,
+            images: new[] { "http://example.com/image1.jpg" },
+            listingStatus: EbayListingStatus.Active,
+            purchaseFormat: PurchaseFormat.BuyItNow,
+            ItemSpecifics: "Brand: Test",
+            descriptionSource: null,
+            SoldDateUtc: null,
+            Location: "London, UK",
+            Url: "http://www.ebay.co.uk/itm/123456789"
+        );
+
+        _listingParserMock
+            .Setup(p => p.ParseProductListing(It.IsAny<IDocument>(), It.IsAny<string>()))
+            .Returns(parsedListing);
+
+        var endpoint = new ProcessListingEndpoint(
+            _blobServiceMock.Object,
+            _dbContext,
+            _listingParserMock.Object,
+            _loggerMock.Object);
+
+        var request = new ProcessListingRequest(
+            ScrapeRunId: 1,
+            ScrapeRunListingId: 0,
+            ListingId: "123456789",
+            ScrapeJobId: 1,
+            BlobPath: "1/123456789/listing.html");
+
+        var httpRequest = MockHttpRequestData.Create(request);
+
+        // Act
+        var response = await endpoint.Run(httpRequest);
+
+        // Assert - response indicates success
+        Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK));
+
+        var responseBody = await MockHttpRequestData.ReadResponseAsync<ProcessListingResponse>(response);
+        Assert.Multiple(() =>
+        {
+            Assert.That(responseBody.Success, Is.True);
+            Assert.That(responseBody.Status, Is.EqualTo("added"));
+        });
+
+        // Assert - listing was created in database
+        var createdListing = await _dbContext.Listings
+            .FirstOrDefaultAsync(l => l.ListingId == "123456789");
+        Assert.That(createdListing, Is.Not.Null);
+        Assert.Multiple(() =>
+        {
+            Assert.That(createdListing!.Title, Is.EqualTo("Test Product"));
+            Assert.That(createdListing.Price, Is.EqualTo(99.99m));
+            Assert.That(createdListing.ScrapeJobId, Is.EqualTo(1));
+        });
+
+        // Assert - ScrapeRunListing status was updated
+        var updatedSrl = await _dbContext.ScrapeRunListings
+            .FirstOrDefaultAsync(srl => srl.ScrapeRunId == 1 && srl.ListingId == "123456789");
+        Assert.That(updatedSrl!.Status, Is.EqualTo("Complete"));
+
+        // Assert - ScrapeRun.ListingsProcessed was incremented
+        var updatedRun = await _dbContext.ScrapeRuns.FirstOrDefaultAsync(sr => sr.Id == 1);
+        Assert.That(updatedRun!.ListingsProcessed, Is.EqualTo(1));
     }
 
     private void SetupBlobWithContent(string htmlContent)
