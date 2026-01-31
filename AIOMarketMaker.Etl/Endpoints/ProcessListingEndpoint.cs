@@ -110,7 +110,22 @@ public class ProcessListingEndpoint
             return notFoundResponse;
         }
 
-        // TODO: Read and process blob (next cycle)
+        // Download blob content
+        var downloadResult = await blobClient.DownloadContentAsync();
+        var html = downloadResult.Value.Content.ToString();
+
+        // Check for error page (bot detection, GDPR, etc.) - real eBay pages are > 100KB
+        const int MinValidHtmlSize = 100 * 1024; // 100KB
+        if (html.Length < MinValidHtmlSize)
+        {
+            _logger.LogWarning("Possible error page detected for {ListingId}: HTML size {Size} bytes < {Threshold} bytes",
+                input.ListingId, html.Length, MinValidHtmlSize);
+            var errorPageResponse = req.CreateResponse(HttpStatusCode.OK);
+            await errorPageResponse.WriteAsJsonAsync(new ProcessListingResponse(false, "failed", "Detected error page (HTML too small)"));
+            return errorPageResponse;
+        }
+
+        // TODO: Parse and save listing (next cycle)
         var response = req.CreateResponse(HttpStatusCode.OK);
         await response.WriteAsJsonAsync(new ProcessListingResponse(true, "processed", null));
         return response;

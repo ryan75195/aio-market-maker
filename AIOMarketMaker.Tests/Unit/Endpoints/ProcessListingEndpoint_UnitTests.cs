@@ -271,4 +271,87 @@ public class ProcessListingEndpoint_UnitTests
             Assert.That(responseBody.Status, Is.EqualTo("skipped"));
         });
     }
+
+    [Test]
+    public async Task Run_should_return_failed_when_html_contains_error_page()
+    {
+        // Arrange - HTML less than 100KB indicates bot detection/error page
+        var smallHtml = "<html><body>Please verify you are human</body></html>"; // ~54 bytes
+
+        var scrapeRun = new ScrapeRun { Id = 1, Status = "Running" };
+        var scrapeJob = new ScrapeJob { Id = 1, SearchTerm = "test" };
+        _dbContext.ScrapeRuns.Add(scrapeRun);
+        _dbContext.ScrapeJobs.Add(scrapeJob);
+
+        var scrapeRunListing = new ScrapeRunListing
+        {
+            ScrapeRunId = 1,
+            ScrapeJobId = 1,
+            ListingId = "itm123",
+            Status = "Pending"
+        };
+        _dbContext.ScrapeRunListings.Add(scrapeRunListing);
+        await _dbContext.SaveChangesAsync();
+
+        SetupBlobWithContent(smallHtml);
+
+        var endpoint = new ProcessListingEndpoint(
+            _blobServiceMock.Object,
+            _dbContext,
+            _listingParserMock.Object,
+            _loggerMock.Object);
+
+        var request = new ProcessListingRequest(
+            ScrapeRunId: 1,
+            ScrapeRunListingId: 0,
+            ListingId: "itm123",
+            ScrapeJobId: 1,
+            BlobPath: "1/itm123/listing.html");
+
+        var httpRequest = MockHttpRequestData.Create(request);
+
+        // Act
+        var response = await endpoint.Run(httpRequest);
+
+        // Assert
+        Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK));
+
+        var responseBody = await MockHttpRequestData.ReadResponseAsync<ProcessListingResponse>(response);
+        Assert.Multiple(() =>
+        {
+            Assert.That(responseBody.Success, Is.False);
+            Assert.That(responseBody.Status, Is.EqualTo("failed"));
+            Assert.That(responseBody.ErrorMessage, Does.Contain("error page"));
+        });
+    }
+
+    private void SetupBlobWithContent(string htmlContent)
+    {
+        var mockBlobContainerClient = new Mock<BlobContainerClient>();
+        var mockBlobClient = new Mock<BlobClient>();
+
+        mockBlobClient
+            .Setup(b => b.ExistsAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Azure.Response.FromValue(true, Mock.Of<Azure.Response>()));
+
+        var blobContent = BinaryData.FromString(htmlContent);
+        var blobDownloadResult = BlobsModelFactory.BlobDownloadResult(content: blobContent);
+
+        // Setup all overloads of DownloadContentAsync
+        mockBlobClient
+            .Setup(b => b.DownloadContentAsync())
+            .ReturnsAsync(Azure.Response.FromValue(blobDownloadResult, Mock.Of<Azure.Response>()));
+
+        mockBlobClient
+            .Setup(b => b.DownloadContentAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Azure.Response.FromValue(blobDownloadResult, Mock.Of<Azure.Response>()));
+
+        mockBlobContainerClient
+            .Setup(c => c.GetBlobClient(It.IsAny<string>()))
+            .Returns(mockBlobClient.Object);
+
+        _blobServiceMock
+            .Setup(s => s.GetBlobContainerClient("html"))
+            .Returns(mockBlobContainerClient.Object);
+    }
 }
