@@ -2,6 +2,7 @@ using System.Net;
 using Azure.Storage.Blobs;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using AIOMarketMaker.Core.Data;
 using AIOMarketMaker.Core.Parsers;
@@ -81,6 +82,18 @@ public class ProcessListingEndpoint
             var errorResponse = req.CreateResponse(HttpStatusCode.InternalServerError);
             await errorResponse.WriteAsJsonAsync(new ProcessListingResponse(false, null, ex.Message));
             return errorResponse;
+        }
+
+        // Check if already processed (idempotency)
+        var existingEntry = await _dbContext.ScrapeRunListings
+            .FirstOrDefaultAsync(srl => srl.ScrapeRunId == input.ScrapeRunId && srl.ListingId == input.ListingId);
+
+        if (existingEntry?.Status == "Complete")
+        {
+            _logger.LogInformation("Listing {ListingId} already processed, skipping", input.ListingId);
+            var skipResponse = req.CreateResponse(HttpStatusCode.OK);
+            await skipResponse.WriteAsJsonAsync(new ProcessListingResponse(true, "skipped", null));
+            return skipResponse;
         }
 
         // TODO: Process listing (next task)
