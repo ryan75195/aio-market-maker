@@ -96,7 +96,21 @@ public class ProcessListingEndpoint
             return skipResponse;
         }
 
-        // TODO: Process listing (next task)
+        // Get the blob
+        var containerClient = _blobService.GetBlobContainerClient("html");
+        var blobClient = containerClient.GetBlobClient(input.BlobPath);
+
+        // Check if blob exists
+        var existsResponse = await blobClient.ExistsAsync();
+        if (!existsResponse.Value)
+        {
+            _logger.LogWarning("Blob not found: {BlobPath}", input.BlobPath);
+            var notFoundResponse = req.CreateResponse(HttpStatusCode.OK);
+            await notFoundResponse.WriteAsJsonAsync(new ProcessListingResponse(false, "failed", "Blob not found"));
+            return notFoundResponse;
+        }
+
+        // TODO: Read and process blob (next cycle)
         var response = req.CreateResponse(HttpStatusCode.OK);
         await response.WriteAsJsonAsync(new ProcessListingResponse(true, "processed", null));
         return response;

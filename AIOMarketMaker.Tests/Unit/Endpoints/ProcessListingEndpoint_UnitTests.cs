@@ -2,6 +2,7 @@ using NUnit.Framework;
 using Moq;
 using Microsoft.Extensions.Logging;
 using Azure.Storage.Blobs;
+using Azure.Storage.Blobs.Models;
 using AIOMarketMaker.Core.Data;
 using AIOMarketMaker.Core.Data.Models;
 using AIOMarketMaker.Core.Parsers;
@@ -155,6 +156,71 @@ public class ProcessListingEndpoint_UnitTests
         {
             JsonSerializer.Deserialize<ProcessListingRequest>(emptyJson,
                 new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+        });
+    }
+
+    [Test]
+    public async Task Run_should_return_failed_when_blob_not_found()
+    {
+        // Arrange
+        var scrapeRun = new ScrapeRun { Id = 1, Status = "Running" };
+        var scrapeJob = new ScrapeJob { Id = 1, SearchTerm = "test" };
+        _dbContext.ScrapeRuns.Add(scrapeRun);
+        _dbContext.ScrapeJobs.Add(scrapeJob);
+
+        var scrapeRunListing = new ScrapeRunListing
+        {
+            ScrapeRunId = 1,
+            ScrapeJobId = 1,
+            ListingId = "itm123",
+            Status = "Pending"
+        };
+        _dbContext.ScrapeRunListings.Add(scrapeRunListing);
+        await _dbContext.SaveChangesAsync();
+
+        // Setup blob client to return "does not exist"
+        var mockBlobContainerClient = new Mock<BlobContainerClient>();
+        var mockBlobClient = new Mock<BlobClient>();
+
+        mockBlobClient
+            .Setup(b => b.ExistsAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Azure.Response.FromValue(false, Mock.Of<Azure.Response>()));
+
+        mockBlobContainerClient
+            .Setup(c => c.GetBlobClient(It.IsAny<string>()))
+            .Returns(mockBlobClient.Object);
+
+        _blobServiceMock
+            .Setup(s => s.GetBlobContainerClient("html"))
+            .Returns(mockBlobContainerClient.Object);
+
+        var endpoint = new ProcessListingEndpoint(
+            _blobServiceMock.Object,
+            _dbContext,
+            _listingParserMock.Object,
+            _loggerMock.Object);
+
+        var request = new ProcessListingRequest(
+            ScrapeRunId: 1,
+            ScrapeRunListingId: 0,
+            ListingId: "itm123",
+            ScrapeJobId: 1,
+            BlobPath: "1/itm123/listing.html");
+
+        var httpRequest = MockHttpRequestData.Create(request);
+
+        // Act
+        var response = await endpoint.Run(httpRequest);
+
+        // Assert
+        Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK));
+
+        var responseBody = await MockHttpRequestData.ReadResponseAsync<ProcessListingResponse>(response);
+        Assert.Multiple(() =>
+        {
+            Assert.That(responseBody.Success, Is.False);
+            Assert.That(responseBody.Status, Is.EqualTo("failed"));
+            Assert.That(responseBody.ErrorMessage, Is.EqualTo("Blob not found"));
         });
     }
 
