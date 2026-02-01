@@ -65,17 +65,55 @@ public class SimplifiedScrapeTrigger
 
         _logger.LogInformation("Created ScrapeRun {ScrapeRunId} for job {JobId}", scrapeRun.Id, jobId);
 
-        // 2. Search all pages until no results (max 100 pages safety limit)
-        var allListingIds = new HashSet<string>();
-        var page = 1;
         const int maxPages = 100;
+
+        // Phase 1: Search Sold Listings
+        scrapeRun.CurrentPhase = "Searching Sold";
+        await _dbContext.SaveChangesAsync();
+
+        var soldListingIds = new HashSet<string>();
+        var page = 1;
+
+        while (page <= maxPages)
+        {
+            var soldUrl = _urlBuilder.BuildSearchUrl(searchTerm, sold: true, page: page, Condition.NULL, BuyingFormat.BUY_NOW);
+            var html = await _webscraperClient.GetPageHtmlAsync(soldUrl);
+
+            _logger.LogInformation("Fetched sold page {Page} ({Bytes} bytes)", page, html.Length);
+
+            var browsingContext = BrowsingContext.New(Configuration.Default);
+            var document = await browsingContext.OpenAsync(request => request.Content(html));
+
+            var products = _searchParser.ParseSearchResults(document);
+            var pageListingIds = products
+                .Where(p => !string.IsNullOrEmpty(p.ListingId))
+                .Select(p => p.ListingId!)
+                .ToList();
+
+            if (pageListingIds.Count == 0)
+                break;
+
+            foreach (var id in pageListingIds)
+                soldListingIds.Add(id);
+
+            page++;
+        }
+
+        _logger.LogInformation("Sold search complete: {PageCount} pages, {Count} unique sold listings", page - 1, soldListingIds.Count);
+
+        // Phase 2: Search Active Listings
+        scrapeRun.CurrentPhase = "Searching Active";
+        await _dbContext.SaveChangesAsync();
+
+        var allListingIds = new HashSet<string>();
+        page = 1;
 
         while (page <= maxPages)
         {
             var searchUrl = _urlBuilder.BuildSearchUrl(searchTerm, sold: false, page: page, Condition.NULL, BuyingFormat.BUY_NOW);
             var html = await _webscraperClient.GetPageHtmlAsync(searchUrl);
 
-            _logger.LogInformation("Fetched page {Page} ({Bytes} bytes)", page, html.Length);
+            _logger.LogInformation("Fetched active page {Page} ({Bytes} bytes)", page, html.Length);
 
             var browsingContext = BrowsingContext.New(Configuration.Default);
             var document = await browsingContext.OpenAsync(request => request.Content(html));
@@ -95,7 +133,7 @@ public class SimplifiedScrapeTrigger
             page++;
         }
 
-        _logger.LogInformation("Searched {PageCount} pages, found {Count} unique listings", page - 1, allListingIds.Count);
+        _logger.LogInformation("Active search complete: {PageCount} pages, {Count} unique active listings", page - 1, allListingIds.Count);
 
         // 5. Filter out listings with terminal statuses (Sold, Ended, OutOfStock)
         // Active listings should be re-scraped to capture price/status changes

@@ -359,6 +359,88 @@ public class SimplifiedScrapeTrigger_UnitTests
     }
 
     [Test]
+    public async Task RunScrapeForJobAsync_should_search_sold_listings_before_active()
+    {
+        // Arrange
+        var jobId = 1;
+        var scrapeJob = new ScrapeJob { Id = jobId, SearchTerm = "test", IsEnabled = true };
+        _dbContext.ScrapeJobs.Add(scrapeJob);
+        await _dbContext.SaveChangesAsync();
+
+        var calledUrls = new List<string>();
+        _webscraperClientMock
+            .Setup(w => w.GetPageHtmlAsync(It.IsAny<string>(), It.IsAny<IEnumerable<object>>(),
+                It.IsAny<string>(), It.IsAny<TimeSpan?>(), It.IsAny<CancellationToken>()))
+            .Callback<string, IEnumerable<object>, string, TimeSpan?, CancellationToken>((url, _, _, _, _) => calledUrls.Add(url))
+            .ReturnsAsync("<html></html>");
+
+        _searchParserMock
+            .Setup(s => s.ParseSearchResults(It.IsAny<IDocument>()))
+            .Returns(new List<IEbayProductSummary>()); // Empty results to end pagination quickly
+
+        _queueClientMock
+            .Setup(q => q.SendMessageAsync(It.IsAny<string>()))
+            .ReturnsAsync(Response.FromValue(
+                QueuesModelFactory.SendReceipt("id", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, "pop", DateTimeOffset.UtcNow.AddMinutes(1)),
+                Mock.Of<Response>()));
+
+        var trigger = new SimplifiedScrapeTrigger(
+            _loggerMock.Object, _dbContext, _webscraperClientMock.Object,
+            _searchParserMock.Object, _queueServiceMock.Object);
+
+        // Act
+        await trigger.RunScrapeForJobAsync(jobId, "test", "Manual");
+
+        // Assert - should search sold THEN active
+        Assert.That(calledUrls.Count, Is.GreaterThanOrEqualTo(2), "Should search both sold and active");
+
+        var soldSearchIndex = calledUrls.FindIndex(u => u.Contains("LH_Sold=1") || u.Contains("LH_Complete=1"));
+        var activeSearchIndex = calledUrls.FindIndex(u => !u.Contains("LH_Sold") && !u.Contains("LH_Complete"));
+
+        Assert.That(soldSearchIndex, Is.GreaterThanOrEqualTo(0), "Should have searched sold listings");
+        Assert.That(activeSearchIndex, Is.GreaterThan(soldSearchIndex), "Active search should come after sold search");
+    }
+
+    [Test]
+    public async Task RunScrapeForJobAsync_should_update_current_phase_for_sold_and_active_search()
+    {
+        // Arrange
+        var jobId = 1;
+        var scrapeJob = new ScrapeJob { Id = jobId, SearchTerm = "test", IsEnabled = true };
+        _dbContext.ScrapeJobs.Add(scrapeJob);
+        await _dbContext.SaveChangesAsync();
+
+        var phasesDuringSearch = new List<string>();
+        _webscraperClientMock
+            .Setup(w => w.GetPageHtmlAsync(It.IsAny<string>(), It.IsAny<IEnumerable<object>>(),
+                It.IsAny<string>(), It.IsAny<TimeSpan?>(), It.IsAny<CancellationToken>()))
+            .Callback<string, IEnumerable<object>, string, TimeSpan?, CancellationToken>(async (url, _, _, _, _) =>
+            {
+                // Capture the current phase when each URL is fetched
+                var run = await _dbContext.ScrapeRuns.OrderByDescending(r => r.Id).FirstOrDefaultAsync();
+                if (run != null)
+                    phasesDuringSearch.Add(run.CurrentPhase ?? "null");
+            })
+            .ReturnsAsync("<html></html>");
+
+        _searchParserMock
+            .Setup(s => s.ParseSearchResults(It.IsAny<IDocument>()))
+            .Returns(new List<IEbayProductSummary>()); // Empty results
+
+        var trigger = new SimplifiedScrapeTrigger(
+            _loggerMock.Object, _dbContext, _webscraperClientMock.Object,
+            _searchParserMock.Object, _queueServiceMock.Object);
+
+        // Act
+        await trigger.RunScrapeForJobAsync(jobId, "test", "Manual");
+
+        // Assert - phases should show "Searching Sold" then "Searching Active"
+        Assert.That(phasesDuringSearch, Has.Count.GreaterThanOrEqualTo(2), "Should have at least 2 search phases");
+        Assert.That(phasesDuringSearch[0], Is.EqualTo("Searching Sold"), "First phase should be Searching Sold");
+        Assert.That(phasesDuringSearch[1], Is.EqualTo("Searching Active"), "Second phase should be Searching Active");
+    }
+
+    [Test]
     public async Task RunScrapeForJobAsync_should_search_multiple_pages_until_no_results()
     {
         // Arrange
@@ -375,7 +457,9 @@ public class SimplifiedScrapeTrigger_UnitTests
             .Callback<string, IEnumerable<object>, string, TimeSpan?, CancellationToken>((url, _, _, _, _) => calledUrls.Add(url))
             .ReturnsAsync("<html></html>");
 
-        // Setup parser: Page 1 = 2 products, Page 2 = 1 product, Page 3 = 0 products
+        // Setup parser:
+        // Sold search: Page 1 = 0 products (ends sold search)
+        // Active search: Page 1 = 2 products, Page 2 = 1 product, Page 3 = 0 products
         var callCount = 0;
         _searchParserMock
             .Setup(s => s.ParseSearchResults(It.IsAny<IDocument>()))
@@ -384,15 +468,20 @@ public class SimplifiedScrapeTrigger_UnitTests
                 callCount++;
                 return callCount switch
                 {
-                    1 => new List<IEbayProductSummary>
+                    // Call 1: Sold page 1 - no results (ends sold phase)
+                    1 => new List<IEbayProductSummary>(),
+                    // Call 2: Active page 1 - 2 products
+                    2 => new List<IEbayProductSummary>
                     {
                         new EbayProductSummary("itm001", "P1", 10m, "GBP", 0m, "u1", BuyingFormat.BUY_NOW, Condition.USED, null, null),
                         new EbayProductSummary("itm002", "P2", 20m, "GBP", 0m, "u2", BuyingFormat.BUY_NOW, Condition.USED, null, null),
                     },
-                    2 => new List<IEbayProductSummary>
+                    // Call 3: Active page 2 - 1 product
+                    3 => new List<IEbayProductSummary>
                     {
                         new EbayProductSummary("itm003", "P3", 30m, "GBP", 0m, "u3", BuyingFormat.BUY_NOW, Condition.USED, null, null),
                     },
+                    // Call 4+: Active page 3 - 0 products (ends active phase)
                     _ => new List<IEbayProductSummary>()
                 };
             });
@@ -413,11 +502,20 @@ public class SimplifiedScrapeTrigger_UnitTests
         // Assert
         Assert.Multiple(() =>
         {
-            Assert.That(result, Is.EqualTo(3), "Should find all 3 listings across pages");
-            Assert.That(calledUrls.Count, Is.EqualTo(3), "Should call 3 pages (page 1, 2, 3)");
-            Assert.That(calledUrls[0], Does.Contain("_pgn=1").Or.Not.Contain("_pgn"), "First call should be page 1");
-            Assert.That(calledUrls[1], Does.Contain("_pgn=2"), "Second call should be page 2");
-            Assert.That(calledUrls[2], Does.Contain("_pgn=3"), "Third call should be page 3");
+            Assert.That(result, Is.EqualTo(3), "Should find all 3 listings across active pages");
+            // Total calls: 1 sold (empty) + 3 active (2 with results, 1 empty to end)
+            Assert.That(calledUrls.Count, Is.EqualTo(4), "Should call 1 sold page + 3 active pages");
+
+            // Verify sold search runs first
+            Assert.That(calledUrls[0], Does.Contain("LH_Sold=1"), "First call should be sold search");
+            Assert.That(calledUrls[0], Does.Contain("_pgn=1"), "Sold search should start at page 1");
+
+            // Verify active search runs after
+            var activeUrls = calledUrls.Skip(1).ToList();
+            Assert.That(activeUrls.All(u => !u.Contains("LH_Sold")), Is.True, "Active pages should not have LH_Sold");
+            Assert.That(activeUrls[0], Does.Contain("_pgn=1"), "Active search should start at page 1");
+            Assert.That(activeUrls[1], Does.Contain("_pgn=2"), "Second active call should be page 2");
+            Assert.That(activeUrls[2], Does.Contain("_pgn=3"), "Third active call should be page 3");
         });
     }
 }
