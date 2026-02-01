@@ -22,6 +22,7 @@ public class SimplifiedScrapeTrigger
     private readonly IWebscraperClient _webscraperClient;
     private readonly ISearchParser _searchParser;
     private readonly QueueClient _queueClient;
+    private readonly QueueClient _jobQueueClient;
     private readonly IEbayUrlBuilder _urlBuilder;
 
     public SimplifiedScrapeTrigger(
@@ -36,6 +37,7 @@ public class SimplifiedScrapeTrigger
         _webscraperClient = webscraperClient;
         _searchParser = searchParser;
         _queueClient = queueService.GetQueueClient("scrape-work");
+        _jobQueueClient = queueService.GetQueueClient("scrape-jobs");
         _urlBuilder = new EbayUrlBuilder();
     }
 
@@ -149,8 +151,8 @@ public class SimplifiedScrapeTrigger
 
         _logger.LogInformation("Found {Count} listings that transitioned from Active to Sold", activeToSoldListings.Count);
 
-        // Include these in the listings to process (they need re-scraping to get sold price/date)
-        foreach (var id in activeToSoldListings)
+        // Include sold listings in the processing queue (both new sold listings and Active→Sold transitions)
+        foreach (var id in soldListingIds)
             allListingIds.Add(id);
 
         // 5. Filter out listings with terminal statuses (Sold, Ended, OutOfStock)
@@ -172,7 +174,22 @@ public class SimplifiedScrapeTrigger
         _logger.LogInformation("Filtered to {NewCount} listings to process ({TerminalCount} have terminal status)",
             newListingIds.Count, existingListingIds.Count);
 
-        // 6. Create ScrapeRunListing records for each new listing
+        // 6. Update ScrapeRun status BEFORE enqueuing (so UI shows correct state)
+        scrapeRun.TotalListingsFound = newListingIds.Count;
+        if (newListingIds.Count == 0)
+        {
+            scrapeRun.Status = "Completed";
+            scrapeRun.CurrentPhase = "Completed";
+            scrapeRun.CompletedUtc = DateTime.UtcNow;
+            _logger.LogInformation("No new listings found for job {JobId} - marking as completed", jobId);
+            await _dbContext.SaveChangesAsync();
+            return 0;
+        }
+        scrapeRun.Status = "Indexing";
+        scrapeRun.CurrentPhase = "Indexing";
+        await _dbContext.SaveChangesAsync();
+
+        // 7. Create ScrapeRunListing records for each new listing
         foreach (var listingId in newListingIds)
         {
             var scrapeRunListing = new ScrapeRunListing
@@ -187,7 +204,7 @@ public class SimplifiedScrapeTrigger
         }
         await _dbContext.SaveChangesAsync();
 
-        // 7. Enqueue messages for each new listing
+        // 8. Enqueue messages for each new listing
         foreach (var listingId in newListingIds)
         {
             var jobGuid = Guid.NewGuid().ToString("N");
@@ -225,28 +242,8 @@ public class SimplifiedScrapeTrigger
             await _queueClient.SendMessageAsync(descriptionBase64);
         }
 
-        _logger.LogInformation("Enqueued {Count} listings for processing", newListingIds.Count);
-
-        // 8. Update ScrapeRun status
-        scrapeRun.TotalListingsFound = newListingIds.Count;
-
-        // If no new listings, mark as completed immediately (nothing to process)
-        if (newListingIds.Count == 0)
-        {
-            scrapeRun.Status = "Completed";
-            scrapeRun.CurrentPhase = "Completed";
-            scrapeRun.CompletedUtc = DateTime.UtcNow;
-            _logger.LogInformation("No new listings found for job {JobId} - marking as completed", jobId);
-        }
-        else
-        {
-            scrapeRun.Status = "Indexing";
-            scrapeRun.CurrentPhase = "Indexing";
-        }
-        await _dbContext.SaveChangesAsync();
-
-        _logger.LogInformation("Completed search phase for job {JobId}. Found {Count} new listings.",
-            jobId, newListingIds.Count);
+        _logger.LogInformation("Enqueued {Count} listings for processing. Search phase complete for job {JobId}.",
+            newListingIds.Count, jobId);
 
         return newListingIds.Count;
     }
