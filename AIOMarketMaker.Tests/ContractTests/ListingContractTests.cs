@@ -14,8 +14,10 @@ namespace AIOMarketMaker.Tests.Contract
     /// Contract tests that validate the scraper works with real Azure infrastructure.
     /// Requires: Azure Storage account, ScraperWorker running on localhost:7071.
     /// </summary>
+    [TestFixture]
     [Category("Contract")]
     [Category("Integration")]
+    [Explicit("Requires ScraperWorker API running on localhost:7071 and Azure Storage")]
     public class ListingContractTests
     {
         private IEbayScraper _serviceUnderTest = null!;
