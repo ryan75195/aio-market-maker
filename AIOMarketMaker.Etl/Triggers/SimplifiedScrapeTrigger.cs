@@ -65,24 +65,37 @@ public class SimplifiedScrapeTrigger
 
         _logger.LogInformation("Created ScrapeRun {ScrapeRunId} for job {JobId}", scrapeRun.Id, jobId);
 
-        // 2. Build search URL and fetch HTML
-        var searchUrl = _urlBuilder.BuildSearchUrl(searchTerm, sold: false, page: 1, Condition.NULL, BuyingFormat.BUY_NOW);
-        var html = await _webscraperClient.GetPageHtmlAsync(searchUrl);
+        // 2. Search all pages until no results (max 100 pages safety limit)
+        var allListingIds = new HashSet<string>();
+        var page = 1;
+        const int maxPages = 100;
 
-        _logger.LogInformation("Fetched search page HTML ({Bytes} bytes)", html.Length);
+        while (page <= maxPages)
+        {
+            var searchUrl = _urlBuilder.BuildSearchUrl(searchTerm, sold: false, page: page, Condition.NULL, BuyingFormat.BUY_NOW);
+            var html = await _webscraperClient.GetPageHtmlAsync(searchUrl);
 
-        // 3. Parse HTML with AngleSharp
-        var browsingContext = BrowsingContext.New(Configuration.Default);
-        var document = await browsingContext.OpenAsync(request => request.Content(html));
+            _logger.LogInformation("Fetched page {Page} ({Bytes} bytes)", page, html.Length);
 
-        // 4. Parse search results to get listing IDs
-        var products = _searchParser.ParseSearchResults(document);
-        var allListingIds = products
-            .Where(p => !string.IsNullOrEmpty(p.ListingId))
-            .Select(p => p.ListingId!)
-            .ToList();
+            var browsingContext = BrowsingContext.New(Configuration.Default);
+            var document = await browsingContext.OpenAsync(request => request.Content(html));
 
-        _logger.LogInformation("Parsed {Count} listings from search results", allListingIds.Count);
+            var products = _searchParser.ParseSearchResults(document);
+            var pageListingIds = products
+                .Where(p => !string.IsNullOrEmpty(p.ListingId))
+                .Select(p => p.ListingId!)
+                .ToList();
+
+            if (pageListingIds.Count == 0)
+                break; // No more results
+
+            foreach (var id in pageListingIds)
+                allListingIds.Add(id);
+
+            page++;
+        }
+
+        _logger.LogInformation("Searched {PageCount} pages, found {Count} unique listings", page - 1, allListingIds.Count);
 
         // 5. Filter out listings with terminal statuses (Sold, Ended, OutOfStock)
         // Active listings should be re-scraped to capture price/status changes

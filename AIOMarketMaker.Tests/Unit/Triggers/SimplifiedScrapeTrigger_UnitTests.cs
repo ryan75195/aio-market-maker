@@ -357,4 +357,67 @@ public class SimplifiedScrapeTrigger_UnitTests
         Assert.That(scrapeRuns.Count, Is.EqualTo(1));
         Assert.That(scrapeRuns[0].JobId, Is.EqualTo(2));
     }
+
+    [Test]
+    public async Task RunScrapeForJobAsync_should_search_multiple_pages_until_no_results()
+    {
+        // Arrange
+        var jobId = 1;
+        var scrapeJob = new ScrapeJob { Id = jobId, SearchTerm = "test", IsEnabled = true };
+        _dbContext.ScrapeJobs.Add(scrapeJob);
+        await _dbContext.SaveChangesAsync();
+
+        // Track which URLs were called
+        var calledUrls = new List<string>();
+        _webscraperClientMock
+            .Setup(w => w.GetPageHtmlAsync(It.IsAny<string>(), It.IsAny<IEnumerable<object>>(),
+                It.IsAny<string>(), It.IsAny<TimeSpan?>(), It.IsAny<CancellationToken>()))
+            .Callback<string, IEnumerable<object>, string, TimeSpan?, CancellationToken>((url, _, _, _, _) => calledUrls.Add(url))
+            .ReturnsAsync("<html></html>");
+
+        // Setup parser: Page 1 = 2 products, Page 2 = 1 product, Page 3 = 0 products
+        var callCount = 0;
+        _searchParserMock
+            .Setup(s => s.ParseSearchResults(It.IsAny<IDocument>()))
+            .Returns(() =>
+            {
+                callCount++;
+                return callCount switch
+                {
+                    1 => new List<IEbayProductSummary>
+                    {
+                        new EbayProductSummary("itm001", "P1", 10m, "GBP", 0m, "u1", BuyingFormat.BUY_NOW, Condition.USED, null, null),
+                        new EbayProductSummary("itm002", "P2", 20m, "GBP", 0m, "u2", BuyingFormat.BUY_NOW, Condition.USED, null, null),
+                    },
+                    2 => new List<IEbayProductSummary>
+                    {
+                        new EbayProductSummary("itm003", "P3", 30m, "GBP", 0m, "u3", BuyingFormat.BUY_NOW, Condition.USED, null, null),
+                    },
+                    _ => new List<IEbayProductSummary>()
+                };
+            });
+
+        _queueClientMock
+            .Setup(q => q.SendMessageAsync(It.IsAny<string>()))
+            .ReturnsAsync(Response.FromValue(
+                QueuesModelFactory.SendReceipt("id", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, "pop", DateTimeOffset.UtcNow.AddMinutes(1)),
+                Mock.Of<Response>()));
+
+        var trigger = new SimplifiedScrapeTrigger(
+            _loggerMock.Object, _dbContext, _webscraperClientMock.Object,
+            _searchParserMock.Object, _queueServiceMock.Object);
+
+        // Act
+        var result = await trigger.RunScrapeForJobAsync(jobId, "test", "Manual");
+
+        // Assert
+        Assert.Multiple(() =>
+        {
+            Assert.That(result, Is.EqualTo(3), "Should find all 3 listings across pages");
+            Assert.That(calledUrls.Count, Is.EqualTo(3), "Should call 3 pages (page 1, 2, 3)");
+            Assert.That(calledUrls[0], Does.Contain("_pgn=1").Or.Not.Contain("_pgn"), "First call should be page 1");
+            Assert.That(calledUrls[1], Does.Contain("_pgn=2"), "Second call should be page 2");
+            Assert.That(calledUrls[2], Does.Contain("_pgn=3"), "Third call should be page 3");
+        });
+    }
 }
