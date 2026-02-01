@@ -11,6 +11,7 @@ using AIOMarketMaker.Core.Data;
 using AIOMarketMaker.Core.Data.Models;
 using AIOMarketMaker.Core.Parsers;
 using AIOMarketMaker.Core.Services;
+using AIOMarketMaker.Etl.Models;
 using ScraperWorker.Services;
 
 namespace AIOMarketMaker.Etl.Triggers;
@@ -291,8 +292,8 @@ public class SimplifiedScrapeTrigger
 
     /// <summary>
     /// HTTP trigger for manual scrape invocation.
-    /// If a jobId is provided in the request body, only that job is scraped.
-    /// Otherwise, all enabled jobs are scraped.
+    /// Creates ScrapeRun records and enqueues jobs for background processing.
+    /// Returns immediately with run IDs.
     /// </summary>
     [Function("ManualScrape")]
     public async Task<HttpResponseData> RunManual(
@@ -355,45 +356,40 @@ public class SimplifiedScrapeTrigger
             jobsToRun = enabledJobs.Select(j => (j.Id, j.SearchTerm));
         }
 
-        // Run scrape for each job and track the first run for UI response
+        // Create ScrapeRuns and enqueue jobs (fire-and-forget)
         var results = new List<object>();
         int? firstRunId = null;
         string? firstInstanceId = null;
 
         foreach (var (jobId, searchTerm) in jobsToRun)
         {
-            try
+            // Create ScrapeRun with Queued status
+            var scrapeRun = new ScrapeRun
             {
-                // Get the run info before calling (we need the ID created in RunScrapeForJobAsync)
-                var listingsCount = await RunScrapeForJobAsync(jobId, searchTerm, "Manual");
+                JobId = jobId,
+                Status = "Queued",
+                CurrentPhase = "Queued",
+                TriggerType = "Manual",
+                StartedUtc = DateTime.UtcNow,
+                InstanceId = Guid.NewGuid().ToString()
+            };
+            _dbContext.ScrapeRuns.Add(scrapeRun);
+            await _dbContext.SaveChangesAsync();
 
-                // Get the most recent run for this job to get its ID and instanceId
-                var latestRun = await _dbContext.ScrapeRuns
-                    .Where(r => r.JobId == jobId && r.TriggerType == "Manual")
-                    .OrderByDescending(r => r.Id)
-                    .Select(r => new { r.Id, r.InstanceId })
-                    .FirstOrDefaultAsync();
+            // Enqueue job message
+            var message = new ScrapeJobMessage(scrapeRun.Id, jobId, searchTerm, "Manual");
+            var messageJson = JsonSerializer.Serialize(message);
+            await _jobQueueClient.SendMessageAsync(messageJson);
 
-                if (latestRun != null)
-                {
-                    firstRunId ??= latestRun.Id;
-                    firstInstanceId ??= latestRun.InstanceId;
-                }
+            _logger.LogInformation("Enqueued scrape job for {SearchTerm} (RunId: {RunId})", searchTerm, scrapeRun.Id);
 
-                results.Add(new { jobId, searchTerm, success = true, listingsFound = listingsCount, runId = latestRun?.Id });
-                _logger.LogInformation("Manual scrape for job {JobId} completed. Found {Count} new listings.",
-                    jobId, listingsCount);
-            }
-            catch (Exception ex)
-            {
-                results.Add(new { jobId, searchTerm, success = false, error = ex.Message });
-                _logger.LogError(ex, "Manual scrape for job {JobId} failed: {Message}",
-                    jobId, ex.Message);
-            }
+            firstRunId ??= scrapeRun.Id;
+            firstInstanceId ??= scrapeRun.InstanceId;
+
+            results.Add(new { jobId, searchTerm, runId = scrapeRun.Id, status = "Queued" });
         }
 
         var response = req.CreateResponse(HttpStatusCode.OK);
-        // Return format expected by UI: { instanceId, runId, results }
         await response.WriteAsJsonAsync(new
         {
             instanceId = firstInstanceId ?? Guid.NewGuid().ToString(),
