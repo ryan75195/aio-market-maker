@@ -509,8 +509,8 @@ public class SimplifiedScrapeTrigger_UnitTests
         var enqueuedMessages = new List<string>();
         var jobQueueMock = new Mock<QueueClient>();
         jobQueueMock
-            .Setup(q => q.SendMessageAsync(It.IsAny<string>(), default))
-            .Callback<string, CancellationToken>((msg, _) => enqueuedMessages.Add(msg))
+            .Setup(q => q.SendMessageAsync(It.IsAny<string>()))
+            .Callback<string>((msg) => enqueuedMessages.Add(msg))
             .ReturnsAsync(Mock.Of<Azure.Response<SendReceipt>>());
 
         _queueServiceMock
