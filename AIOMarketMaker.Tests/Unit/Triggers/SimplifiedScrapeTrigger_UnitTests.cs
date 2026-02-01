@@ -142,20 +142,24 @@ public class SimplifiedScrapeTrigger_UnitTests
     }
 
     [Test]
-    public async Task RunScrapeForJobAsync_should_filter_out_existing_listings()
+    public async Task RunScrapeForJobAsync_should_skip_terminal_statuses_but_include_active_for_rescrape()
     {
         // Arrange
         var jobId = 1;
         var searchTerm = "test product";
-        var triggerType = "Manual";
 
-        // Create a scrape job in the database
         var scrapeJob = new ScrapeJob { Id = jobId, SearchTerm = searchTerm, IsEnabled = true };
         _dbContext.ScrapeJobs.Add(scrapeJob);
 
-        // Add an existing listing that should be filtered out
-        var existingListing = new Listing { ListingId = "itm002", ScrapeJobId = jobId };
-        _dbContext.Listings.Add(existingListing);
+        // Create listings with different statuses
+        var activeListing = new Listing { ListingId = "itm001", ScrapeJobId = jobId, ListingStatus = "Active" };
+        var soldListing = new Listing { ListingId = "itm002", ScrapeJobId = jobId, ListingStatus = "Sold" };
+        var endedListing = new Listing { ListingId = "itm003", ScrapeJobId = jobId, ListingStatus = "Ended" };
+        var outOfStockListing = new Listing { ListingId = "itm004", ScrapeJobId = jobId, ListingStatus = "OutOfStock" };
+        // itm005 doesn't exist in DB yet - it's a new listing
+        var nullStatusListing = new Listing { ListingId = "itm006", ScrapeJobId = jobId, ListingStatus = null };
+
+        _dbContext.Listings.AddRange(activeListing, soldListing, endedListing, outOfStockListing, nullStatusListing);
         await _dbContext.SaveChangesAsync();
 
         // Setup webscraper client to return HTML
@@ -166,51 +170,52 @@ public class SimplifiedScrapeTrigger_UnitTests
                 It.IsAny<string>(),
                 It.IsAny<TimeSpan?>(),
                 It.IsAny<CancellationToken>()))
-            .ReturnsAsync("<html><body>Mock search results</body></html>");
+            .ReturnsAsync("<html><body>Mock</body></html>");
 
-        // Setup search parser to return mock product summaries (including the existing one)
+        // Parser returns all 6 listing IDs (simulating search results)
         var mockProducts = new List<IEbayProductSummary>
         {
-            new EbayProductSummary("itm001", "Product 1", 10.00m, "GBP", 1.00m, "url1", BuyingFormat.BUY_NOW, Condition.USED, null, null),
-            new EbayProductSummary("itm002", "Product 2", 20.00m, "GBP", 2.00m, "url2", BuyingFormat.BUY_NOW, Condition.NEW, null, null), // Existing
-            new EbayProductSummary("itm003", "Product 3", 30.00m, "GBP", 3.00m, "url3", BuyingFormat.AUCTION, Condition.USED, null, null)
+            new EbayProductSummary("itm001", "Active Product", 10m, "GBP", 0m, "url1", BuyingFormat.BUY_NOW, Condition.USED, null, null),
+            new EbayProductSummary("itm002", "Sold Product", 20m, "GBP", 0m, "url2", BuyingFormat.BUY_NOW, Condition.USED, null, null),
+            new EbayProductSummary("itm003", "Ended Product", 30m, "GBP", 0m, "url3", BuyingFormat.BUY_NOW, Condition.USED, null, null),
+            new EbayProductSummary("itm004", "OutOfStock Product", 40m, "GBP", 0m, "url4", BuyingFormat.BUY_NOW, Condition.USED, null, null),
+            new EbayProductSummary("itm005", "New Product", 50m, "GBP", 0m, "url5", BuyingFormat.BUY_NOW, Condition.USED, null, null),
+            new EbayProductSummary("itm006", "Null Status Product", 60m, "GBP", 0m, "url6", BuyingFormat.BUY_NOW, Condition.USED, null, null),
         };
-        _searchParserMock
-            .Setup(s => s.ParseSearchResults(It.IsAny<IDocument>()))
-            .Returns(mockProducts);
+        _searchParserMock.Setup(s => s.ParseSearchResults(It.IsAny<IDocument>())).Returns(mockProducts);
 
-        // Setup queue client to accept messages
         _queueClientMock
             .Setup(q => q.SendMessageAsync(It.IsAny<string>()))
             .ReturnsAsync(Response.FromValue(
-                QueuesModelFactory.SendReceipt("messageId", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, "popReceipt", DateTimeOffset.UtcNow.AddMinutes(1)),
+                QueuesModelFactory.SendReceipt("id", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, "pop", DateTimeOffset.UtcNow.AddMinutes(1)),
                 Mock.Of<Response>()));
 
         var trigger = new SimplifiedScrapeTrigger(
-            _loggerMock.Object,
-            _dbContext,
-            _webscraperClientMock.Object,
-            _searchParserMock.Object,
-            _queueServiceMock.Object);
+            _loggerMock.Object, _dbContext, _webscraperClientMock.Object,
+            _searchParserMock.Object, _queueServiceMock.Object);
 
         // Act
-        var result = await trigger.RunScrapeForJobAsync(jobId, searchTerm, triggerType);
+        var result = await trigger.RunScrapeForJobAsync(jobId, searchTerm, "Manual");
 
         // Assert
+        // itm001 (Active) - INCLUDED (re-scrape for price updates)
+        // itm002 (Sold) - EXCLUDED (terminal)
+        // itm003 (Ended) - EXCLUDED (terminal)
+        // itm004 (OutOfStock) - EXCLUDED (terminal)
+        // itm005 (new/not in DB) - INCLUDED (new listing)
+        // itm006 (null status) - INCLUDED (treated as new listing needing scrape)
+        Assert.That(result, Is.EqualTo(3), "Should include Active, new, and null-status listings, exclude terminal statuses");
+
+        var enqueuedListings = _dbContext.ScrapeRunListings.Select(l => l.ListingId).ToList();
         Assert.Multiple(() =>
         {
-            // Should return only 2 (filtered out itm002)
-            Assert.That(result, Is.EqualTo(2));
-
-            // Verify only 2 ScrapeRunListings were created (not the existing one)
-            var scrapeRunListings = _dbContext.ScrapeRunListings.ToList();
-            Assert.That(scrapeRunListings.Count, Is.EqualTo(2));
-            Assert.That(scrapeRunListings.Select(l => l.ListingId), Is.EquivalentTo(new[] { "itm001", "itm003" }));
+            Assert.That(enqueuedListings, Does.Contain("itm001"), "Active listing should be re-scraped");
+            Assert.That(enqueuedListings, Does.Contain("itm005"), "New listing should be scraped");
+            Assert.That(enqueuedListings, Does.Contain("itm006"), "Null-status listing should be scraped");
+            Assert.That(enqueuedListings, Does.Not.Contain("itm002"), "Sold listing should be skipped");
+            Assert.That(enqueuedListings, Does.Not.Contain("itm003"), "Ended listing should be skipped");
+            Assert.That(enqueuedListings, Does.Not.Contain("itm004"), "OutOfStock listing should be skipped");
         });
-
-        // Verify queue messages sent only for new listings (2 listings x 2 messages each = 4 total)
-        _queueClientMock.Verify(q => q.SendMessageAsync(It.IsAny<string>()),
-            Times.Exactly(4));
     }
 
     [Test]
