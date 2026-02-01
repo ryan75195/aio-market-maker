@@ -15,6 +15,8 @@ using AIOMarketMaker.Models.Ebay;
 using AngleSharp.Dom;
 using Microsoft.EntityFrameworkCore;
 using System.Net;
+using System.Text.Json;
+using AIOMarketMaker.Etl.Models;
 
 namespace AIOMarketMaker.Tests.Unit.Triggers;
 
@@ -494,6 +496,54 @@ public class SimplifiedScrapeTrigger_UnitTests
         Assert.That(phasesDuringSearch, Has.Count.GreaterThanOrEqualTo(2), "Should have at least 2 search phases");
         Assert.That(phasesDuringSearch[0], Is.EqualTo("Searching Sold"), "First phase should be Searching Sold");
         Assert.That(phasesDuringSearch[1], Is.EqualTo("Searching Active"), "Second phase should be Searching Active");
+    }
+
+    [Test]
+    public async Task ManualScrape_should_enqueue_job_messages_and_return_immediately()
+    {
+        // Arrange
+        var job = new ScrapeJob { Id = 1, SearchTerm = "Test Product", IsEnabled = true };
+        _dbContext.ScrapeJobs.Add(job);
+        await _dbContext.SaveChangesAsync();
+
+        var enqueuedMessages = new List<string>();
+        var jobQueueMock = new Mock<QueueClient>();
+        jobQueueMock
+            .Setup(q => q.SendMessageAsync(It.IsAny<string>(), default))
+            .Callback<string, CancellationToken>((msg, _) => enqueuedMessages.Add(msg))
+            .ReturnsAsync(Mock.Of<Azure.Response<SendReceipt>>());
+
+        _queueServiceMock
+            .Setup(q => q.GetQueueClient("scrape-jobs"))
+            .Returns(jobQueueMock.Object);
+
+        var trigger = new SimplifiedScrapeTrigger(
+            _loggerMock.Object,
+            _dbContext,
+            _webscraperClientMock.Object,
+            _searchParserMock.Object,
+            _queueServiceMock.Object);
+
+        var request = MockHttpRequestData.CreateEmpty();
+
+        // Act
+        var response = await trigger.RunManual(request);
+
+        // Assert
+        Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK));
+        Assert.That(enqueuedMessages, Has.Count.EqualTo(1), "Should enqueue one job message");
+
+        // Verify ScrapeRun was created with Queued status
+        var scrapeRun = await _dbContext.ScrapeRuns.FirstOrDefaultAsync();
+        Assert.That(scrapeRun, Is.Not.Null);
+        Assert.That(scrapeRun!.Status, Is.EqualTo("Queued"));
+
+        // Verify message contains correct data
+        var message = JsonSerializer.Deserialize<ScrapeJobMessage>(enqueuedMessages[0]);
+        Assert.That(message!.ScrapeRunId, Is.EqualTo(scrapeRun.Id));
+        Assert.That(message.JobId, Is.EqualTo(job.Id));
+        Assert.That(message.SearchTerm, Is.EqualTo("Test Product"));
+        Assert.That(message.TriggerType, Is.EqualTo("Manual"));
     }
 
     [Test]
