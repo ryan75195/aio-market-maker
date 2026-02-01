@@ -706,6 +706,82 @@ public class ProcessListingEndpoint_UnitTests
         Assert.That(createdListing!.Title, Is.EqualTo("PlayStation 5 Console"));
     }
 
+    [Test]
+    public async Task Run_should_skip_update_when_status_transition_is_invalid()
+    {
+        // Arrange - Existing Sold listing
+        var scrapeRun = new ScrapeRun { Id = 1, Status = "Running", ListingsProcessed = 0 };
+        var scrapeJob = new ScrapeJob { Id = 1, SearchTerm = "test" };
+        var existingListing = new Listing
+        {
+            ListingId = "123",
+            ScrapeJobId = 1,
+            Title = "Original Title",
+            Price = 100m,
+            ListingStatus = "Sold"  // Terminal status!
+        };
+
+        _dbContext.ScrapeRuns.Add(scrapeRun);
+        _dbContext.ScrapeJobs.Add(scrapeJob);
+        _dbContext.Listings.Add(existingListing);
+
+        var scrapeRunListing = new ScrapeRunListing { ScrapeRunId = 1, ScrapeJobId = 1, ListingId = "123", Status = "Pending" };
+        _dbContext.ScrapeRunListings.Add(scrapeRunListing);
+        await _dbContext.SaveChangesAsync();
+
+        SetupBlobWithContent("<html></html>");
+
+        // Parser returns Active status (invalid: Sold->Active)
+        var parsedListing = new ExtractedEbayListing(
+            id: "123",
+            title: "New Title",
+            price: 90m,
+            currency: "GBP",
+            shippingCost: null,
+            Condition: Condition.USED,
+            images: null,
+            listingStatus: EbayListingStatus.Active,  // Trying to go Sold->Active!
+            purchaseFormat: null,
+            ItemSpecifics: null,
+            descriptionSource: null,
+            SoldDateUtc: null,
+            Location: null,
+            Url: null
+        );
+
+        _listingParserMock
+            .Setup(p => p.ParseProductListing(It.IsAny<IDocument>(), It.IsAny<string>()))
+            .Returns(parsedListing);
+
+        var endpoint = new ProcessListingEndpoint(
+            _blobServiceMock.Object,
+            _dbContext,
+            _listingParserMock.Object,
+            _loggerMock.Object);
+
+        var request = new ProcessListingRequest(1, 0, "123", 1, "path");
+        var httpRequest = MockHttpRequestData.Create(request);
+
+        // Act
+        var response = await endpoint.Run(httpRequest);
+        var responseBody = await MockHttpRequestData.ReadResponseAsync<ProcessListingResponse>(response);
+
+        // Assert - Should skip the update
+        Assert.Multiple(() =>
+        {
+            Assert.That(responseBody.Status, Is.EqualTo("skipped"));
+            Assert.That(responseBody.ErrorMessage, Does.Contain("invalid").IgnoreCase.Or.Contain("transition").IgnoreCase);
+        });
+
+        // Verify listing was NOT updated
+        var listing = await _dbContext.Listings.FirstOrDefaultAsync(l => l.ListingId == "123");
+        Assert.Multiple(() =>
+        {
+            Assert.That(listing!.Title, Is.EqualTo("Original Title"), "Title should not change");
+            Assert.That(listing.ListingStatus, Is.EqualTo("Sold"), "Status should remain Sold");
+        });
+    }
+
     private void SetupBlobWithContent(string htmlContent)
     {
         var mockBlobContainerClient = new Mock<BlobContainerClient>();

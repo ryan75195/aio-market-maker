@@ -9,6 +9,7 @@ using Microsoft.Extensions.Logging;
 using AIOMarketMaker.Core.Data;
 using AIOMarketMaker.Core.Data.Models;
 using AIOMarketMaker.Core.Parsers;
+using AIOMarketMaker.Core.Services;
 
 namespace AIOMarketMaker.Etl.Endpoints;
 
@@ -153,6 +154,33 @@ public class ProcessListingEndpoint
         // Check if listing already exists (upsert logic)
         var existingListing = await _dbContext.Listings
             .FirstOrDefaultAsync(l => l.ListingId == input.ListingId && l.ScrapeJobId == input.ScrapeJobId);
+
+        var newStatus = parsedListing.listingStatus?.ToString();
+
+        // Validate status transition if listing exists
+        if (existingListing != null && !ListingStatusHelper.CanUpdateStatus(existingListing.ListingStatus, newStatus))
+        {
+            _logger.LogWarning("Invalid status transition for {ListingId}: {OldStatus} -> {NewStatus}",
+                input.ListingId, existingListing.ListingStatus, newStatus);
+
+            // Increment skip counter
+            await IncrementScrapeRunCountersAsync(input.ScrapeRunId, "skipped");
+
+            // Mark ScrapeRunListing as Skipped
+            var skippedSrl = existingEntry ?? await _dbContext.ScrapeRunListings
+                .FirstOrDefaultAsync(srl => srl.ScrapeRunId == input.ScrapeRunId && srl.ListingId == input.ListingId);
+            if (skippedSrl != null)
+            {
+                skippedSrl.Status = "Skipped";
+                skippedSrl.CompletedUtc = DateTime.UtcNow;
+                await _dbContext.SaveChangesAsync();
+            }
+
+            var skipResponse = req.CreateResponse(HttpStatusCode.OK);
+            await skipResponse.WriteAsJsonAsync(new ProcessListingResponse(
+                true, "skipped", $"Invalid status transition: {existingListing.ListingStatus} -> {newStatus}"));
+            return skipResponse;
+        }
 
         string status;
         if (existingListing != null)
