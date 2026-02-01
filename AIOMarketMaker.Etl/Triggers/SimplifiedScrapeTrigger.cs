@@ -84,18 +84,23 @@ public class SimplifiedScrapeTrigger
 
         _logger.LogInformation("Parsed {Count} listings from search results", allListingIds.Count);
 
-        // 5. Filter out existing listings for this job
-        var existingListingIdsList = await _dbContext.Listings
-            .Where(l => l.ScrapeJobId == jobId && allListingIds.Contains(l.ListingId))
+        // 5. Filter out listings with terminal statuses (Sold, Ended, OutOfStock)
+        // Active listings should be re-scraped to capture price/status changes
+        var terminalStatuses = new HashSet<string> { "Sold", "Ended", "OutOfStock" };
+        var terminalListingIdsList = await _dbContext.Listings
+            .Where(l => l.ScrapeJobId == jobId
+                     && allListingIds.Contains(l.ListingId)
+                     && l.ListingStatus != null
+                     && terminalStatuses.Contains(l.ListingStatus))
             .Select(l => l.ListingId)
             .ToListAsync();
-        var existingListingIds = existingListingIdsList.ToHashSet();
+        var existingListingIds = terminalListingIdsList.ToHashSet();
 
         var newListingIds = allListingIds
             .Where(id => !existingListingIds.Contains(id))
             .ToList();
 
-        _logger.LogInformation("Filtered to {NewCount} new listings ({ExistingCount} already exist)",
+        _logger.LogInformation("Filtered to {NewCount} listings to process ({TerminalCount} have terminal status)",
             newListingIds.Count, existingListingIds.Count);
 
         // 6. Create ScrapeRunListing records for each new listing
