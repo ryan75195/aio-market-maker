@@ -4,12 +4,14 @@ using Moq;
 using NUnit.Framework;
 using AIOMarketMaker.Core.Data;
 using AIOMarketMaker.Core.Data.Models;
+using AIOMarketMaker.Models.Ebay;
 using AIOMarketMaker.Etl.Models;
 using AIOMarketMaker.Etl.Triggers;
 using AIOMarketMaker.Core.Parsers;
 using AIOMarketMaker.Core.Services;
 using AIOMarketMaker.Tests.Utils;
 using Azure.Storage.Queues;
+using AngleSharp.Dom;
 
 namespace AIOMarketMaker.Tests.Unit.Triggers;
 
@@ -37,6 +39,21 @@ public class ScrapeJobQueueTrigger_UnitTests
         _queueServiceMock
             .Setup(q => q.GetQueueClient(It.IsAny<string>()))
             .Returns(queueClientMock.Object);
+
+        // Setup default webscraperClient behavior - return empty HTML
+        _webscraperClientMock
+            .Setup(w => w.GetPageHtmlAsync(
+                It.IsAny<string>(),
+                It.IsAny<IEnumerable<object>?>(),
+                It.IsAny<string?>(),
+                It.IsAny<TimeSpan?>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync("<html><body></body></html>");
+
+        // Setup default searchParser behavior - return empty results
+        _searchParserMock
+            .Setup(p => p.ParseSearchResults(It.IsAny<IDocument>()))
+            .Returns(Enumerable.Empty<IEbayProductSummary>());
     }
 
     [TearDown]
@@ -79,8 +96,8 @@ public class ScrapeJobQueueTrigger_UnitTests
         // Act
         await trigger.ProcessJob(messageJson);
 
-        // Assert
+        // Assert - with no listings found, it should complete
         var updatedRun = await _dbContext.ScrapeRuns.FindAsync(100);
-        Assert.That(updatedRun!.Status, Is.EqualTo("Searching").Or.EqualTo("Indexing"));
+        Assert.That(updatedRun!.Status, Is.EqualTo("Completed"));
     }
 }
