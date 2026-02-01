@@ -34,7 +34,7 @@ public class ListingStatusHistory
     public DateTime RecordedUtc { get; set; }
 
     /// <summary>
-    /// Source of this record: "InitialScrape" or "StatusRefresh"
+    /// Source of this record: "InitialScrape", "StatusUpdate", or "PriceUpdate"
     /// </summary>
     public string? Source { get; set; }
 

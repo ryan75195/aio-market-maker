@@ -182,7 +182,12 @@ public class ProcessListingEndpoint
             return skipResponse;
         }
 
+        // Capture old values before updating (for history tracking)
+        var oldStatus = existingListing?.ListingStatus;
+        var oldPrice = existingListing?.Price;
+
         string status;
+        Listing listing;
         if (existingListing != null)
         {
             // Update existing listing
@@ -199,6 +204,7 @@ public class ProcessListingEndpoint
             existingListing.Url = parsedListing.Url;
             existingListing.UpdatedUtc = DateTime.UtcNow;
             status = "updated";
+            listing = existingListing;
         }
         else
         {
@@ -222,6 +228,7 @@ public class ProcessListingEndpoint
             };
             _dbContext.Listings.Add(newListing);
             status = "added";
+            listing = newListing;
         }
 
         // Update ScrapeRunListing status
@@ -236,6 +243,32 @@ public class ProcessListingEndpoint
 
         // Save the listing and ScrapeRunListing changes first
         await _dbContext.SaveChangesAsync();
+
+        // Create ListingStatusHistory record on status/price changes or initial scrape
+        var statusChanged = existingListing != null && oldStatus != newStatus;
+        var priceChanged = existingListing != null && oldPrice != parsedListing.price;
+
+        if (existingListing == null || statusChanged || priceChanged)
+        {
+            var historySource = existingListing == null
+                ? "InitialScrape"
+                : (statusChanged ? "StatusUpdate" : "PriceUpdate");
+
+            var historyRecord = new ListingStatusHistory
+            {
+                ListingId = listing.Id,
+                ListingStatus = newStatus ?? "Unknown",
+                Price = parsedListing.price,
+                SoldDateUtc = parsedListing.SoldDateUtc,
+                RecordedUtc = DateTime.UtcNow,
+                Source = historySource
+            };
+            _dbContext.ListingStatusHistory.Add(historyRecord);
+            await _dbContext.SaveChangesAsync();
+
+            _logger.LogInformation("Created ListingStatusHistory for {ListingId}: {Source} ({Status}, {Price})",
+                input.ListingId, historySource, newStatus, parsedListing.price);
+        }
 
         // Increment ScrapeRun counters atomically to prevent race conditions
         // When multiple workers process listings concurrently, read-modify-write

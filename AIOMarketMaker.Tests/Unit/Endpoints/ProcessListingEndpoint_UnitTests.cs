@@ -782,6 +782,289 @@ public class ProcessListingEndpoint_UnitTests
         });
     }
 
+    [Test]
+    public async Task Run_should_create_status_history_when_status_changes()
+    {
+        // Arrange - Existing Active listing
+        var scrapeRun = new ScrapeRun { Id = 1, Status = "Running", ListingsProcessed = 0 };
+        var scrapeJob = new ScrapeJob { Id = 1, SearchTerm = "test" };
+        var existingListing = new Listing
+        {
+            Id = 1,
+            ListingId = "123",
+            ScrapeJobId = 1,
+            Title = "Product",
+            Price = 100m,
+            ListingStatus = "Active"
+        };
+
+        _dbContext.ScrapeRuns.Add(scrapeRun);
+        _dbContext.ScrapeJobs.Add(scrapeJob);
+        _dbContext.Listings.Add(existingListing);
+
+        var scrapeRunListing = new ScrapeRunListing { ScrapeRunId = 1, ScrapeJobId = 1, ListingId = "123", Status = "Pending" };
+        _dbContext.ScrapeRunListings.Add(scrapeRunListing);
+        await _dbContext.SaveChangesAsync();
+
+        SetupBlobWithContent("<html></html>");
+
+        // Parser returns Sold status (valid transition: Active→Sold)
+        var parsedListing = new ExtractedEbayListing(
+            id: "123",
+            title: "Product",
+            price: 95m,  // Sold price
+            currency: "GBP",
+            shippingCost: null,
+            Condition: Condition.USED,
+            images: null,
+            listingStatus: EbayListingStatus.Sold,
+            purchaseFormat: null,
+            ItemSpecifics: null,
+            descriptionSource: null,
+            SoldDateUtc: DateTime.UtcNow,
+            Location: null,
+            Url: null
+        );
+
+        _listingParserMock
+            .Setup(p => p.ParseProductListing(It.IsAny<IDocument>(), It.IsAny<string>()))
+            .Returns(parsedListing);
+
+        var endpoint = new ProcessListingEndpoint(
+            _blobServiceMock.Object,
+            _dbContext,
+            _listingParserMock.Object,
+            _loggerMock.Object);
+
+        var request = new ProcessListingRequest(1, 0, "123", 1, "path");
+        var httpRequest = MockHttpRequestData.Create(request);
+
+        // Act
+        await endpoint.Run(httpRequest);
+
+        // Assert - ListingStatusHistory should be created
+        var history = await _dbContext.ListingStatusHistory
+            .Where(h => h.ListingId == 1)
+            .ToListAsync();
+
+        Assert.That(history.Count, Is.EqualTo(1), "Should create one history record");
+        Assert.Multiple(() =>
+        {
+            Assert.That(history[0].ListingStatus, Is.EqualTo("Sold"));
+            Assert.That(history[0].Price, Is.EqualTo(95m));
+            Assert.That(history[0].Source, Is.EqualTo("StatusUpdate"));
+        });
+    }
+
+    [Test]
+    public async Task Run_should_create_status_history_on_initial_scrape()
+    {
+        // Arrange - No existing listing
+        var scrapeRun = new ScrapeRun { Id = 1, Status = "Running", ListingsProcessed = 0 };
+        var scrapeJob = new ScrapeJob { Id = 1, SearchTerm = "test" };
+        _dbContext.ScrapeRuns.Add(scrapeRun);
+        _dbContext.ScrapeJobs.Add(scrapeJob);
+
+        var scrapeRunListing = new ScrapeRunListing { ScrapeRunId = 1, ScrapeJobId = 1, ListingId = "456", Status = "Pending" };
+        _dbContext.ScrapeRunListings.Add(scrapeRunListing);
+        await _dbContext.SaveChangesAsync();
+
+        SetupBlobWithContent("<html></html>");
+
+        // Parser returns a new listing
+        var parsedListing = new ExtractedEbayListing(
+            id: "456",
+            title: "New Product",
+            price: 150m,
+            currency: "GBP",
+            shippingCost: null,
+            Condition: Condition.NEW,
+            images: null,
+            listingStatus: EbayListingStatus.Active,
+            purchaseFormat: null,
+            ItemSpecifics: null,
+            descriptionSource: null,
+            SoldDateUtc: null,
+            Location: null,
+            Url: null
+        );
+
+        _listingParserMock
+            .Setup(p => p.ParseProductListing(It.IsAny<IDocument>(), It.IsAny<string>()))
+            .Returns(parsedListing);
+
+        var endpoint = new ProcessListingEndpoint(
+            _blobServiceMock.Object,
+            _dbContext,
+            _listingParserMock.Object,
+            _loggerMock.Object);
+
+        var request = new ProcessListingRequest(1, 0, "456", 1, "path");
+        var httpRequest = MockHttpRequestData.Create(request);
+
+        // Act
+        await endpoint.Run(httpRequest);
+
+        // Assert - ListingStatusHistory should be created with InitialScrape source
+        var history = await _dbContext.ListingStatusHistory.ToListAsync();
+
+        Assert.That(history.Count, Is.EqualTo(1), "Should create one history record");
+        Assert.Multiple(() =>
+        {
+            Assert.That(history[0].ListingStatus, Is.EqualTo("Active"));
+            Assert.That(history[0].Price, Is.EqualTo(150m));
+            Assert.That(history[0].Source, Is.EqualTo("InitialScrape"));
+        });
+    }
+
+    [Test]
+    public async Task Run_should_create_status_history_when_price_changes()
+    {
+        // Arrange - Existing Active listing with different price
+        var scrapeRun = new ScrapeRun { Id = 1, Status = "Running", ListingsProcessed = 0 };
+        var scrapeJob = new ScrapeJob { Id = 1, SearchTerm = "test" };
+        var existingListing = new Listing
+        {
+            Id = 1,
+            ListingId = "789",
+            ScrapeJobId = 1,
+            Title = "Product",
+            Price = 200m,  // Original price
+            ListingStatus = "Active"
+        };
+
+        _dbContext.ScrapeRuns.Add(scrapeRun);
+        _dbContext.ScrapeJobs.Add(scrapeJob);
+        _dbContext.Listings.Add(existingListing);
+
+        var scrapeRunListing = new ScrapeRunListing { ScrapeRunId = 1, ScrapeJobId = 1, ListingId = "789", Status = "Pending" };
+        _dbContext.ScrapeRunListings.Add(scrapeRunListing);
+        await _dbContext.SaveChangesAsync();
+
+        SetupBlobWithContent("<html></html>");
+
+        // Parser returns same status but different price
+        var parsedListing = new ExtractedEbayListing(
+            id: "789",
+            title: "Product",
+            price: 180m,  // Price dropped!
+            currency: "GBP",
+            shippingCost: null,
+            Condition: Condition.USED,
+            images: null,
+            listingStatus: EbayListingStatus.Active,  // Same status
+            purchaseFormat: null,
+            ItemSpecifics: null,
+            descriptionSource: null,
+            SoldDateUtc: null,
+            Location: null,
+            Url: null
+        );
+
+        _listingParserMock
+            .Setup(p => p.ParseProductListing(It.IsAny<IDocument>(), It.IsAny<string>()))
+            .Returns(parsedListing);
+
+        var endpoint = new ProcessListingEndpoint(
+            _blobServiceMock.Object,
+            _dbContext,
+            _listingParserMock.Object,
+            _loggerMock.Object);
+
+        var request = new ProcessListingRequest(1, 0, "789", 1, "path");
+        var httpRequest = MockHttpRequestData.Create(request);
+
+        // Act
+        await endpoint.Run(httpRequest);
+
+        // Assert - ListingStatusHistory should be created with PriceUpdate source
+        var history = await _dbContext.ListingStatusHistory
+            .Where(h => h.ListingId == 1)
+            .ToListAsync();
+
+        Assert.That(history.Count, Is.EqualTo(1), "Should create one history record");
+        Assert.Multiple(() =>
+        {
+            Assert.That(history[0].ListingStatus, Is.EqualTo("Active"));
+            Assert.That(history[0].Price, Is.EqualTo(180m));
+            Assert.That(history[0].Source, Is.EqualTo("PriceUpdate"));
+        });
+    }
+
+[Test]
+    public async Task Run_should_prioritize_status_update_when_both_status_and_price_change()
+    {
+        // Arrange - Existing Active listing @ $100
+        var scrapeRun = new ScrapeRun { Id = 1, Status = "Running", ListingsProcessed = 0 };
+        var scrapeJob = new ScrapeJob { Id = 1, SearchTerm = "test" };
+        var existingListing = new Listing
+        {
+            Id = 1,
+            ListingId = "999",
+            ScrapeJobId = 1,
+            Title = "Product",
+            Price = 100m,  // Original price
+            ListingStatus = "Active"
+        };
+
+        _dbContext.ScrapeRuns.Add(scrapeRun);
+        _dbContext.ScrapeJobs.Add(scrapeJob);
+        _dbContext.Listings.Add(existingListing);
+
+        var scrapeRunListing = new ScrapeRunListing { ScrapeRunId = 1, ScrapeJobId = 1, ListingId = "999", Status = "Pending" };
+        _dbContext.ScrapeRunListings.Add(scrapeRunListing);
+        await _dbContext.SaveChangesAsync();
+
+        SetupBlobWithContent("<html></html>");
+
+        // Parser returns Sold status AND different price (both changed)
+        var parsedListing = new ExtractedEbayListing(
+            id: "999",
+            title: "Product",
+            price: 95m,  // Price also changed
+            currency: "GBP",
+            shippingCost: null,
+            Condition: Condition.USED,
+            images: null,
+            listingStatus: EbayListingStatus.Sold,  // Status changed: Active -> Sold
+            purchaseFormat: null,
+            ItemSpecifics: null,
+            descriptionSource: null,
+            SoldDateUtc: DateTime.UtcNow,
+            Location: null,
+            Url: null
+        );
+
+        _listingParserMock
+            .Setup(p => p.ParseProductListing(It.IsAny<IDocument>(), It.IsAny<string>()))
+            .Returns(parsedListing);
+
+        var endpoint = new ProcessListingEndpoint(
+            _blobServiceMock.Object,
+            _dbContext,
+            _listingParserMock.Object,
+            _loggerMock.Object);
+
+        var request = new ProcessListingRequest(1, 0, "999", 1, "path");
+        var httpRequest = MockHttpRequestData.Create(request);
+
+        // Act
+        await endpoint.Run(httpRequest);
+
+        // Assert - ListingStatusHistory should use "StatusUpdate" (status takes precedence over price)
+        var history = await _dbContext.ListingStatusHistory
+            .Where(h => h.ListingId == 1)
+            .ToListAsync();
+
+        Assert.That(history.Count, Is.EqualTo(1), "Should create one history record");
+        Assert.Multiple(() =>
+        {
+            Assert.That(history[0].ListingStatus, Is.EqualTo("Sold"));
+            Assert.That(history[0].Price, Is.EqualTo(95m));
+            Assert.That(history[0].Source, Is.EqualTo("StatusUpdate"), "Status change should take precedence over price change");
+        });
+    }
+
     private void SetupBlobWithContent(string htmlContent)
     {
         var mockBlobContainerClient = new Mock<BlobContainerClient>();
