@@ -7,12 +7,8 @@ using Azure.Storage.Queues.Models;
 using Azure;
 using AIOMarketMaker.Core.Data;
 using AIOMarketMaker.Core.Data.Models;
-using AIOMarketMaker.Core.Parsers;
-using AIOMarketMaker.Core.Services;
 using AIOMarketMaker.Etl.Triggers;
 using AIOMarketMaker.Tests.Utils;
-using AIOMarketMaker.Models.Ebay;
-using AngleSharp.Dom;
 using Microsoft.EntityFrameworkCore;
 using System.Net;
 using System.Text.Json;
@@ -20,30 +16,31 @@ using AIOMarketMaker.Etl.Models;
 
 namespace AIOMarketMaker.Tests.Unit.Triggers;
 
+/// <summary>
+/// Unit tests for SimplifiedScrapeTrigger.
+/// Tests the fire-and-forget queue pattern used by both RunManual and RunNightly.
+/// Note: The actual scrape logic is tested in ScrapeJobQueueTrigger_UnitTests.
+/// </summary>
 [TestFixture]
 [Category("Unit")]
 public class SimplifiedScrapeTrigger_UnitTests
 {
     private Mock<ILogger<SimplifiedScrapeTrigger>> _loggerMock;
     private EtlDbContext _dbContext;
-    private Mock<IWebscraperClient> _webscraperClientMock;
-    private Mock<ISearchParser> _searchParserMock;
     private Mock<QueueServiceClient> _queueServiceMock;
-    private Mock<QueueClient> _queueClientMock;
+    private Mock<QueueClient> _jobQueueClientMock;
 
     [SetUp]
     public void SetUp()
     {
         _loggerMock = new Mock<ILogger<SimplifiedScrapeTrigger>>();
         _dbContext = InMemoryDbContextFactory.Create();
-        _webscraperClientMock = new Mock<IWebscraperClient>();
-        _searchParserMock = new Mock<ISearchParser>();
         _queueServiceMock = new Mock<QueueServiceClient>();
-        _queueClientMock = new Mock<QueueClient>();
+        _jobQueueClientMock = new Mock<QueueClient>();
 
         _queueServiceMock
-            .Setup(q => q.GetQueueClient("scrape-work"))
-            .Returns(_queueClientMock.Object);
+            .Setup(q => q.GetQueueClient("scrape-jobs"))
+            .Returns(_jobQueueClientMock.Object);
     }
 
     [TearDown]
@@ -59,8 +56,6 @@ public class SimplifiedScrapeTrigger_UnitTests
         var trigger = new SimplifiedScrapeTrigger(
             _loggerMock.Object,
             _dbContext,
-            _webscraperClientMock.Object,
-            _searchParserMock.Object,
             _queueServiceMock.Object);
 
         // Assert
@@ -68,160 +63,7 @@ public class SimplifiedScrapeTrigger_UnitTests
     }
 
     [Test]
-    public async Task RunScrapeForJobAsync_should_create_scrape_run_and_enqueue_listings()
-    {
-        // Arrange
-        var jobId = 1;
-        var searchTerm = "test product";
-        var triggerType = "Manual";
-
-        // Create a scrape job in the database
-        var scrapeJob = new ScrapeJob { Id = jobId, SearchTerm = searchTerm, IsEnabled = true };
-        _dbContext.ScrapeJobs.Add(scrapeJob);
-        await _dbContext.SaveChangesAsync();
-
-        // Setup webscraper client to return HTML
-        _webscraperClientMock
-            .Setup(w => w.GetPageHtmlAsync(
-                It.IsAny<string>(),
-                It.IsAny<IEnumerable<object>>(),
-                It.IsAny<string>(),
-                It.IsAny<TimeSpan?>(),
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync("<html><body>Mock search results</body></html>");
-
-        // Setup search parser to return mock product summaries
-        var mockProducts = new List<IEbayProductSummary>
-        {
-            new EbayProductSummary("itm001", "Product 1", 10.00m, "GBP", 1.00m, "url1", BuyingFormat.BUY_NOW, Condition.USED, null, null),
-            new EbayProductSummary("itm002", "Product 2", 20.00m, "GBP", 2.00m, "url2", BuyingFormat.BUY_NOW, Condition.NEW, null, null),
-            new EbayProductSummary("itm003", "Product 3", 30.00m, "GBP", 3.00m, "url3", BuyingFormat.AUCTION, Condition.USED, null, null)
-        };
-        _searchParserMock
-            .Setup(s => s.ParseSearchResults(It.IsAny<IDocument>()))
-            .Returns(mockProducts);
-
-        // Setup queue client to accept messages
-        _queueClientMock
-            .Setup(q => q.SendMessageAsync(It.IsAny<string>()))
-            .ReturnsAsync(Response.FromValue(
-                QueuesModelFactory.SendReceipt("messageId", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, "popReceipt", DateTimeOffset.UtcNow.AddMinutes(1)),
-                Mock.Of<Response>()));
-
-        var trigger = new SimplifiedScrapeTrigger(
-            _loggerMock.Object,
-            _dbContext,
-            _webscraperClientMock.Object,
-            _searchParserMock.Object,
-            _queueServiceMock.Object);
-
-        // Act
-        var result = await trigger.RunScrapeForJobAsync(jobId, searchTerm, triggerType);
-
-        // Assert
-        Assert.Multiple(() =>
-        {
-            // Should return the count of listings enqueued
-            Assert.That(result, Is.EqualTo(3));
-
-            // Verify ScrapeRun was created
-            var scrapeRun = _dbContext.ScrapeRuns.FirstOrDefault();
-            Assert.That(scrapeRun, Is.Not.Null);
-            Assert.That(scrapeRun!.JobId, Is.EqualTo(jobId));
-            Assert.That(scrapeRun.TriggerType, Is.EqualTo(triggerType));
-            Assert.That(scrapeRun.Status, Is.EqualTo("Indexing"));
-            Assert.That(scrapeRun.TotalListingsFound, Is.EqualTo(3));
-
-            // Verify ScrapeRunListings were created
-            var scrapeRunListings = _dbContext.ScrapeRunListings.ToList();
-            Assert.That(scrapeRunListings.Count, Is.EqualTo(3));
-            Assert.That(scrapeRunListings.Select(l => l.ListingId), Is.EquivalentTo(new[] { "itm001", "itm002", "itm003" }));
-        });
-
-        // Verify queue messages were sent for each listing (listing + description = 2 per listing = 6 total)
-        _queueClientMock.Verify(q => q.SendMessageAsync(It.IsAny<string>()),
-            Times.Exactly(6));
-    }
-
-    [Test]
-    public async Task RunScrapeForJobAsync_should_skip_terminal_statuses_but_include_active_for_rescrape()
-    {
-        // Arrange
-        var jobId = 1;
-        var searchTerm = "test product";
-
-        var scrapeJob = new ScrapeJob { Id = jobId, SearchTerm = searchTerm, IsEnabled = true };
-        _dbContext.ScrapeJobs.Add(scrapeJob);
-
-        // Create listings with different statuses
-        var activeListing = new Listing { ListingId = "itm001", ScrapeJobId = jobId, ListingStatus = "Active" };
-        var soldListing = new Listing { ListingId = "itm002", ScrapeJobId = jobId, ListingStatus = "Sold" };
-        var endedListing = new Listing { ListingId = "itm003", ScrapeJobId = jobId, ListingStatus = "Ended" };
-        var outOfStockListing = new Listing { ListingId = "itm004", ScrapeJobId = jobId, ListingStatus = "OutOfStock" };
-        // itm005 doesn't exist in DB yet - it's a new listing
-        var nullStatusListing = new Listing { ListingId = "itm006", ScrapeJobId = jobId, ListingStatus = null };
-
-        _dbContext.Listings.AddRange(activeListing, soldListing, endedListing, outOfStockListing, nullStatusListing);
-        await _dbContext.SaveChangesAsync();
-
-        // Setup webscraper client to return HTML
-        _webscraperClientMock
-            .Setup(w => w.GetPageHtmlAsync(
-                It.IsAny<string>(),
-                It.IsAny<IEnumerable<object>>(),
-                It.IsAny<string>(),
-                It.IsAny<TimeSpan?>(),
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync("<html><body>Mock</body></html>");
-
-        // Parser returns all 6 listing IDs (simulating search results)
-        var mockProducts = new List<IEbayProductSummary>
-        {
-            new EbayProductSummary("itm001", "Active Product", 10m, "GBP", 0m, "url1", BuyingFormat.BUY_NOW, Condition.USED, null, null),
-            new EbayProductSummary("itm002", "Sold Product", 20m, "GBP", 0m, "url2", BuyingFormat.BUY_NOW, Condition.USED, null, null),
-            new EbayProductSummary("itm003", "Ended Product", 30m, "GBP", 0m, "url3", BuyingFormat.BUY_NOW, Condition.USED, null, null),
-            new EbayProductSummary("itm004", "OutOfStock Product", 40m, "GBP", 0m, "url4", BuyingFormat.BUY_NOW, Condition.USED, null, null),
-            new EbayProductSummary("itm005", "New Product", 50m, "GBP", 0m, "url5", BuyingFormat.BUY_NOW, Condition.USED, null, null),
-            new EbayProductSummary("itm006", "Null Status Product", 60m, "GBP", 0m, "url6", BuyingFormat.BUY_NOW, Condition.USED, null, null),
-        };
-        _searchParserMock.Setup(s => s.ParseSearchResults(It.IsAny<IDocument>())).Returns(mockProducts);
-
-        _queueClientMock
-            .Setup(q => q.SendMessageAsync(It.IsAny<string>()))
-            .ReturnsAsync(Response.FromValue(
-                QueuesModelFactory.SendReceipt("id", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, "pop", DateTimeOffset.UtcNow.AddMinutes(1)),
-                Mock.Of<Response>()));
-
-        var trigger = new SimplifiedScrapeTrigger(
-            _loggerMock.Object, _dbContext, _webscraperClientMock.Object,
-            _searchParserMock.Object, _queueServiceMock.Object);
-
-        // Act
-        var result = await trigger.RunScrapeForJobAsync(jobId, searchTerm, "Manual");
-
-        // Assert
-        // itm001 (Active) - INCLUDED (re-scrape for price updates)
-        // itm002 (Sold) - EXCLUDED (terminal)
-        // itm003 (Ended) - EXCLUDED (terminal)
-        // itm004 (OutOfStock) - EXCLUDED (terminal)
-        // itm005 (new/not in DB) - INCLUDED (new listing)
-        // itm006 (null status) - INCLUDED (treated as new listing needing scrape)
-        Assert.That(result, Is.EqualTo(3), "Should include Active, new, and null-status listings, exclude terminal statuses");
-
-        var enqueuedListings = _dbContext.ScrapeRunListings.Select(l => l.ListingId).ToList();
-        Assert.Multiple(() =>
-        {
-            Assert.That(enqueuedListings, Does.Contain("itm001"), "Active listing should be re-scraped");
-            Assert.That(enqueuedListings, Does.Contain("itm005"), "New listing should be scraped");
-            Assert.That(enqueuedListings, Does.Contain("itm006"), "Null-status listing should be scraped");
-            Assert.That(enqueuedListings, Does.Not.Contain("itm002"), "Sold listing should be skipped");
-            Assert.That(enqueuedListings, Does.Not.Contain("itm003"), "Ended listing should be skipped");
-            Assert.That(enqueuedListings, Does.Not.Contain("itm004"), "OutOfStock listing should be skipped");
-        });
-    }
-
-    [Test]
-    public async Task RunNightly_should_call_RunScrapeForAllEnabledJobsAsync()
+    public async Task RunNightly_should_enqueue_job_for_each_enabled_job()
     {
         // Arrange - Create two enabled jobs and one disabled job
         var job1 = new ScrapeJob { Id = 1, SearchTerm = "product 1", IsEnabled = true };
@@ -230,39 +72,108 @@ public class SimplifiedScrapeTrigger_UnitTests
         _dbContext.ScrapeJobs.AddRange(job1, job2, job3);
         await _dbContext.SaveChangesAsync();
 
-        // Setup webscraper client to return HTML
-        _webscraperClientMock
-            .Setup(w => w.GetPageHtmlAsync(
-                It.IsAny<string>(),
-                It.IsAny<IEnumerable<object>>(),
-                It.IsAny<string>(),
-                It.IsAny<TimeSpan?>(),
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync("<html><body>Mock search results</body></html>");
-
-        // Setup search parser to return empty list (simplify test)
-        _searchParserMock
-            .Setup(s => s.ParseSearchResults(It.IsAny<IDocument>()))
-            .Returns(new List<IEbayProductSummary>());
+        var enqueuedMessages = new List<string>();
+        _jobQueueClientMock
+            .Setup(q => q.SendMessageAsync(It.IsAny<string>()))
+            .Callback<string>((msg) => enqueuedMessages.Add(msg))
+            .ReturnsAsync(Response.FromValue(
+                QueuesModelFactory.SendReceipt("messageId", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, "popReceipt", DateTimeOffset.UtcNow.AddMinutes(1)),
+                Mock.Of<Response>()));
 
         var trigger = new SimplifiedScrapeTrigger(
             _loggerMock.Object,
             _dbContext,
-            _webscraperClientMock.Object,
-            _searchParserMock.Object,
             _queueServiceMock.Object);
 
         // Act
         await trigger.RunNightly(null!);
 
-        // Assert - Two ScrapeRuns should be created (one for each enabled job)
+        // Assert - Two job messages should be enqueued (one for each enabled job)
+        Assert.That(enqueuedMessages.Count, Is.EqualTo(2), "Should enqueue one message per enabled job");
+
+        // Verify ScrapeRuns were created with Queued status
         var scrapeRuns = await _dbContext.ScrapeRuns.ToListAsync();
         Assert.That(scrapeRuns.Count, Is.EqualTo(2));
         Assert.Multiple(() =>
         {
             Assert.That(scrapeRuns.Select(r => r.JobId), Is.EquivalentTo(new[] { 1, 2 }));
             Assert.That(scrapeRuns.All(r => r.TriggerType == "Nightly"), Is.True);
+            Assert.That(scrapeRuns.All(r => r.Status == "Queued"), Is.True);
+            Assert.That(scrapeRuns.All(r => r.CurrentPhase == "Queued"), Is.True);
         });
+
+        // Verify message contents
+        var messages = enqueuedMessages.Select(m => JsonSerializer.Deserialize<ScrapeJobMessage>(m)!).ToList();
+        Assert.Multiple(() =>
+        {
+            Assert.That(messages.Select(m => m.JobId), Is.EquivalentTo(new[] { 1, 2 }));
+            Assert.That(messages.All(m => m.TriggerType == "Nightly"), Is.True);
+        });
+    }
+
+    [Test]
+    public async Task RunNightly_should_not_enqueue_anything_when_no_enabled_jobs()
+    {
+        // Arrange - Create only disabled jobs
+        var job = new ScrapeJob { Id = 1, SearchTerm = "disabled product", IsEnabled = false };
+        _dbContext.ScrapeJobs.Add(job);
+        await _dbContext.SaveChangesAsync();
+
+        var trigger = new SimplifiedScrapeTrigger(
+            _loggerMock.Object,
+            _dbContext,
+            _queueServiceMock.Object);
+
+        // Act
+        await trigger.RunNightly(null!);
+
+        // Assert
+        _jobQueueClientMock.Verify(q => q.SendMessageAsync(It.IsAny<string>()), Times.Never);
+        var scrapeRuns = await _dbContext.ScrapeRuns.ToListAsync();
+        Assert.That(scrapeRuns.Count, Is.EqualTo(0));
+    }
+
+    [Test]
+    public async Task RunManual_should_enqueue_job_messages_and_return_immediately()
+    {
+        // Arrange
+        var job = new ScrapeJob { Id = 1, SearchTerm = "Test Product", IsEnabled = true };
+        _dbContext.ScrapeJobs.Add(job);
+        await _dbContext.SaveChangesAsync();
+
+        var enqueuedMessages = new List<string>();
+        _jobQueueClientMock
+            .Setup(q => q.SendMessageAsync(It.IsAny<string>()))
+            .Callback<string>((msg) => enqueuedMessages.Add(msg))
+            .ReturnsAsync(Mock.Of<Azure.Response<SendReceipt>>());
+
+        var trigger = new SimplifiedScrapeTrigger(
+            _loggerMock.Object,
+            _dbContext,
+            _queueServiceMock.Object);
+
+        var request = MockHttpRequestData.CreateEmpty();
+
+        // Act
+        var response = await trigger.RunManual(request);
+
+        // Assert
+        Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK));
+        Assert.That(enqueuedMessages, Has.Count.EqualTo(1), "Should enqueue one job message");
+
+        // Verify ScrapeRun was created with Queued status
+        var scrapeRun = await _dbContext.ScrapeRuns.FirstOrDefaultAsync();
+        Assert.That(scrapeRun, Is.Not.Null);
+        Assert.That(scrapeRun!.Status, Is.EqualTo("Queued"));
+        Assert.That(scrapeRun.CurrentPhase, Is.EqualTo("Queued"));
+        Assert.That(scrapeRun.TriggerType, Is.EqualTo("Manual"));
+
+        // Verify message contains correct data
+        var message = JsonSerializer.Deserialize<ScrapeJobMessage>(enqueuedMessages[0]);
+        Assert.That(message!.ScrapeRunId, Is.EqualTo(scrapeRun.Id));
+        Assert.That(message.JobId, Is.EqualTo(job.Id));
+        Assert.That(message.SearchTerm, Is.EqualTo("Test Product"));
+        Assert.That(message.TriggerType, Is.EqualTo("Manual"));
     }
 
     [Test]
@@ -273,27 +184,7 @@ public class SimplifiedScrapeTrigger_UnitTests
         _dbContext.ScrapeJobs.Add(job);
         await _dbContext.SaveChangesAsync();
 
-        // Setup webscraper client to return HTML
-        _webscraperClientMock
-            .Setup(w => w.GetPageHtmlAsync(
-                It.IsAny<string>(),
-                It.IsAny<IEnumerable<object>>(),
-                It.IsAny<string>(),
-                It.IsAny<TimeSpan?>(),
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync("<html><body>Mock search results</body></html>");
-
-        // Setup search parser to return mock products
-        var mockProducts = new List<IEbayProductSummary>
-        {
-            new EbayProductSummary("itm001", "Product 1", 10.00m, "GBP", 1.00m, "url1", BuyingFormat.BUY_NOW, Condition.USED, null, null)
-        };
-        _searchParserMock
-            .Setup(s => s.ParseSearchResults(It.IsAny<IDocument>()))
-            .Returns(mockProducts);
-
-        // Setup queue client to accept messages
-        _queueClientMock
+        _jobQueueClientMock
             .Setup(q => q.SendMessageAsync(It.IsAny<string>()))
             .ReturnsAsync(Response.FromValue(
                 QueuesModelFactory.SendReceipt("messageId", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, "popReceipt", DateTimeOffset.UtcNow.AddMinutes(1)),
@@ -302,8 +193,6 @@ public class SimplifiedScrapeTrigger_UnitTests
         var trigger = new SimplifiedScrapeTrigger(
             _loggerMock.Object,
             _dbContext,
-            _webscraperClientMock.Object,
-            _searchParserMock.Object,
             _queueServiceMock.Object);
 
         // Create mock HTTP request with empty body (no specific jobId)
@@ -325,26 +214,17 @@ public class SimplifiedScrapeTrigger_UnitTests
         _dbContext.ScrapeJobs.AddRange(job1, job2);
         await _dbContext.SaveChangesAsync();
 
-        // Setup webscraper client to return HTML
-        _webscraperClientMock
-            .Setup(w => w.GetPageHtmlAsync(
-                It.IsAny<string>(),
-                It.IsAny<IEnumerable<object>>(),
-                It.IsAny<string>(),
-                It.IsAny<TimeSpan?>(),
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync("<html><body>Mock search results</body></html>");
-
-        // Setup search parser to return empty list
-        _searchParserMock
-            .Setup(s => s.ParseSearchResults(It.IsAny<IDocument>()))
-            .Returns(new List<IEbayProductSummary>());
+        var enqueuedMessages = new List<string>();
+        _jobQueueClientMock
+            .Setup(q => q.SendMessageAsync(It.IsAny<string>()))
+            .Callback<string>((msg) => enqueuedMessages.Add(msg))
+            .ReturnsAsync(Response.FromValue(
+                QueuesModelFactory.SendReceipt("messageId", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, "popReceipt", DateTimeOffset.UtcNow.AddMinutes(1)),
+                Mock.Of<Response>()));
 
         var trigger = new SimplifiedScrapeTrigger(
             _loggerMock.Object,
             _dbContext,
-            _webscraperClientMock.Object,
-            _searchParserMock.Object,
             _queueServiceMock.Object);
 
         // Create mock HTTP request with specific jobId
@@ -355,273 +235,76 @@ public class SimplifiedScrapeTrigger_UnitTests
 
         // Assert - Only one ScrapeRun should be created for job 2
         Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK));
+        Assert.That(enqueuedMessages.Count, Is.EqualTo(1), "Should only enqueue job 2");
+
         var scrapeRuns = await _dbContext.ScrapeRuns.ToListAsync();
         Assert.That(scrapeRuns.Count, Is.EqualTo(1));
         Assert.That(scrapeRuns[0].JobId, Is.EqualTo(2));
+
+        var message = JsonSerializer.Deserialize<ScrapeJobMessage>(enqueuedMessages[0]);
+        Assert.That(message!.JobId, Is.EqualTo(2));
+        Assert.That(message.SearchTerm, Is.EqualTo("product 2"));
     }
 
-    [Test]
-    public async Task RunScrapeForJobAsync_should_search_sold_listings_before_active()
-    {
-        // Arrange
-        var jobId = 1;
-        var scrapeJob = new ScrapeJob { Id = jobId, SearchTerm = "test", IsEnabled = true };
-        _dbContext.ScrapeJobs.Add(scrapeJob);
-        await _dbContext.SaveChangesAsync();
-
-        var calledUrls = new List<string>();
-        _webscraperClientMock
-            .Setup(w => w.GetPageHtmlAsync(It.IsAny<string>(), It.IsAny<IEnumerable<object>>(),
-                It.IsAny<string>(), It.IsAny<TimeSpan?>(), It.IsAny<CancellationToken>()))
-            .Callback<string, IEnumerable<object>, string, TimeSpan?, CancellationToken>((url, _, _, _, _) => calledUrls.Add(url))
-            .ReturnsAsync("<html></html>");
-
-        _searchParserMock
-            .Setup(s => s.ParseSearchResults(It.IsAny<IDocument>()))
-            .Returns(new List<IEbayProductSummary>()); // Empty results to end pagination quickly
-
-        _queueClientMock
-            .Setup(q => q.SendMessageAsync(It.IsAny<string>()))
-            .ReturnsAsync(Response.FromValue(
-                QueuesModelFactory.SendReceipt("id", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, "pop", DateTimeOffset.UtcNow.AddMinutes(1)),
-                Mock.Of<Response>()));
-
-        var trigger = new SimplifiedScrapeTrigger(
-            _loggerMock.Object, _dbContext, _webscraperClientMock.Object,
-            _searchParserMock.Object, _queueServiceMock.Object);
-
-        // Act
-        await trigger.RunScrapeForJobAsync(jobId, "test", "Manual");
-
-        // Assert - should search sold THEN active
-        Assert.That(calledUrls.Count, Is.GreaterThanOrEqualTo(2), "Should search both sold and active");
-
-        var soldSearchIndex = calledUrls.FindIndex(u => u.Contains("LH_Sold=1") || u.Contains("LH_Complete=1"));
-        var activeSearchIndex = calledUrls.FindIndex(u => !u.Contains("LH_Sold") && !u.Contains("LH_Complete"));
-
-        Assert.That(soldSearchIndex, Is.GreaterThanOrEqualTo(0), "Should have searched sold listings");
-        Assert.That(activeSearchIndex, Is.GreaterThan(soldSearchIndex), "Active search should come after sold search");
-    }
+    // Note: Test for "job not found returns 404" is skipped because HttpRequestData.CreateResponse(HttpStatusCode)
+    // is an extension method that cannot be mocked with Moq. The behavior is tested via integration tests.
 
     [Test]
-    public async Task RunScrapeForJobAsync_should_detect_active_to_sold_transitions()
+    public async Task RunManual_should_return_OK_with_empty_results_when_no_enabled_jobs()
     {
-        // Arrange
-        var jobId = 1;
-        var scrapeJob = new ScrapeJob { Id = jobId, SearchTerm = "test", IsEnabled = true };
-        _dbContext.ScrapeJobs.Add(scrapeJob);
-
-        // Existing Active listing in database
-        var activeListing = new Listing { ListingId = "itm001", ScrapeJobId = jobId, ListingStatus = "Active" };
-        _dbContext.Listings.Add(activeListing);
-        await _dbContext.SaveChangesAsync();
-
-        // Setup: Sold search returns this listing (it sold!)
-        var soldProducts = new List<IEbayProductSummary>
-        {
-            new EbayProductSummary("itm001", "Now Sold", 100m, "GBP", 0m, "url", BuyingFormat.BUY_NOW, Condition.USED, null, null),
-        };
-
-        var activeProducts = new List<IEbayProductSummary>(); // Nothing in active search
-
-        _webscraperClientMock
-            .Setup(w => w.GetPageHtmlAsync(It.IsAny<string>(), It.IsAny<IEnumerable<object>>(),
-                It.IsAny<string>(), It.IsAny<TimeSpan?>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync("<html></html>");
-
-        var callCount = 0;
-        _searchParserMock
-            .Setup(s => s.ParseSearchResults(It.IsAny<IDocument>()))
-            .Returns(() =>
-            {
-                callCount++;
-                // First call is sold search, subsequent calls are active search
-                // Return sold products on first call, empty thereafter
-                return callCount == 1 ? soldProducts : activeProducts;
-            });
-
-        _queueClientMock
-            .Setup(q => q.SendMessageAsync(It.IsAny<string>()))
-            .ReturnsAsync(Response.FromValue(
-                QueuesModelFactory.SendReceipt("id", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, "pop", DateTimeOffset.UtcNow.AddMinutes(1)),
-                Mock.Of<Response>()));
-
-        var trigger = new SimplifiedScrapeTrigger(
-            _loggerMock.Object, _dbContext, _webscraperClientMock.Object,
-            _searchParserMock.Object, _queueServiceMock.Object);
-
-        // Act
-        var result = await trigger.RunScrapeForJobAsync(jobId, "test", "Manual");
-
-        // Assert - itm001 should be included for re-scraping to get sold price
-        Assert.That(result, Is.GreaterThanOrEqualTo(1), "Should process at least 1 listing");
-        var enqueuedListings = _dbContext.ScrapeRunListings.Select(l => l.ListingId).ToList();
-        Assert.That(enqueuedListings, Does.Contain("itm001"), "Active->Sold transition should be re-scraped");
-    }
-
-    [Test]
-    public async Task RunScrapeForJobAsync_should_update_current_phase_for_sold_and_active_search()
-    {
-        // Arrange
-        var jobId = 1;
-        var scrapeJob = new ScrapeJob { Id = jobId, SearchTerm = "test", IsEnabled = true };
-        _dbContext.ScrapeJobs.Add(scrapeJob);
-        await _dbContext.SaveChangesAsync();
-
-        var phasesDuringSearch = new List<string>();
-        _webscraperClientMock
-            .Setup(w => w.GetPageHtmlAsync(It.IsAny<string>(), It.IsAny<IEnumerable<object>>(),
-                It.IsAny<string>(), It.IsAny<TimeSpan?>(), It.IsAny<CancellationToken>()))
-            .Callback<string, IEnumerable<object>, string, TimeSpan?, CancellationToken>(async (url, _, _, _, _) =>
-            {
-                // Capture the current phase when each URL is fetched
-                var run = await _dbContext.ScrapeRuns.OrderByDescending(r => r.Id).FirstOrDefaultAsync();
-                if (run != null)
-                    phasesDuringSearch.Add(run.CurrentPhase ?? "null");
-            })
-            .ReturnsAsync("<html></html>");
-
-        _searchParserMock
-            .Setup(s => s.ParseSearchResults(It.IsAny<IDocument>()))
-            .Returns(new List<IEbayProductSummary>()); // Empty results
-
-        var trigger = new SimplifiedScrapeTrigger(
-            _loggerMock.Object, _dbContext, _webscraperClientMock.Object,
-            _searchParserMock.Object, _queueServiceMock.Object);
-
-        // Act
-        await trigger.RunScrapeForJobAsync(jobId, "test", "Manual");
-
-        // Assert - phases should show "Searching Sold" then "Searching Active"
-        Assert.That(phasesDuringSearch, Has.Count.GreaterThanOrEqualTo(2), "Should have at least 2 search phases");
-        Assert.That(phasesDuringSearch[0], Is.EqualTo("Searching Sold"), "First phase should be Searching Sold");
-        Assert.That(phasesDuringSearch[1], Is.EqualTo("Searching Active"), "Second phase should be Searching Active");
-    }
-
-    [Test]
-    public async Task ManualScrape_should_enqueue_job_messages_and_return_immediately()
-    {
-        // Arrange
-        var job = new ScrapeJob { Id = 1, SearchTerm = "Test Product", IsEnabled = true };
+        // Arrange - Only disabled jobs
+        var job = new ScrapeJob { Id = 1, SearchTerm = "disabled", IsEnabled = false };
         _dbContext.ScrapeJobs.Add(job);
         await _dbContext.SaveChangesAsync();
-
-        var enqueuedMessages = new List<string>();
-        var jobQueueMock = new Mock<QueueClient>();
-        jobQueueMock
-            .Setup(q => q.SendMessageAsync(It.IsAny<string>()))
-            .Callback<string>((msg) => enqueuedMessages.Add(msg))
-            .ReturnsAsync(Mock.Of<Azure.Response<SendReceipt>>());
-
-        _queueServiceMock
-            .Setup(q => q.GetQueueClient("scrape-jobs"))
-            .Returns(jobQueueMock.Object);
 
         var trigger = new SimplifiedScrapeTrigger(
             _loggerMock.Object,
             _dbContext,
-            _webscraperClientMock.Object,
-            _searchParserMock.Object,
             _queueServiceMock.Object);
 
-        var request = MockHttpRequestData.CreateEmpty();
+        var httpRequest = MockHttpRequestData.CreateEmpty();
 
         // Act
-        var response = await trigger.RunManual(request);
+        var response = await trigger.RunManual(httpRequest);
 
         // Assert
         Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK));
-        Assert.That(enqueuedMessages, Has.Count.EqualTo(1), "Should enqueue one job message");
-
-        // Verify ScrapeRun was created with Queued status
-        var scrapeRun = await _dbContext.ScrapeRuns.FirstOrDefaultAsync();
-        Assert.That(scrapeRun, Is.Not.Null);
-        Assert.That(scrapeRun!.Status, Is.EqualTo("Queued"));
-
-        // Verify message contains correct data
-        var message = JsonSerializer.Deserialize<ScrapeJobMessage>(enqueuedMessages[0]);
-        Assert.That(message!.ScrapeRunId, Is.EqualTo(scrapeRun.Id));
-        Assert.That(message.JobId, Is.EqualTo(job.Id));
-        Assert.That(message.SearchTerm, Is.EqualTo("Test Product"));
-        Assert.That(message.TriggerType, Is.EqualTo("Manual"));
+        _jobQueueClientMock.Verify(q => q.SendMessageAsync(It.IsAny<string>()), Times.Never);
     }
 
     [Test]
-    public async Task RunScrapeForJobAsync_should_search_multiple_pages_until_no_results()
+    public async Task RunManual_should_enqueue_multiple_jobs_when_no_specific_job_requested()
     {
-        // Arrange
-        var jobId = 1;
-        var scrapeJob = new ScrapeJob { Id = jobId, SearchTerm = "test", IsEnabled = true };
-        _dbContext.ScrapeJobs.Add(scrapeJob);
+        // Arrange - Create multiple enabled jobs
+        var job1 = new ScrapeJob { Id = 1, SearchTerm = "product 1", IsEnabled = true };
+        var job2 = new ScrapeJob { Id = 2, SearchTerm = "product 2", IsEnabled = true };
+        var job3 = new ScrapeJob { Id = 3, SearchTerm = "product 3", IsEnabled = true };
+        _dbContext.ScrapeJobs.AddRange(job1, job2, job3);
         await _dbContext.SaveChangesAsync();
 
-        // Track which URLs were called
-        var calledUrls = new List<string>();
-        _webscraperClientMock
-            .Setup(w => w.GetPageHtmlAsync(It.IsAny<string>(), It.IsAny<IEnumerable<object>>(),
-                It.IsAny<string>(), It.IsAny<TimeSpan?>(), It.IsAny<CancellationToken>()))
-            .Callback<string, IEnumerable<object>, string, TimeSpan?, CancellationToken>((url, _, _, _, _) => calledUrls.Add(url))
-            .ReturnsAsync("<html></html>");
-
-        // Setup parser:
-        // Sold search: Page 1 = 0 products (ends sold search)
-        // Active search: Page 1 = 2 products, Page 2 = 1 product, Page 3 = 0 products
-        var callCount = 0;
-        _searchParserMock
-            .Setup(s => s.ParseSearchResults(It.IsAny<IDocument>()))
-            .Returns(() =>
-            {
-                callCount++;
-                return callCount switch
-                {
-                    // Call 1: Sold page 1 - no results (ends sold phase)
-                    1 => new List<IEbayProductSummary>(),
-                    // Call 2: Active page 1 - 2 products
-                    2 => new List<IEbayProductSummary>
-                    {
-                        new EbayProductSummary("itm001", "P1", 10m, "GBP", 0m, "u1", BuyingFormat.BUY_NOW, Condition.USED, null, null),
-                        new EbayProductSummary("itm002", "P2", 20m, "GBP", 0m, "u2", BuyingFormat.BUY_NOW, Condition.USED, null, null),
-                    },
-                    // Call 3: Active page 2 - 1 product
-                    3 => new List<IEbayProductSummary>
-                    {
-                        new EbayProductSummary("itm003", "P3", 30m, "GBP", 0m, "u3", BuyingFormat.BUY_NOW, Condition.USED, null, null),
-                    },
-                    // Call 4+: Active page 3 - 0 products (ends active phase)
-                    _ => new List<IEbayProductSummary>()
-                };
-            });
-
-        _queueClientMock
+        var enqueuedMessages = new List<string>();
+        _jobQueueClientMock
             .Setup(q => q.SendMessageAsync(It.IsAny<string>()))
+            .Callback<string>((msg) => enqueuedMessages.Add(msg))
             .ReturnsAsync(Response.FromValue(
-                QueuesModelFactory.SendReceipt("id", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, "pop", DateTimeOffset.UtcNow.AddMinutes(1)),
+                QueuesModelFactory.SendReceipt("messageId", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, "popReceipt", DateTimeOffset.UtcNow.AddMinutes(1)),
                 Mock.Of<Response>()));
 
         var trigger = new SimplifiedScrapeTrigger(
-            _loggerMock.Object, _dbContext, _webscraperClientMock.Object,
-            _searchParserMock.Object, _queueServiceMock.Object);
+            _loggerMock.Object,
+            _dbContext,
+            _queueServiceMock.Object);
+
+        var httpRequest = MockHttpRequestData.CreateEmpty();
 
         // Act
-        var result = await trigger.RunScrapeForJobAsync(jobId, "test", "Manual");
+        var response = await trigger.RunManual(httpRequest);
 
         // Assert
-        Assert.Multiple(() =>
-        {
-            Assert.That(result, Is.EqualTo(3), "Should find all 3 listings across active pages");
-            // Total calls: 1 sold (empty) + 3 active (2 with results, 1 empty to end)
-            Assert.That(calledUrls.Count, Is.EqualTo(4), "Should call 1 sold page + 3 active pages");
+        Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK));
+        Assert.That(enqueuedMessages.Count, Is.EqualTo(3), "Should enqueue all enabled jobs");
 
-            // Verify sold search runs first
-            Assert.That(calledUrls[0], Does.Contain("LH_Sold=1"), "First call should be sold search");
-            Assert.That(calledUrls[0], Does.Contain("_pgn=1"), "Sold search should start at page 1");
-
-            // Verify active search runs after
-            var activeUrls = calledUrls.Skip(1).ToList();
-            Assert.That(activeUrls.All(u => !u.Contains("LH_Sold")), Is.True, "Active pages should not have LH_Sold");
-            Assert.That(activeUrls[0], Does.Contain("_pgn=1"), "Active search should start at page 1");
-            Assert.That(activeUrls[1], Does.Contain("_pgn=2"), "Second active call should be page 2");
-            Assert.That(activeUrls[2], Does.Contain("_pgn=3"), "Third active call should be page 3");
-        });
+        var messages = enqueuedMessages.Select(m => JsonSerializer.Deserialize<ScrapeJobMessage>(m)!).ToList();
+        Assert.That(messages.Select(m => m.JobId), Is.EquivalentTo(new[] { 1, 2, 3 }));
     }
 }
