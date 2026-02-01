@@ -402,6 +402,62 @@ public class SimplifiedScrapeTrigger_UnitTests
     }
 
     [Test]
+    public async Task RunScrapeForJobAsync_should_detect_active_to_sold_transitions()
+    {
+        // Arrange
+        var jobId = 1;
+        var scrapeJob = new ScrapeJob { Id = jobId, SearchTerm = "test", IsEnabled = true };
+        _dbContext.ScrapeJobs.Add(scrapeJob);
+
+        // Existing Active listing in database
+        var activeListing = new Listing { ListingId = "itm001", ScrapeJobId = jobId, ListingStatus = "Active" };
+        _dbContext.Listings.Add(activeListing);
+        await _dbContext.SaveChangesAsync();
+
+        // Setup: Sold search returns this listing (it sold!)
+        var soldProducts = new List<IEbayProductSummary>
+        {
+            new EbayProductSummary("itm001", "Now Sold", 100m, "GBP", 0m, "url", BuyingFormat.BUY_NOW, Condition.USED, null, null),
+        };
+
+        var activeProducts = new List<IEbayProductSummary>(); // Nothing in active search
+
+        _webscraperClientMock
+            .Setup(w => w.GetPageHtmlAsync(It.IsAny<string>(), It.IsAny<IEnumerable<object>>(),
+                It.IsAny<string>(), It.IsAny<TimeSpan?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync("<html></html>");
+
+        var callCount = 0;
+        _searchParserMock
+            .Setup(s => s.ParseSearchResults(It.IsAny<IDocument>()))
+            .Returns(() =>
+            {
+                callCount++;
+                // First call is sold search, subsequent calls are active search
+                // Return sold products on first call, empty thereafter
+                return callCount == 1 ? soldProducts : activeProducts;
+            });
+
+        _queueClientMock
+            .Setup(q => q.SendMessageAsync(It.IsAny<string>()))
+            .ReturnsAsync(Response.FromValue(
+                QueuesModelFactory.SendReceipt("id", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, "pop", DateTimeOffset.UtcNow.AddMinutes(1)),
+                Mock.Of<Response>()));
+
+        var trigger = new SimplifiedScrapeTrigger(
+            _loggerMock.Object, _dbContext, _webscraperClientMock.Object,
+            _searchParserMock.Object, _queueServiceMock.Object);
+
+        // Act
+        var result = await trigger.RunScrapeForJobAsync(jobId, "test", "Manual");
+
+        // Assert - itm001 should be included for re-scraping to get sold price
+        Assert.That(result, Is.GreaterThanOrEqualTo(1), "Should process at least 1 listing");
+        var enqueuedListings = _dbContext.ScrapeRunListings.Select(l => l.ListingId).ToList();
+        Assert.That(enqueuedListings, Does.Contain("itm001"), "Active->Sold transition should be re-scraped");
+    }
+
+    [Test]
     public async Task RunScrapeForJobAsync_should_update_current_phase_for_sold_and_active_search()
     {
         // Arrange

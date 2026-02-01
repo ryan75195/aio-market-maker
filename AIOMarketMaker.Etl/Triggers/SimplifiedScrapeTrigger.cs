@@ -135,6 +135,24 @@ public class SimplifiedScrapeTrigger
 
         _logger.LogInformation("Active search complete: {PageCount} pages, {Count} unique active listings", page - 1, allListingIds.Count);
 
+        // Phase 3: Detect Active→Sold transitions
+        scrapeRun.CurrentPhase = "Detecting Transitions";
+        await _dbContext.SaveChangesAsync();
+
+        // Find listings that are marked Active in DB but appeared in sold search
+        var activeToSoldListings = await _dbContext.Listings
+            .Where(l => l.ScrapeJobId == jobId
+                     && soldListingIds.Contains(l.ListingId)
+                     && l.ListingStatus == "Active")
+            .Select(l => l.ListingId)
+            .ToListAsync();
+
+        _logger.LogInformation("Found {Count} listings that transitioned from Active to Sold", activeToSoldListings.Count);
+
+        // Include these in the listings to process (they need re-scraping to get sold price/date)
+        foreach (var id in activeToSoldListings)
+            allListingIds.Add(id);
+
         // 5. Filter out listings with terminal statuses (Sold, Ended, OutOfStock)
         // Active listings should be re-scraped to capture price/status changes
         var terminalStatuses = new HashSet<string> { "Sold", "Ended", "OutOfStock" };
