@@ -39,6 +39,7 @@ public class ScrapeJobQueueTrigger
         _webscraperClient = webscraperClient;
         _searchParser = searchParser;
         _workQueueClient = queueService.GetQueueClient("scrape-work");
+        _workQueueClient.CreateIfNotExists();
         _urlBuilder = new EbayUrlBuilder();
     }
 

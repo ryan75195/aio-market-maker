@@ -30,6 +30,7 @@ public class SimplifiedScrapeTrigger
         _logger = logger;
         _dbContext = dbContext;
         _jobQueueClient = queueService.GetQueueClient("scrape-jobs");
+        _jobQueueClient.CreateIfNotExists();
     }
 
     /// <summary>
