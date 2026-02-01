@@ -152,6 +152,73 @@ When scrapes return small/invalid HTML:
 3. **Verify proxy is configured**: Check scraper startup logs for "Proxy configuration: CONFIGURED"
 4. **Human delays matter**: Delays under 1 second trigger bot detection
 
+## Migration & Refactor Planning - LESSONS LEARNED
+
+**Context:** The 2026-01-31 Durable Functions migration introduced regressions because the plan didn't explicitly document behavioral requirements.
+
+### Required Sections in Any Migration Plan
+
+#### 1. Behavioral Parity Checklist
+Document EVERY behavior of the existing system before writing code:
+
+```markdown
+## Scrape Pipeline Behaviors to Preserve
+- [ ] Multi-page search (old: searched until exhausted)
+- [ ] Sold listing search (old: separate phase before active)
+- [ ] Filter only terminal statuses (Sold/Ended/OutOfStock)
+- [ ] Re-scrape active listings for price updates
+- [ ] Create ListingStatusHistory on status changes
+- [ ] Status progression validation (CanUpdateStatus)
+- [ ] Retry logic with exponential backoff
+```
+
+#### 2. Explicit "What We're Dropping" Section
+If simplifying, list EVERY feature being removed:
+
+| Feature | Why Dropping | User Impact |
+|---------|--------------|-------------|
+| Multi-page search | Not needed for <100 results | May miss listings |
+| Sold search | Separate initiative | Can't track sales |
+
+#### 3. Tests Must Encode Business Requirements
+
+**The 2026-01-31 regression happened because:**
+```csharp
+// The test created a listing with NULL status
+var existing = new Listing { ListingId = "itm002" };
+// But never tested with terminal statuses!
+// var sold = new Listing { ListingId = "itm002", ListingStatus = "Sold" };
+```
+
+**Correct approach:**
+```csharp
+[Test]
+public void Should_skip_terminal_listings_but_rescrape_active()
+{
+    var activeListing = new Listing { ListingStatus = "Active" };
+    var soldListing = new Listing { ListingStatus = "Sold" };
+
+    // Assert: active included (re-scrape for price updates)
+    // Assert: sold excluded (terminal - nothing to update)
+}
+```
+
+#### 4. Red Flags to Watch For
+- "Filter existing" without specifying exact criteria
+- "Simplified" without listing dropped features
+- Tests verify "messages sent" not "correct filtering"
+- No behavioral parity checklist in plan
+- Integration tests marked `[Explicit]` (don't run in CI)
+
+### Current Pipeline Behaviors (Reference)
+
+The simplified pipeline SHOULD:
+- **Search:** Only page 1 currently (regression - should be multi-page)
+- **Filter:** Only terminal statuses (Sold, Ended, OutOfStock) - fixed in commit b4b69e1
+- **Re-scrape:** Active listings for price/status updates
+- **Track:** ListingStatusHistory on status changes (NOT IMPLEMENTED - regression)
+- **Sold Search:** NOT IMPLEMENTED (intentional simplification? undocumented)
+
 ## Testing Strategy
 
 ### Test Conventions
