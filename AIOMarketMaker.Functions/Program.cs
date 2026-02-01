@@ -4,6 +4,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Azure.Storage.Blobs;
 using Serilog;
 using Serilog.Formatting.Compact;
 using AIOMarketMaker.Core.Data;
@@ -45,6 +46,14 @@ var host = new HostBuilder()
         {
             services.AddDbContext<EtlDbContext>(options =>
                 options.UseSqlServer(sqlConnectionString));
+        }
+
+        // Blob storage - for clearing HTML files
+        var blobConnectionString = configuration.GetValue<string>("blobStorageConnectionString")
+            ?? configuration.GetValue<string>("AzureWebJobsStorage");
+        if (!string.IsNullOrEmpty(blobConnectionString))
+        {
+            services.AddSingleton(new BlobServiceClient(blobConnectionString));
         }
     })
     .ConfigureLogging(logging =>

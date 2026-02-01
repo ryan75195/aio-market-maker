@@ -2,6 +2,7 @@ using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using Azure.Storage.Blobs;
 using AIOMarketMaker.Core.Data;
 using AIOMarketMaker.Core.Data.Models;
 using System.Net;
@@ -13,11 +14,13 @@ public class ScrapeJobsApi
 {
     private readonly EtlDbContext _dbContext;
     private readonly ILogger<ScrapeJobsApi> _logger;
+    private readonly BlobServiceClient? _blobService;
 
-    public ScrapeJobsApi(EtlDbContext dbContext, ILogger<ScrapeJobsApi> logger)
+    public ScrapeJobsApi(EtlDbContext dbContext, ILogger<ScrapeJobsApi> logger, BlobServiceClient? blobService = null)
     {
         _dbContext = dbContext;
         _logger = logger;
+        _blobService = blobService;
     }
 
     /// <summary>
@@ -330,7 +333,7 @@ public class ScrapeJobsApi
 
     /// <summary>
     /// GET /api/history/{runId}/issues - Get issues for a specific scrape run
-    /// Returns both retrying listings (ParseAttempts > 0, not terminal) and failed listings (from ScrapeRunIssues)
+    /// Returns both retrying listings (ParseAttempts > 0, not terminal) and failed listings (Status = "Failed")
     /// </summary>
     [Function("GetHistoryIssues")]
     public async Task<HttpResponseData> GetHistoryIssues(
@@ -362,22 +365,18 @@ public class ScrapeJobsApi
             })
             .ToListAsync();
 
-        // Query 2: Failed listings (from ScrapeRunIssues joined with ScrapeRunListings for ParseAttempts)
-        var failedListings = await _dbContext.ScrapeRunIssues
-            .Where(i => i.ScrapeRunId == runId)
-            .Join(
-                _dbContext.ScrapeRunListings.Where(l => l.ScrapeRunId == runId),
-                issue => issue.ListingId,
-                listing => listing.ListingId,
-                (issue, listing) => new HistoryIssueResponse
-                {
-                    ListingId = issue.ListingId,
-                    Status = "Failed",
-                    ParseAttempts = listing.ParseAttempts,
-                    IssueType = issue.IssueType,
-                    ErrorMessage = issue.ErrorMessage,
-                    CreatedUtc = issue.CreatedUtc
-                })
+        // Query 2: Failed listings (from ScrapeRunListings where Status = "Failed")
+        var failedListings = await _dbContext.ScrapeRunListings
+            .Where(l => l.ScrapeRunId == runId && l.Status == "Failed")
+            .Select(l => new HistoryIssueResponse
+            {
+                ListingId = l.ListingId,
+                Status = "Failed",
+                ParseAttempts = l.ParseAttempts,
+                IssueType = l.FailureReason,
+                ErrorMessage = l.FailureDetails ?? l.FailureReason,
+                CreatedUtc = l.CreatedUtc
+            })
             .ToListAsync();
 
         // Combine both sets and order by CreatedUtc
@@ -542,7 +541,7 @@ public class ScrapeJobsApi
     }
 
     /// <summary>
-    /// DELETE /api/data/all - Clear all scrape data (listings, run history, and junction table)
+    /// DELETE /api/data/all - Clear all scrape data (listings, run history, junction table, and blob storage)
     /// </summary>
     [Function("ClearAllData")]
     public async Task<HttpResponseData> ClearAllData(
@@ -557,10 +556,33 @@ public class ScrapeJobsApi
         if (runsCount > 0)
             await _dbContext.Database.ExecuteSqlRawAsync("DELETE FROM ScrapeRuns");
 
-        _logger.LogInformation("Cleared all data: {Listings} listings, {Runs} scrape runs (+ cascaded ScrapeRunListings)", listingsCount, runsCount);
+        // Clear blob storage (HTML files)
+        int blobsDeleted = 0;
+        if (_blobService != null)
+        {
+            try
+            {
+                var containerClient = _blobService.GetBlobContainerClient("html");
+                if (await containerClient.ExistsAsync())
+                {
+                    await foreach (var blob in containerClient.GetBlobsAsync())
+                    {
+                        await containerClient.DeleteBlobIfExistsAsync(blob.Name);
+                        blobsDeleted++;
+                    }
+                }
+                _logger.LogInformation("Cleared {BlobCount} blobs from html container", blobsDeleted);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to clear blob storage (non-fatal)");
+            }
+        }
+
+        _logger.LogInformation("Cleared all data: {Listings} listings, {Runs} scrape runs, {Blobs} blobs", listingsCount, runsCount, blobsDeleted);
 
         var response = req.CreateResponse(HttpStatusCode.OK);
-        await response.WriteAsJsonAsync(new { deletedListings = listingsCount, deletedRuns = runsCount });
+        await response.WriteAsJsonAsync(new { deletedListings = listingsCount, deletedRuns = runsCount, deletedBlobs = blobsDeleted });
         return response;
     }
 

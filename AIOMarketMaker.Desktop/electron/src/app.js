@@ -115,23 +115,32 @@ createApp({
 
     async etlApiCall(endpoint, options = {}) {
       const baseUrl = this.config.etlApi?.baseUrl || 'http://localhost:7072/api';
+      const timeout = options.timeout || 30000; // Default 30s, can be overridden
 
       const url = new URL(`${baseUrl}${endpoint}`);
 
-      const response = await fetch(url.toString(), {
-        ...options,
-        headers: {
-          'Content-Type': 'application/json',
-          ...options.headers
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), timeout);
+
+      try {
+        const response = await fetch(url.toString(), {
+          ...options,
+          signal: controller.signal,
+          headers: {
+            'Content-Type': 'application/json',
+            ...options.headers
+          }
+        });
+
+        if (!response.ok) {
+          const error = await response.json().catch(() => ({ error: response.statusText }));
+          throw new Error(error.error || `HTTP ${response.status}`);
         }
-      });
 
-      if (!response.ok) {
-        const error = await response.json().catch(() => ({ error: response.statusText }));
-        throw new Error(error.error || `HTTP ${response.status}`);
+        return response.json();
+      } finally {
+        clearTimeout(timeoutId);
       }
-
-      return response.json();
     },
 
     // Convert PascalCase keys from .NET API to camelCase for JavaScript
@@ -275,7 +284,8 @@ createApp({
 
         const data = await this.etlApiCall('/scrape/start', {
           method: 'POST',
-          body: JSON.stringify(body)
+          body: JSON.stringify(body),
+          timeout: 120000 // 2 minutes - scrape involves fetching from eBay
         });
         const result = this.toCamelCase(data);
         this.lastInstanceId = result.instanceId;
@@ -390,12 +400,14 @@ createApp({
     startAutoRefresh() {
       this.refreshInterval = setInterval(() => {
         if (this.currentView === 'history') {
-          const hasRunning = this.history.some(r => r.status === 'Running');
-          if (hasRunning) {
+          // Check for any active status: Running, Indexing, Searching, Processing
+          const activeStatuses = ['Running', 'Indexing', 'Searching', 'Processing'];
+          const hasActive = this.history.some(r => activeStatuses.includes(r.status));
+          if (hasActive) {
             this.loadHistory();
-            // Also refresh issues for any expanded running runs
+            // Also refresh issues for any expanded active runs
             this.history
-              .filter(r => r.status === 'Running' && this.expandedRuns[r.id])
+              .filter(r => activeStatuses.includes(r.status) && this.expandedRuns[r.id])
               .forEach(r => this.loadRunIssues(r.id));
           }
         }
@@ -438,7 +450,7 @@ createApp({
     },
 
     async toggleRunExpanded(run) {
-      if (!run.issueCount || run.issueCount === 0) return;
+      if (!run.listingsFailed || run.listingsFailed === 0) return;
 
       const runId = run.id;
       if (this.expandedRuns[runId]) {

@@ -1,4 +1,5 @@
 using System.Net;
+using System.Text;
 using System.Text.Json;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
@@ -128,7 +129,10 @@ public class SimplifiedScrapeTrigger
                 ScrapeJobId = jobId,
                 EnqueuedAt = DateTimeOffset.UtcNow
             };
-            await _queueClient.SendMessageAsync(JsonSerializer.Serialize(listingMessage));
+            // Base64 encode for compatibility with AzureStorageQueueService.DequeueAsync
+            var listingJson = JsonSerializer.Serialize(listingMessage);
+            var listingBase64 = Convert.ToBase64String(Encoding.UTF8.GetBytes(listingJson));
+            await _queueClient.SendMessageAsync(listingBase64);
 
             // Description page message
             var descriptionMessage = new ScrapeQueueMessage
@@ -141,15 +145,30 @@ public class SimplifiedScrapeTrigger
                 ScrapeJobId = jobId,
                 EnqueuedAt = DateTimeOffset.UtcNow
             };
-            await _queueClient.SendMessageAsync(JsonSerializer.Serialize(descriptionMessage));
+            // Base64 encode for compatibility with AzureStorageQueueService.DequeueAsync
+            var descriptionJson = JsonSerializer.Serialize(descriptionMessage);
+            var descriptionBase64 = Convert.ToBase64String(Encoding.UTF8.GetBytes(descriptionJson));
+            await _queueClient.SendMessageAsync(descriptionBase64);
         }
 
         _logger.LogInformation("Enqueued {Count} listings for processing", newListingIds.Count);
 
         // 8. Update ScrapeRun status
-        scrapeRun.Status = "Indexing";
-        scrapeRun.CurrentPhase = "Indexing";
         scrapeRun.TotalListingsFound = newListingIds.Count;
+
+        // If no new listings, mark as completed immediately (nothing to process)
+        if (newListingIds.Count == 0)
+        {
+            scrapeRun.Status = "Completed";
+            scrapeRun.CurrentPhase = "Completed";
+            scrapeRun.CompletedUtc = DateTime.UtcNow;
+            _logger.LogInformation("No new listings found for job {JobId} - marking as completed", jobId);
+        }
+        else
+        {
+            scrapeRun.Status = "Indexing";
+            scrapeRun.CurrentPhase = "Indexing";
+        }
         await _dbContext.SaveChangesAsync();
 
         _logger.LogInformation("Completed search phase for job {JobId}. Found {Count} new listings.",

@@ -278,8 +278,8 @@ public class ProcessListingEndpoint_UnitTests
     [Test]
     public async Task Run_should_return_failed_when_html_contains_error_page()
     {
-        // Arrange - HTML less than 100KB indicates bot detection/error page
-        var smallHtml = "<html><body>Please verify you are human</body></html>"; // ~54 bytes
+        // Arrange - Error page HTML (parser won't be able to extract title)
+        var errorPageHtml = "<html><body>Please verify you are human</body></html>";
 
         var scrapeRun = new ScrapeRun { Id = 1, Status = "Running" };
         var scrapeJob = new ScrapeJob { Id = 1, SearchTerm = "test" };
@@ -296,7 +296,29 @@ public class ProcessListingEndpoint_UnitTests
         _dbContext.ScrapeRunListings.Add(scrapeRunListing);
         await _dbContext.SaveChangesAsync();
 
-        SetupBlobWithContent(smallHtml);
+        SetupBlobWithContent(errorPageHtml);
+
+        // Setup parser to return null title (simulating error page that can't be parsed)
+        var parsedListing = new ExtractedEbayListing(
+            id: "itm123",
+            title: null,  // Parser couldn't extract title from error page
+            price: null,
+            currency: null,
+            shippingCost: null,
+            Condition: null,
+            images: null,
+            listingStatus: null,
+            purchaseFormat: null,
+            ItemSpecifics: null,
+            descriptionSource: null,
+            SoldDateUtc: null,
+            Location: null,
+            Url: null
+        );
+
+        _listingParserMock
+            .Setup(p => p.ParseProductListing(It.IsAny<IDocument>(), It.IsAny<string>()))
+            .Returns(parsedListing);
 
         var endpoint = new ProcessListingEndpoint(
             _blobServiceMock.Object,
@@ -324,15 +346,15 @@ public class ProcessListingEndpoint_UnitTests
         {
             Assert.That(responseBody.Success, Is.False);
             Assert.That(responseBody.Status, Is.EqualTo("failed"));
-            Assert.That(responseBody.ErrorMessage, Does.Contain("error page"));
+            Assert.That(responseBody.ErrorMessage, Does.Contain("parse"));
         });
     }
 
     [Test]
     public async Task Run_should_return_added_when_new_listing_processed()
     {
-        // Arrange - HTML must be > 100KB to pass error page detection
-        var largeHtml = new string('x', 101 * 1024); // 101KB of content
+        // Arrange - Valid HTML content (size doesn't matter, parser extracts title)
+        var validHtml = "<html><body>Valid listing page</body></html>";
 
         var scrapeRun = new ScrapeRun { Id = 1, Status = "Running", ListingsProcessed = 0 };
         var scrapeJob = new ScrapeJob { Id = 1, SearchTerm = "test" };
@@ -349,7 +371,7 @@ public class ProcessListingEndpoint_UnitTests
         _dbContext.ScrapeRunListings.Add(scrapeRunListing);
         await _dbContext.SaveChangesAsync();
 
-        SetupBlobWithContent(largeHtml);
+        SetupBlobWithContent(validHtml);
 
         // Setup parser to return a valid listing
         var parsedListing = new ExtractedEbayListing(
@@ -418,15 +440,16 @@ public class ProcessListingEndpoint_UnitTests
         Assert.That(updatedSrl!.Status, Is.EqualTo("Complete"));
 
         // Assert - ScrapeRun.ListingsProcessed was incremented
-        var updatedRun = await _dbContext.ScrapeRuns.FirstOrDefaultAsync(sr => sr.Id == 1);
+        // Use AsNoTracking to get fresh data from DB (raw SQL bypasses change tracker)
+        var updatedRun = await _dbContext.ScrapeRuns.AsNoTracking().FirstOrDefaultAsync(sr => sr.Id == 1);
         Assert.That(updatedRun!.ListingsProcessed, Is.EqualTo(1));
     }
 
     [Test]
     public async Task Run_should_return_updated_when_listing_exists()
     {
-        // Arrange - HTML must be > 100KB to pass error page detection
-        var largeHtml = new string('x', 101 * 1024);
+        // Arrange - Valid HTML content (size doesn't matter, parser extracts title)
+        var validHtml = "<html><body>Valid listing page</body></html>";
 
         var scrapeRun = new ScrapeRun { Id = 1, Status = "Running", ListingsProcessed = 0 };
         var scrapeJob = new ScrapeJob { Id = 1, SearchTerm = "test" };
@@ -455,7 +478,7 @@ public class ProcessListingEndpoint_UnitTests
         _dbContext.ScrapeRunListings.Add(scrapeRunListing);
         await _dbContext.SaveChangesAsync();
 
-        SetupBlobWithContent(largeHtml);
+        SetupBlobWithContent(validHtml);
 
         // Setup parser to return an updated listing
         var parsedListing = new ExtractedEbayListing(
@@ -516,6 +539,171 @@ public class ProcessListingEndpoint_UnitTests
             Assert.That(updatedListing!.Title, Is.EqualTo("New Title"));
             Assert.That(updatedListing.Price, Is.EqualTo(99.99m));
         });
+    }
+
+    [Test]
+    public async Task Run_should_return_failed_and_update_status_when_parser_returns_null_title()
+    {
+        // Arrange - Valid HTML but parser can't extract title (error page content)
+        var htmlContent = "<html><body>Please verify you are human</body></html>";
+
+        var scrapeRun = new ScrapeRun { Id = 1, Status = "Running", ListingsProcessed = 0 };
+        var scrapeJob = new ScrapeJob { Id = 1, SearchTerm = "test" };
+        _dbContext.ScrapeRuns.Add(scrapeRun);
+        _dbContext.ScrapeJobs.Add(scrapeJob);
+
+        var scrapeRunListing = new ScrapeRunListing
+        {
+            ScrapeRunId = 1,
+            ScrapeJobId = 1,
+            ListingId = "123456789",
+            Status = "Pending"
+        };
+        _dbContext.ScrapeRunListings.Add(scrapeRunListing);
+        await _dbContext.SaveChangesAsync();
+
+        SetupBlobWithContent(htmlContent);
+
+        // Setup parser to return listing with null title (couldn't parse)
+        var parsedListing = new ExtractedEbayListing(
+            id: "123456789",
+            title: null,  // Parser couldn't extract title
+            price: null,
+            currency: null,
+            shippingCost: null,
+            Condition: null,
+            images: null,
+            listingStatus: null,
+            purchaseFormat: null,
+            ItemSpecifics: null,
+            descriptionSource: null,
+            SoldDateUtc: null,
+            Location: null,
+            Url: null
+        );
+
+        _listingParserMock
+            .Setup(p => p.ParseProductListing(It.IsAny<IDocument>(), It.IsAny<string>()))
+            .Returns(parsedListing);
+
+        var endpoint = new ProcessListingEndpoint(
+            _blobServiceMock.Object,
+            _dbContext,
+            _listingParserMock.Object,
+            _loggerMock.Object);
+
+        var request = new ProcessListingRequest(
+            ScrapeRunId: 1,
+            ScrapeRunListingId: 0,
+            ListingId: "123456789",
+            ScrapeJobId: 1,
+            BlobPath: "1/123456789/listing.html");
+
+        var httpRequest = MockHttpRequestData.Create(request);
+
+        // Act
+        var response = await endpoint.Run(httpRequest);
+
+        // Assert - response indicates failure
+        Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK));
+
+        var responseBody = await MockHttpRequestData.ReadResponseAsync<ProcessListingResponse>(response);
+        Assert.Multiple(() =>
+        {
+            Assert.That(responseBody.Success, Is.False);
+            Assert.That(responseBody.Status, Is.EqualTo("failed"));
+            Assert.That(responseBody.ErrorMessage, Does.Contain("parse"));
+        });
+
+        // Assert - ScrapeRunListing status was updated to Failed (not left as Pending!)
+        var updatedSrl = await _dbContext.ScrapeRunListings
+            .FirstOrDefaultAsync(srl => srl.ScrapeRunId == 1 && srl.ListingId == "123456789");
+        Assert.That(updatedSrl!.Status, Is.EqualTo("Failed"));
+
+        // Assert - no listing was created
+        var listing = await _dbContext.Listings
+            .FirstOrDefaultAsync(l => l.ListingId == "123456789");
+        Assert.That(listing, Is.Null);
+    }
+
+    [Test]
+    public async Task Run_should_succeed_with_small_html_when_parser_extracts_valid_title()
+    {
+        // Arrange - Small but valid HTML (e.g., 14KB) - should NOT be rejected by size alone
+        var smallValidHtml = "<html><body>Valid eBay listing page</body></html>"; // ~50 bytes
+
+        var scrapeRun = new ScrapeRun { Id = 1, Status = "Running", ListingsProcessed = 0 };
+        var scrapeJob = new ScrapeJob { Id = 1, SearchTerm = "test" };
+        _dbContext.ScrapeRuns.Add(scrapeRun);
+        _dbContext.ScrapeJobs.Add(scrapeJob);
+
+        var scrapeRunListing = new ScrapeRunListing
+        {
+            ScrapeRunId = 1,
+            ScrapeJobId = 1,
+            ListingId = "123456789",
+            Status = "Pending"
+        };
+        _dbContext.ScrapeRunListings.Add(scrapeRunListing);
+        await _dbContext.SaveChangesAsync();
+
+        SetupBlobWithContent(smallValidHtml);
+
+        // Setup parser to return a valid listing WITH a title
+        var parsedListing = new ExtractedEbayListing(
+            id: "123456789",
+            title: "PlayStation 5 Console",  // Valid title extracted!
+            price: 399.99m,
+            currency: "GBP",
+            shippingCost: 0m,
+            Condition: Condition.NEW,
+            images: new[] { "http://example.com/image1.jpg" },
+            listingStatus: EbayListingStatus.Active,
+            purchaseFormat: PurchaseFormat.BuyItNow,
+            ItemSpecifics: null,
+            descriptionSource: null,
+            SoldDateUtc: null,
+            Location: "London, UK",
+            Url: "http://www.ebay.co.uk/itm/123456789"
+        );
+
+        _listingParserMock
+            .Setup(p => p.ParseProductListing(It.IsAny<IDocument>(), It.IsAny<string>()))
+            .Returns(parsedListing);
+
+        var endpoint = new ProcessListingEndpoint(
+            _blobServiceMock.Object,
+            _dbContext,
+            _listingParserMock.Object,
+            _loggerMock.Object);
+
+        var request = new ProcessListingRequest(
+            ScrapeRunId: 1,
+            ScrapeRunListingId: 0,
+            ListingId: "123456789",
+            ScrapeJobId: 1,
+            BlobPath: "1/123456789/listing.html");
+
+        var httpRequest = MockHttpRequestData.Create(request);
+
+        // Act
+        var response = await endpoint.Run(httpRequest);
+
+        // Assert - should succeed despite small HTML size
+        Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK));
+
+        var responseBody = await MockHttpRequestData.ReadResponseAsync<ProcessListingResponse>(response);
+        Assert.Multiple(() =>
+        {
+            Assert.That(responseBody.Success, Is.True);
+            Assert.That(responseBody.Status, Is.EqualTo("added"));
+        });
+
+        // Assert - listing was created
+        var createdListing = await _dbContext.Listings
+            .FirstOrDefaultAsync(l => l.ListingId == "123456789");
+        Assert.That(createdListing, Is.Not.Null);
+        Assert.That(createdListing!.Title, Is.EqualTo("PlayStation 5 Console"));
     }
 
     private void SetupBlobWithContent(string htmlContent)

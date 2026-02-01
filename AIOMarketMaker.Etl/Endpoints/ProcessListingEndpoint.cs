@@ -117,17 +117,6 @@ public class ProcessListingEndpoint
         var downloadResult = await blobClient.DownloadContentAsync();
         var html = downloadResult.Value.Content.ToString();
 
-        // Check for error page (bot detection, GDPR, etc.) - real eBay pages are > 100KB
-        const int MinValidHtmlSize = 100 * 1024; // 100KB
-        if (html.Length < MinValidHtmlSize)
-        {
-            _logger.LogWarning("Possible error page detected for {ListingId}: HTML size {Size} bytes < {Threshold} bytes",
-                input.ListingId, html.Length, MinValidHtmlSize);
-            var errorPageResponse = req.CreateResponse(HttpStatusCode.OK);
-            await errorPageResponse.WriteAsJsonAsync(new ProcessListingResponse(false, "failed", "Detected error page (HTML too small)"));
-            return errorPageResponse;
-        }
-
         // Parse HTML with AngleSharp
         var context = BrowsingContext.New(Configuration.Default);
         var document = await context.OpenAsync(request => request.Content(html));
@@ -135,6 +124,31 @@ public class ProcessListingEndpoint
 
         // Parse the listing
         var parsedListing = _listingParser.ParseProductListing(document, listingUrl);
+
+        // Validate parser extracted required data - if no title, it's an error page or bot detection
+        if (string.IsNullOrEmpty(parsedListing.title))
+        {
+            _logger.LogWarning("Failed to parse listing {ListingId}: no title extracted (possible error page, HTML size: {Size} bytes)",
+                input.ListingId, html.Length);
+
+            // Mark the ScrapeRunListing as Failed so it doesn't stay Pending forever
+            var failedSrl = existingEntry ?? await _dbContext.ScrapeRunListings
+                .FirstOrDefaultAsync(srl => srl.ScrapeRunId == input.ScrapeRunId && srl.ListingId == input.ListingId);
+            if (failedSrl != null)
+            {
+                failedSrl.Status = "Failed";
+                failedSrl.FailureReason = "PARSE_FAILED";
+                failedSrl.CompletedUtc = DateTime.UtcNow;
+                await _dbContext.SaveChangesAsync();
+            }
+
+            // Increment the failed counter on ScrapeRun
+            await IncrementScrapeRunCountersAsync(input.ScrapeRunId, "failed");
+
+            var parseFailedResponse = req.CreateResponse(HttpStatusCode.OK);
+            await parseFailedResponse.WriteAsJsonAsync(new ProcessListingResponse(false, "failed", "Failed to parse listing - no title extracted"));
+            return parseFailedResponse;
+        }
 
         // Check if listing already exists (upsert logic)
         var existingListing = await _dbContext.Listings
@@ -192,23 +206,59 @@ public class ProcessListingEndpoint
             scrapeRunListing.CompletedUtc = DateTime.UtcNow;
         }
 
-        // Increment ScrapeRun.ListingsProcessed
-        var scrapeRun = await _dbContext.ScrapeRuns.FirstOrDefaultAsync(sr => sr.Id == input.ScrapeRunId);
-        if (scrapeRun == null)
-        {
-            _logger.LogWarning("ScrapeRun {ScrapeRunId} not found while processing listing {ListingId}",
-                input.ScrapeRunId, input.ListingId);
-        }
-        else
-        {
-            scrapeRun.ListingsProcessed++;
-        }
-
+        // Save the listing and ScrapeRunListing changes first
         await _dbContext.SaveChangesAsync();
+
+        // Increment ScrapeRun counters atomically to prevent race conditions
+        // When multiple workers process listings concurrently, read-modify-write
+        // causes lost updates. Use atomic SQL UPDATE instead.
+        await IncrementScrapeRunCountersAsync(input.ScrapeRunId, status);
 
         _logger.LogInformation("Processed listing {ListingId} with status {Status}", input.ListingId, status);
         var response = req.CreateResponse(HttpStatusCode.OK);
         await response.WriteAsJsonAsync(new ProcessListingResponse(true, status, null));
         return response;
+    }
+
+    /// <summary>
+    /// Atomically increment ScrapeRun counters using SQL UPDATE to prevent race conditions.
+    /// Multiple workers processing different listings concurrently were causing lost updates
+    /// with the previous read-modify-write pattern.
+    /// </summary>
+    private async Task IncrementScrapeRunCountersAsync(int scrapeRunId, string status)
+    {
+        // Check if using a relational database (SQL Server, SQLite, etc.)
+        // InMemory database doesn't support raw SQL, so use EF Core for tests
+        if (_dbContext.Database.IsRelational())
+        {
+            // Use atomic SQL UPDATE to prevent lost updates from concurrent workers
+            string sql = status switch
+            {
+                "added" => "UPDATE ScrapeRuns SET ListingsProcessed = ListingsProcessed + 1, ListingsAddedActive = ListingsAddedActive + 1 WHERE Id = {0}",
+                "skipped" => "UPDATE ScrapeRuns SET ListingsProcessed = ListingsProcessed + 1, ListingsSkipped = ListingsSkipped + 1 WHERE Id = {0}",
+                "failed" => "UPDATE ScrapeRuns SET ListingsProcessed = ListingsProcessed + 1, ListingsFailed = ListingsFailed + 1 WHERE Id = {0}",
+                _ => "UPDATE ScrapeRuns SET ListingsProcessed = ListingsProcessed + 1 WHERE Id = {0}"  // "updated"
+            };
+
+            var rowsAffected = await _dbContext.Database.ExecuteSqlRawAsync(sql, scrapeRunId);
+
+            if (rowsAffected == 0)
+            {
+                _logger.LogWarning("ScrapeRun {ScrapeRunId} not found while incrementing counters", scrapeRunId);
+            }
+        }
+        else
+        {
+            // Fall back to EF Core for InMemory database (tests)
+            var scrapeRun = await _dbContext.ScrapeRuns.FirstOrDefaultAsync(sr => sr.Id == scrapeRunId);
+            if (scrapeRun != null)
+            {
+                scrapeRun.ListingsProcessed++;
+                if (status == "added") scrapeRun.ListingsAddedActive++;
+                else if (status == "skipped") scrapeRun.ListingsSkipped++;
+                else if (status == "failed") scrapeRun.ListingsFailed++;
+                await _dbContext.SaveChangesAsync();
+            }
+        }
     }
 }

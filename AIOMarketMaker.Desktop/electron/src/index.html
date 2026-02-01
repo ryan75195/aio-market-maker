@@ -172,7 +172,6 @@
                 <th>Job</th>
                 <th>Trigger</th>
                 <th>Status</th>
-                <th>Phase</th>
                 <th>Progress</th>
                 <th>Active</th>
                 <th>Sold</th>
@@ -183,9 +182,9 @@
             </thead>
             <tbody>
               <template v-for="run in history" :key="run.id">
-                <tr :class="{ 'error-row': run.status === 'Failed', 'expandable-row': run.issueCount > 0, 'expanded': expandedRuns[run.id] }" @click="toggleRunExpanded(run)">
+                <tr :class="{ 'error-row': run.status === 'Failed', 'expandable-row': run.listingsFailed > 0, 'expanded': expandedRuns[run.id] }" @click="toggleRunExpanded(run)">
                   <td class="icon-cell">
-                    <span v-if="run.issueCount > 0" class="warning-icon" title="This run has issues">&#9888;</span>
+                    <span v-if="run.listingsFailed > 0" class="warning-icon" title="This run has failed listings">&#9888;</span>
                   </td>
                   <td>{{ formatDate(run.startedUtc) }}</td>
                   <td>{{ run.jobSearchTerm || 'All Jobs' }}</td>
@@ -193,11 +192,10 @@
                     <span class="trigger-badge" :class="run.triggerType.toLowerCase()">{{ run.triggerType }}</span>
                   </td>
                   <td>
-                    <span class="status-badge" :class="run.status.toLowerCase()">{{ run.status }}</span>
+                    <span class="status-badge" :class="run.status.toLowerCase()">{{ run.currentPhase || run.status }}</span>
                   </td>
-                  <td>{{ run.currentPhase || '-' }}</td>
                   <td>
-                    <div v-if="run.status === 'Running' && run.totalListingsFound > 0" class="progress-bar">
+                    <div v-if="['Running', 'Indexing', 'Searching', 'Processing'].includes(run.status) && run.totalListingsFound > 0" class="progress-bar">
                       <div class="progress-fill" :style="{ width: progressPercent(run) + '%' }"></div>
                       <span class="progress-text">{{ run.listingsProcessed }}/{{ run.totalListingsFound }}</span>
                     </div>
@@ -209,12 +207,12 @@
                   <td class="number">{{ run.listingsSkipped || 0 }}</td>
                   <td class="number" :class="{ 'failed-count': run.listingsFailed > 0 }">{{ run.listingsFailed || 0 }}</td>
                   <td class="expand-cell">
-                    <span v-if="run.issueCount > 0" class="expand-indicator">
-                      <span v-if="expandedRuns[run.id]">&#9650;</span><span v-else>&#9660;</span> {{ run.issueCount }}
+                    <span v-if="run.listingsFailed > 0" class="expand-indicator">
+                      <span v-if="expandedRuns[run.id]">&#9650;</span><span v-else>&#9660;</span> {{ run.listingsFailed }}
                     </span>
                   </td>
                 </tr>
-                <tr v-if="expandedRuns[run.id] && run.issueCount > 0" class="issues-row">
+                <tr v-if="expandedRuns[run.id] && run.listingsFailed > 0" class="issues-row">
                   <td colspan="12">
                     <div class="issues-container">
                       <div v-if="!runIssues[run.id]" class="issues-loading">Loading issues...</div>
