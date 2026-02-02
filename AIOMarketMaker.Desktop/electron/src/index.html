@@ -175,6 +175,7 @@
                 <th>Progress</th>
                 <th>Active</th>
                 <th>Sold</th>
+                <th>Updated</th>
                 <th>Skipped</th>
                 <th>Failed</th>
                 <th></th>
@@ -204,6 +205,7 @@
                   </td>
                   <td class="number">{{ run.listingsAddedActive }}</td>
                   <td class="number">{{ run.listingsAddedSold }}</td>
+                  <td class="number">{{ run.listingsUpdated || 0 }}</td>
                   <td class="number">{{ run.listingsSkipped || 0 }}</td>
                   <td class="number" :class="{ 'failed-count': run.listingsFailed > 0 }">{{ run.listingsFailed || 0 }}</td>
                   <td class="expand-cell">
@@ -213,7 +215,7 @@
                   </td>
                 </tr>
                 <tr v-if="expandedRuns[run.id] && run.listingsFailed > 0" class="issues-row">
-                  <td colspan="12">
+                  <td colspan="13">
                     <div class="issues-container">
                       <div v-if="!runIssues[run.id]" class="issues-loading">Loading issues...</div>
                       <div v-else-if="runIssues[run.id].length === 0" class="issues-empty">No issues found</div>
@@ -244,7 +246,7 @@
                 </tr>
               </template>
               <tr v-if="history.length === 0">
-                <td colspan="12" class="empty">No run history</td>
+                <td colspan="13" class="empty">No run history</td>
               </tr>
             </tbody>
           </table>

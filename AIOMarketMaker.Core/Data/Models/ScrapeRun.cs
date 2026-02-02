@@ -59,6 +59,11 @@ public class ScrapeRun
     public int ListingsFailed { get; set; }
 
     /// <summary>
+    /// Number of existing listings that were updated (re-scraped with new data)
+    /// </summary>
+    public int ListingsUpdated { get; set; }
+
+    /// <summary>
     /// Error message if the run failed
     /// </summary>
     public string? ErrorMessage { get; set; }

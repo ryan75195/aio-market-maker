@@ -273,7 +273,7 @@ public class ProcessListingEndpoint
         // Increment ScrapeRun counters atomically to prevent race conditions
         // When multiple workers process listings concurrently, read-modify-write
         // causes lost updates. Use atomic SQL UPDATE instead.
-        await IncrementScrapeRunCountersAsync(input.ScrapeRunId, status);
+        await IncrementScrapeRunCountersAsync(input.ScrapeRunId, status, newStatus);
 
         _logger.LogInformation("Processed listing {ListingId} with status {Status}", input.ListingId, status);
         var response = req.CreateResponse(HttpStatusCode.OK);
@@ -286,8 +286,11 @@ public class ProcessListingEndpoint
     /// Multiple workers processing different listings concurrently were causing lost updates
     /// with the previous read-modify-write pattern.
     /// </summary>
-    private async Task IncrementScrapeRunCountersAsync(int scrapeRunId, string status)
+    private async Task IncrementScrapeRunCountersAsync(int scrapeRunId, string status, string? listingStatus = null)
     {
+        // Determine if this is a sold listing (for differentiating added counters)
+        var isSold = listingStatus == "Sold";
+
         // Check if using a relational database (SQL Server, SQLite, etc.)
         // InMemory database doesn't support raw SQL, so use EF Core for tests
         if (_dbContext.Database.IsRelational())
@@ -295,10 +298,12 @@ public class ProcessListingEndpoint
             // Use atomic SQL UPDATE to prevent lost updates from concurrent workers
             string sql = status switch
             {
+                "added" when isSold => "UPDATE ScrapeRuns SET ListingsProcessed = ListingsProcessed + 1, ListingsAddedSold = ListingsAddedSold + 1 WHERE Id = {0}",
                 "added" => "UPDATE ScrapeRuns SET ListingsProcessed = ListingsProcessed + 1, ListingsAddedActive = ListingsAddedActive + 1 WHERE Id = {0}",
+                "updated" => "UPDATE ScrapeRuns SET ListingsProcessed = ListingsProcessed + 1, ListingsUpdated = ListingsUpdated + 1 WHERE Id = {0}",
                 "skipped" => "UPDATE ScrapeRuns SET ListingsProcessed = ListingsProcessed + 1, ListingsSkipped = ListingsSkipped + 1 WHERE Id = {0}",
                 "failed" => "UPDATE ScrapeRuns SET ListingsProcessed = ListingsProcessed + 1, ListingsFailed = ListingsFailed + 1 WHERE Id = {0}",
-                _ => "UPDATE ScrapeRuns SET ListingsProcessed = ListingsProcessed + 1 WHERE Id = {0}"  // "updated"
+                _ => "UPDATE ScrapeRuns SET ListingsProcessed = ListingsProcessed + 1 WHERE Id = {0}"
             };
 
             var rowsAffected = await _dbContext.Database.ExecuteSqlRawAsync(sql, scrapeRunId);
@@ -315,7 +320,9 @@ public class ProcessListingEndpoint
             if (scrapeRun != null)
             {
                 scrapeRun.ListingsProcessed++;
-                if (status == "added") scrapeRun.ListingsAddedActive++;
+                if (status == "added" && isSold) scrapeRun.ListingsAddedSold++;
+                else if (status == "added") scrapeRun.ListingsAddedActive++;
+                else if (status == "updated") scrapeRun.ListingsUpdated++;
                 else if (status == "skipped") scrapeRun.ListingsSkipped++;
                 else if (status == "failed") scrapeRun.ListingsFailed++;
                 await _dbContext.SaveChangesAsync();

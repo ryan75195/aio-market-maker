@@ -59,10 +59,15 @@ var host = new HostBuilder()
         services.AddSingleton(_ => new TableServiceClient(tableConnectionString));
 
         // Azure Queue client for direct queue writes
+        // Use QueueMessageEncoding.None to send plain JSON (Azure Functions expects this)
         var queueConnectionString = configuration.GetValue<string>("queueStorageConnectionString")
             ?? configuration.GetValue<string>("AzureWebJobsStorage")
             ?? "UseDevelopmentStorage=true";
-        services.AddSingleton(_ => new QueueServiceClient(queueConnectionString));
+        var queueClientOptions = new QueueClientOptions
+        {
+            MessageEncoding = QueueMessageEncoding.None
+        };
+        services.AddSingleton(_ => new QueueServiceClient(queueConnectionString, queueClientOptions));
         services.AddSingleton<IQueueService, AzureStorageQueueService>();
 
         services.AddSingleton<IJobRepository>(sp =>

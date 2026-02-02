@@ -992,6 +992,135 @@ public class ProcessListingEndpoint_UnitTests
     }
 
 [Test]
+    public async Task Run_should_increment_ListingsUpdated_when_existing_listing_is_updated()
+    {
+        // Arrange - Existing active listing that will be updated
+        var scrapeRun = new ScrapeRun { Id = 1, Status = "Running", ListingsProcessed = 0, ListingsAddedActive = 0, ListingsUpdated = 0 };
+        var scrapeJob = new ScrapeJob { Id = 1, SearchTerm = "test" };
+        var existingListing = new Listing
+        {
+            Id = 1,
+            ListingId = "UPDATE123",
+            ScrapeJobId = 1,
+            Title = "Old Title",
+            Price = 100m,
+            ListingStatus = "Active"
+        };
+
+        _dbContext.ScrapeRuns.Add(scrapeRun);
+        _dbContext.ScrapeJobs.Add(scrapeJob);
+        _dbContext.Listings.Add(existingListing);
+
+        var scrapeRunListing = new ScrapeRunListing { ScrapeRunId = 1, ScrapeJobId = 1, ListingId = "UPDATE123", Status = "Pending" };
+        _dbContext.ScrapeRunListings.Add(scrapeRunListing);
+        await _dbContext.SaveChangesAsync();
+
+        SetupBlobWithContent("<html></html>");
+
+        // Parser returns updated data for existing listing
+        var parsedListing = new ExtractedEbayListing(
+            id: "UPDATE123",
+            title: "New Title",  // Updated
+            price: 95m,          // Updated price
+            currency: "GBP",
+            shippingCost: null,
+            Condition: Condition.USED,
+            images: null,
+            listingStatus: EbayListingStatus.Active,  // Same status
+            purchaseFormat: null,
+            ItemSpecifics: null,
+            descriptionSource: null,
+            SoldDateUtc: null,
+            Location: null,
+            Url: null
+        );
+
+        _listingParserMock
+            .Setup(p => p.ParseProductListing(It.IsAny<IDocument>(), It.IsAny<string>()))
+            .Returns(parsedListing);
+
+        var endpoint = new ProcessListingEndpoint(
+            _blobServiceMock.Object,
+            _dbContext,
+            _listingParserMock.Object,
+            _loggerMock.Object);
+
+        var request = new ProcessListingRequest(1, 0, "UPDATE123", 1, "path");
+        var httpRequest = MockHttpRequestData.Create(request);
+
+        // Act
+        await endpoint.Run(httpRequest);
+
+        // Assert - ListingsUpdated should be incremented (not ListingsAddedActive)
+        var updatedRun = await _dbContext.ScrapeRuns.AsNoTracking().FirstOrDefaultAsync(sr => sr.Id == 1);
+        Assert.Multiple(() =>
+        {
+            Assert.That(updatedRun!.ListingsUpdated, Is.EqualTo(1), "ListingsUpdated should be incremented for updated listings");
+            Assert.That(updatedRun.ListingsAddedActive, Is.EqualTo(0), "ListingsAddedActive should NOT be incremented for updates");
+            Assert.That(updatedRun.ListingsProcessed, Is.EqualTo(1), "ListingsProcessed should be incremented");
+        });
+    }
+
+    [Test]
+    public async Task Run_should_increment_ListingsAddedSold_when_new_listing_is_Sold()
+    {
+        // Arrange - No existing listing, parser returns a Sold listing (from sold search)
+        var scrapeRun = new ScrapeRun { Id = 1, Status = "Running", ListingsProcessed = 0, ListingsAddedActive = 0, ListingsAddedSold = 0 };
+        var scrapeJob = new ScrapeJob { Id = 1, SearchTerm = "test" };
+        _dbContext.ScrapeRuns.Add(scrapeRun);
+        _dbContext.ScrapeJobs.Add(scrapeJob);
+
+        var scrapeRunListing = new ScrapeRunListing { ScrapeRunId = 1, ScrapeJobId = 1, ListingId = "SOLD123", Status = "Pending" };
+        _dbContext.ScrapeRunListings.Add(scrapeRunListing);
+        await _dbContext.SaveChangesAsync();
+
+        SetupBlobWithContent("<html></html>");
+
+        // Parser returns a Sold listing (found via sold search)
+        var parsedListing = new ExtractedEbayListing(
+            id: "SOLD123",
+            title: "Sold Item",
+            price: 99m,
+            currency: "GBP",
+            shippingCost: null,
+            Condition: Condition.USED,
+            images: null,
+            listingStatus: EbayListingStatus.Sold,  // New listing that's already sold
+            purchaseFormat: null,
+            ItemSpecifics: null,
+            descriptionSource: null,
+            SoldDateUtc: DateTime.UtcNow.AddHours(-1),
+            Location: null,
+            Url: null
+        );
+
+        _listingParserMock
+            .Setup(p => p.ParseProductListing(It.IsAny<IDocument>(), It.IsAny<string>()))
+            .Returns(parsedListing);
+
+        var endpoint = new ProcessListingEndpoint(
+            _blobServiceMock.Object,
+            _dbContext,
+            _listingParserMock.Object,
+            _loggerMock.Object);
+
+        var request = new ProcessListingRequest(1, 0, "SOLD123", 1, "path");
+        var httpRequest = MockHttpRequestData.Create(request);
+
+        // Act
+        await endpoint.Run(httpRequest);
+
+        // Assert - ListingsAddedSold should be incremented (not ListingsAddedActive)
+        var updatedRun = await _dbContext.ScrapeRuns.AsNoTracking().FirstOrDefaultAsync(sr => sr.Id == 1);
+        Assert.Multiple(() =>
+        {
+            Assert.That(updatedRun!.ListingsAddedSold, Is.EqualTo(1), "ListingsAddedSold should be incremented for new sold listings");
+            Assert.That(updatedRun.ListingsAddedActive, Is.EqualTo(0), "ListingsAddedActive should NOT be incremented for sold listings");
+            Assert.That(updatedRun.ListingsProcessed, Is.EqualTo(1), "ListingsProcessed should be incremented");
+        });
+    }
+
+    [Test]
     public async Task Run_should_prioritize_status_update_when_both_status_and_price_change()
     {
         // Arrange - Existing Active listing @ $100
