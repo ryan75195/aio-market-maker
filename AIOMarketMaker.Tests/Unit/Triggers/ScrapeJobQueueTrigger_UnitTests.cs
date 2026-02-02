@@ -102,7 +102,7 @@ public class ScrapeJobQueueTrigger_UnitTests
     }
 
     [Test]
-    public async Task ProcessJob_should_increment_ListingsSkipped_for_terminal_status_listings()
+    public async Task ProcessJob_should_set_ListingsFilteredPreQueue_for_terminal_status_listings()
     {
         // Arrange - Create job with existing Sold listing
         var job = new ScrapeJob { Id = 1, SearchTerm = "Test", IsEnabled = true };
@@ -126,8 +126,7 @@ public class ScrapeJobQueueTrigger_UnitTests
             CurrentPhase = "Queued",
             TriggerType = "Manual",
             StartedUtc = DateTime.UtcNow,
-            InstanceId = Guid.NewGuid().ToString(),
-            ListingsSkipped = 0
+            InstanceId = Guid.NewGuid().ToString()
         };
         _dbContext.ScrapeRuns.Add(scrapeRun);
         await _dbContext.SaveChangesAsync();
@@ -152,12 +151,15 @@ public class ScrapeJobQueueTrigger_UnitTests
         // Act
         await trigger.ProcessJob(messageJson);
 
-        // Assert - ListingsSkipped should be incremented for terminal status listing
+        // Assert - ListingsFilteredPreQueue tracks terminal status listings filtered before queueing
+        // ListingsSkipped remains 0 (only incremented during processing for PRODUCT_PAGE, etc.)
         var updatedRun = await _dbContext.ScrapeRuns.FindAsync(100);
         Assert.Multiple(() =>
         {
-            Assert.That(updatedRun!.ListingsSkipped, Is.EqualTo(1),
-                "Should increment ListingsSkipped for terminal status listings");
+            Assert.That(updatedRun!.ListingsFilteredPreQueue, Is.EqualTo(1),
+                "ListingsFilteredPreQueue should count terminal status listings filtered before queueing");
+            Assert.That(updatedRun.ListingsSkipped, Is.EqualTo(0),
+                "ListingsSkipped should remain 0 (only for runtime skips like PRODUCT_PAGE)");
             Assert.That(updatedRun.TotalListingsFound, Is.EqualTo(1),
                 "TotalListingsFound should include all found listings before filtering");
         });

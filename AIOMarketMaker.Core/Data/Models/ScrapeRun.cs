@@ -49,9 +49,16 @@ public class ScrapeRun
     public int ListingsAddedSold { get; set; }
 
     /// <summary>
-    /// Number of listings that were duplicates (already in DB)
+    /// Number of listings skipped during processing (PRODUCT_PAGE, invalid transitions, etc.)
     /// </summary>
     public int ListingsSkipped { get; set; }
+
+    /// <summary>
+    /// Number of listings filtered out before queueing due to terminal status (Sold, Ended, OutOfStock).
+    /// These are not processed because their status cannot change.
+    /// Used for accurate progress calculation: Progress = ListingsProcessed / (TotalListingsFound - ListingsFilteredPreQueue)
+    /// </summary>
+    public int ListingsFilteredPreQueue { get; set; }
 
     /// <summary>
     /// Number of listings that failed processing (error pages, parse failures)
