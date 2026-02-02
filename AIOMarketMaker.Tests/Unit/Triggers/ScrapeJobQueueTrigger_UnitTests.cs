@@ -100,4 +100,66 @@ public class ScrapeJobQueueTrigger_UnitTests
         var updatedRun = await _dbContext.ScrapeRuns.FindAsync(100);
         Assert.That(updatedRun!.Status, Is.EqualTo("Completed"));
     }
+
+    [Test]
+    public async Task ProcessJob_should_increment_ListingsSkipped_for_terminal_status_listings()
+    {
+        // Arrange - Create job with existing Sold listing
+        var job = new ScrapeJob { Id = 1, SearchTerm = "Test", IsEnabled = true };
+        _dbContext.ScrapeJobs.Add(job);
+
+        // Create an existing listing with terminal status (Sold)
+        var existingSoldListing = new Listing
+        {
+            ListingId = "SOLD123",
+            ScrapeJobId = 1,
+            Title = "Already Sold Item",
+            ListingStatus = "Sold"
+        };
+        _dbContext.Listings.Add(existingSoldListing);
+
+        var scrapeRun = new ScrapeRun
+        {
+            Id = 100,
+            JobId = 1,
+            Status = "Queued",
+            CurrentPhase = "Queued",
+            TriggerType = "Manual",
+            StartedUtc = DateTime.UtcNow,
+            InstanceId = Guid.NewGuid().ToString(),
+            ListingsSkipped = 0
+        };
+        _dbContext.ScrapeRuns.Add(scrapeRun);
+        await _dbContext.SaveChangesAsync();
+
+        // Setup search to return the sold listing ID (simulating it appeared in search results)
+        var mockSummary = new Mock<IEbayProductSummary>();
+        mockSummary.Setup(s => s.ListingId).Returns("SOLD123");
+        _searchParserMock
+            .Setup(p => p.ParseSearchResults(It.IsAny<IDocument>()))
+            .Returns(new[] { mockSummary.Object });
+
+        var message = new ScrapeJobMessage(100, 1, "Test", "Manual");
+        var messageJson = JsonSerializer.Serialize(message);
+
+        var trigger = new ScrapeJobQueueTrigger(
+            _loggerMock.Object,
+            _dbContext,
+            _webscraperClientMock.Object,
+            _searchParserMock.Object,
+            _queueServiceMock.Object);
+
+        // Act
+        await trigger.ProcessJob(messageJson);
+
+        // Assert - ListingsSkipped should be incremented for terminal status listing
+        var updatedRun = await _dbContext.ScrapeRuns.FindAsync(100);
+        Assert.Multiple(() =>
+        {
+            Assert.That(updatedRun!.ListingsSkipped, Is.EqualTo(1),
+                "Should increment ListingsSkipped for terminal status listings");
+            Assert.That(updatedRun.TotalListingsFound, Is.EqualTo(1),
+                "TotalListingsFound should include all found listings before filtering");
+        });
+    }
 }

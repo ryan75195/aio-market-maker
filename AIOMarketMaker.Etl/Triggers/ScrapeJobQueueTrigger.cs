@@ -193,7 +193,10 @@ public class ScrapeJobQueueTrigger
             newListingIds.Count, existingListingIds.Count);
 
         // Update ScrapeRun status BEFORE enqueuing (so UI shows correct state)
-        scrapeRun.TotalListingsFound = newListingIds.Count;
+        // TotalListingsFound includes ALL listings found before filtering
+        // ListingsSkipped counts terminal status listings that won't be re-scraped
+        scrapeRun.TotalListingsFound = allListingIds.Count;
+        scrapeRun.ListingsSkipped = existingListingIds.Count;
         if (newListingIds.Count == 0)
         {
             scrapeRun.Status = "Completed";
