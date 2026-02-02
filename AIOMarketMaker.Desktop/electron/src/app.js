@@ -392,9 +392,15 @@ createApp({
       return date.toLocaleString();
     },
 
+    listingsToProcess(run) {
+      // Actual listings to process = total found - pre-queue filtered (terminal status)
+      return (run.totalListingsFound || 0) - (run.listingsFilteredPreQueue || 0);
+    },
+
     progressPercent(run) {
-      if (!run.totalListingsFound || run.totalListingsFound === 0) return 0;
-      return Math.round((run.listingsProcessed / run.totalListingsFound) * 100);
+      const toProcess = this.listingsToProcess(run);
+      if (toProcess <= 0) return 0;
+      return Math.round((run.listingsProcessed / toProcess) * 100);
     },
 
     startAutoRefresh() {

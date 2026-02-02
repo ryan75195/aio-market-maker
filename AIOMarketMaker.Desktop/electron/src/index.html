@@ -198,9 +198,9 @@
                   <td>
                     <div v-if="['Running', 'Indexing', 'Searching', 'Processing'].includes(run.status) && run.totalListingsFound > 0" class="progress-bar">
                       <div class="progress-fill" :style="{ width: progressPercent(run) + '%' }"></div>
-                      <span class="progress-text">{{ run.listingsProcessed }}/{{ run.totalListingsFound }}</span>
+                      <span class="progress-text">{{ run.listingsProcessed }}/{{ listingsToProcess(run) }}</span>
                     </div>
-                    <span v-else-if="run.status === 'Completed' && run.totalListingsFound > 0">{{ run.totalListingsFound }} processed</span>
+                    <span v-else-if="run.status === 'Completed' && run.totalListingsFound > 0">{{ listingsToProcess(run) }} processed</span>
                     <span v-else>-</span>
                   </td>
                   <td class="number">{{ run.listingsAddedActive }}</td>
