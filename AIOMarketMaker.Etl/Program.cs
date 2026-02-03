@@ -71,6 +71,7 @@ var host = new HostBuilder()
         services.AddSingleton(_ => new QueueServiceClient(queueConnectionString, queueClientOptions));
         services.AddSingleton<IQueueService, AzureStorageQueueService>();
         services.AddScoped<IScrapeRunService, ScrapeRunService>();
+        services.AddScoped<IScrapeJobProcessor, ScrapeJobProcessor>();
 
         services.AddSingleton<IJobRepository>(sp =>
             new AzureJobRepository(
