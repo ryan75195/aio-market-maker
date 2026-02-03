@@ -18,6 +18,7 @@ public interface IScrapeJobProcessor
 public record ClassifiedListings(
     List<IEbayProductSummary> ToScrape,
     List<IEbayProductSummary> ToUpdateFromSummary,
+    Dictionary<string, Listing> ExistingListings,
     int TotalFound,
     int TerminalCount);
 
@@ -90,7 +91,7 @@ public class ScrapeJobProcessor : IScrapeJobProcessor
         }
 
         if (classified.ToUpdateFromSummary.Count > 0)
-            await UpdateListingsFromSummary(scrapeRun, classified.ToUpdateFromSummary, jobId);
+            await UpdateListingsFromSummary(scrapeRun, classified.ToUpdateFromSummary, classified.ExistingListings);
 
         if (classified.ToScrape.Count > 0)
             await EnqueueListingsForScrape(scrapeRun, classified.ToScrape, jobId);
@@ -174,22 +175,14 @@ public class ScrapeJobProcessor : IScrapeJobProcessor
         scrapeRun.TotalListingsFound = merged.Count;
         scrapeRun.ListingsFilteredPreQueue = terminalCount;
 
-        return new ClassifiedListings(toScrape, toUpdate, merged.Count, terminalCount);
+        return new ClassifiedListings(toScrape, toUpdate, existingListings, merged.Count, terminalCount);
     }
 
     private async Task UpdateListingsFromSummary(
-        ScrapeRun scrapeRun, List<IEbayProductSummary> summaries, int jobId)
+        ScrapeRun scrapeRun, List<IEbayProductSummary> summaries,
+        Dictionary<string, Listing> existingListings)
     {
         await SetPhase(scrapeRun, "Updating from summary");
-
-        var listingIds = summaries
-            .Where(s => !string.IsNullOrEmpty(s.ListingId))
-            .Select(s => s.ListingId!)
-            .ToList();
-
-        var existingListings = await _dbContext.Listings
-            .Where(l => l.ScrapeJobId == jobId && listingIds.Contains(l.ListingId))
-            .ToDictionaryAsync(l => l.ListingId);
 
         foreach (var summary in summaries)
         {
