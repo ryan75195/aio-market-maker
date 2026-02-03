@@ -27,6 +27,9 @@ public class ScrapeJobProcessor_UnitTests
     public void Setup()
     {
         _dbContext = InMemoryDbContextFactory.Create();
+        _dbContext.ScrapeJobs.Add(new ScrapeJob { Id = 1, SearchTerm = "Test" });
+        _dbContext.SaveChanges();
+
         _loggerMock = new Mock<ILogger<ScrapeJobProcessor>>();
         _webscraperClientMock = new Mock<IWebscraperClient>();
         _searchParserMock = new Mock<ISearchParser>();
