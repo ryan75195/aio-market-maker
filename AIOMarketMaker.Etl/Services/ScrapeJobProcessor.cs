@@ -14,8 +14,15 @@ public interface IScrapeJobProcessor
     Task Process(ScrapeJobMessage message);
 }
 
+public record FilterResult(
+    List<string> NewListingIds,
+    int TotalFound,
+    int TerminalCount);
+
 public class ScrapeJobProcessor : IScrapeJobProcessor
 {
+    private static readonly HashSet<string> TerminalStatuses = new() { "Sold", "Ended", "OutOfStock" };
+
     private readonly ILogger<ScrapeJobProcessor> _logger;
     private readonly EtlDbContext _dbContext;
     private readonly IWebscraperClient _webscraperClient;
@@ -73,57 +80,24 @@ public class ScrapeJobProcessor : IScrapeJobProcessor
     {
         const int maxPages = 100;
 
-        // Phase 1: Search Sold Listings
         var soldListingIds = await SearchListings(searchTerm, sold: true, maxPages);
-
         _logger.LogInformation("Sold search complete: {Count} unique sold listings", soldListingIds.Count);
 
-        // Phase 2: Search Active Listings
         scrapeRun.CurrentPhase = "Searching Active";
         await _dbContext.SaveChangesAsync();
 
-        var allListingIds = await SearchListings(searchTerm, sold: false, maxPages);
+        var activeListingIds = await SearchListings(searchTerm, sold: false, maxPages);
+        _logger.LogInformation("Active search complete: {Count} unique active listings", activeListingIds.Count);
 
-        _logger.LogInformation("Active search complete: {Count} unique active listings", allListingIds.Count);
-
-        // Phase 3: Detect Active->Sold transitions
         scrapeRun.CurrentPhase = "Detecting Transitions";
         await _dbContext.SaveChangesAsync();
 
-        var activeToSoldListings = await _dbContext.Listings
-            .Where(l => l.ScrapeJobId == jobId
-                     && soldListingIds.Contains(l.ListingId)
-                     && l.ListingStatus == "Active")
-            .Select(l => l.ListingId)
-            .ToListAsync();
+        var filterResult = await FilterNewListings(activeListingIds, soldListingIds, jobId);
 
-        _logger.LogInformation("Found {Count} listings that transitioned from Active to Sold", activeToSoldListings.Count);
+        scrapeRun.TotalListingsFound = filterResult.TotalFound;
+        scrapeRun.ListingsFilteredPreQueue = filterResult.TerminalCount;
 
-        // Include sold listings in the processing queue
-        foreach (var id in soldListingIds)
-            allListingIds.Add(id);
-
-        // Filter out listings with terminal statuses
-        var terminalStatuses = new HashSet<string> { "Sold", "Ended", "OutOfStock" };
-        var terminalListingIdsList = await _dbContext.Listings
-            .Where(l => l.ScrapeJobId == jobId
-                     && allListingIds.Contains(l.ListingId)
-                     && l.ListingStatus != null
-                     && terminalStatuses.Contains(l.ListingStatus))
-            .Select(l => l.ListingId)
-            .ToListAsync();
-        var existingListingIds = terminalListingIdsList.ToHashSet();
-
-        var newListingIds = allListingIds
-            .Where(id => !existingListingIds.Contains(id))
-            .ToList();
-
-        _logger.LogInformation("Filtered to {NewCount} listings to process ({TerminalCount} have terminal status)",
-            newListingIds.Count, existingListingIds.Count);
-
-        scrapeRun.TotalListingsFound = allListingIds.Count;
-        scrapeRun.ListingsFilteredPreQueue = existingListingIds.Count;
-        if (newListingIds.Count == 0)
+        if (filterResult.NewListingIds.Count == 0)
         {
             scrapeRun.Status = "Completed";
             scrapeRun.CurrentPhase = "Completed";
@@ -132,11 +106,51 @@ public class ScrapeJobProcessor : IScrapeJobProcessor
             await _dbContext.SaveChangesAsync();
             return;
         }
+
         scrapeRun.Status = "Indexing";
         scrapeRun.CurrentPhase = "Indexing";
         await _dbContext.SaveChangesAsync();
 
-        // Create ScrapeRunListing records
+        await CreateAndEnqueueListings(filterResult.NewListingIds, scrapeRun, jobId);
+    }
+
+    private async Task<FilterResult> FilterNewListings(
+        HashSet<string> activeListingIds, HashSet<string> soldListingIds, int jobId)
+    {
+        var transitionCount = await _dbContext.Listings
+            .Where(l => l.ScrapeJobId == jobId
+                     && soldListingIds.Contains(l.ListingId)
+                     && l.ListingStatus == "Active")
+            .CountAsync();
+
+        _logger.LogInformation("Found {Count} listings that transitioned from Active to Sold", transitionCount);
+
+        var allListingIds = new HashSet<string>(activeListingIds);
+        foreach (var id in soldListingIds)
+            allListingIds.Add(id);
+
+        var terminalListingIds = (await _dbContext.Listings
+            .Where(l => l.ScrapeJobId == jobId
+                     && allListingIds.Contains(l.ListingId)
+                     && l.ListingStatus != null
+                     && TerminalStatuses.Contains(l.ListingStatus))
+            .Select(l => l.ListingId)
+            .ToListAsync())
+            .ToHashSet();
+
+        var newListingIds = allListingIds
+            .Where(id => !terminalListingIds.Contains(id))
+            .ToList();
+
+        _logger.LogInformation("Filtered to {NewCount} listings to process ({TerminalCount} have terminal status)",
+            newListingIds.Count, terminalListingIds.Count);
+
+        return new FilterResult(newListingIds, allListingIds.Count, terminalListingIds.Count);
+    }
+
+    private async Task CreateAndEnqueueListings(
+        List<string> newListingIds, ScrapeRun scrapeRun, int jobId)
+    {
         foreach (var listingId in newListingIds)
         {
             _dbContext.ScrapeRunListings.Add(new ScrapeRunListing
@@ -150,7 +164,6 @@ public class ScrapeJobProcessor : IScrapeJobProcessor
         }
         await _dbContext.SaveChangesAsync();
 
-        // Build work items and enqueue via WebscraperClient
         var workItems = newListingIds.Select(id => new ScrapeWorkItem(
             id,
             _urlBuilder.BuildListingUrl(id),
