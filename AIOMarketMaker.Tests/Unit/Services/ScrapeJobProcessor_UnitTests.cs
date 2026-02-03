@@ -413,6 +413,56 @@ public class ScrapeJobProcessor_UnitTests
     }
 
     [Test]
+    public async Task Should_prefer_sold_summary_when_listing_appears_in_both_searches()
+    {
+        CreateAndSeedScrapeRun();
+
+        // Existing active listing that appears in both sold and active search results
+        _dbContext.Listings.Add(new Listing
+        {
+            ListingId = "DUAL1", ScrapeJobId = 1,
+            Title = "Appears In Both", ListingStatus = "Active",
+            Price = 100m, Condition = "USED", ShippingCost = 5m
+        });
+        await _dbContext.SaveChangesAsync();
+
+        var soldSummary = CreateSummary("DUAL1", price: 100m, isSold: true);
+        var activeSummary = CreateSummary("DUAL1", price: 100m, isSold: false);
+
+        var callCount = 0;
+        _searchParserMock
+            .Setup(p => p.ParseSearchResults(It.IsAny<IDocument>()))
+            .Returns(() =>
+            {
+                callCount++;
+                // Call 1: sold page 1 (returns listing as sold)
+                // Call 2: sold page 2 (empty) -> stops sold search
+                // Call 3: active page 1 (returns same listing as active)
+                // Call 4: active page 2 (empty) -> stops active search
+                return callCount switch
+                {
+                    1 => new[] { soldSummary },
+                    3 => new[] { activeSummary },
+                    _ => Enumerable.Empty<IEbayProductSummary>()
+                };
+            });
+
+        var message = new ScrapeJobMessage(1, 1, "Test", "Manual");
+
+        await CreateProcessor().Process(message);
+
+        // Sold wins via TryAdd order (sold first in soldSummaries.Concat(activeSummaries))
+        // Existing active listing appearing as sold should be routed to full scrape, not summary update
+        _webscraperClientMock.Verify(
+            w => w.EnqueueScrapeWork(
+                It.Is<IEnumerable<ScrapeWorkItem>>(items =>
+                    items.Count() == 1
+                    && items.First().ListingId == "DUAL1"),
+                1, 1, It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    [Test]
     public async Task Should_set_failed_status_and_rethrow_on_exception()
     {
         CreateAndSeedScrapeRun();

@@ -201,12 +201,19 @@ public class ScrapeJobProcessor : IScrapeJobProcessor
     private async Task UpdateListingsFromSummary(
         List<IEbayProductSummary> summaries, ScrapeRun scrapeRun, int jobId)
     {
+        var listingIds = summaries
+            .Where(s => !string.IsNullOrEmpty(s.ListingId))
+            .Select(s => s.ListingId!)
+            .ToList();
+
+        var existingListings = await _dbContext.Listings
+            .Where(l => l.ScrapeJobId == jobId && listingIds.Contains(l.ListingId))
+            .ToDictionaryAsync(l => l.ListingId);
+
         foreach (var summary in summaries)
         {
-            var listing = await _dbContext.Listings
-                .FirstOrDefaultAsync(l => l.ListingId == summary.ListingId && l.ScrapeJobId == jobId);
-
-            if (listing == null) continue;
+            if (string.IsNullOrEmpty(summary.ListingId)) continue;
+            if (!existingListings.TryGetValue(summary.ListingId, out var listing)) continue;
 
             var priceChanged = listing.Price != summary.Price;
             var shippingChanged = listing.ShippingCost != summary.ShippingCost;
