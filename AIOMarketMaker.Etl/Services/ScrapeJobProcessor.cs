@@ -6,6 +6,7 @@ using AIOMarketMaker.Core.Data.Models;
 using AIOMarketMaker.Core.Parsers;
 using AIOMarketMaker.Core.Services;
 using AIOMarketMaker.Etl.Models;
+using AIOMarketMaker.Models.Ebay;
 
 namespace AIOMarketMaker.Etl.Services;
 
@@ -14,8 +15,9 @@ public interface IScrapeJobProcessor
     Task Process(ScrapeJobMessage message);
 }
 
-public record FilterResult(
-    List<string> NewListingIds,
+public record ClassifiedListings(
+    List<IEbayProductSummary> ToScrape,
+    List<IEbayProductSummary> ToUpdateFromSummary,
     int TotalFound,
     int TerminalCount);
 
@@ -80,104 +82,203 @@ public class ScrapeJobProcessor : IScrapeJobProcessor
     {
         const int maxPages = 100;
 
-        var soldListingIds = await SearchListings(searchTerm, sold: true, maxPages);
-        _logger.LogInformation("Sold search complete: {Count} unique sold listings", soldListingIds.Count);
+        var soldSummaries = await SearchListings(searchTerm, sold: true, maxPages);
+        _logger.LogInformation("Sold search complete: {Count} unique sold listings", soldSummaries.Count);
 
         scrapeRun.CurrentPhase = "Searching Active";
         await _dbContext.SaveChangesAsync();
 
-        var activeListingIds = await SearchListings(searchTerm, sold: false, maxPages);
-        _logger.LogInformation("Active search complete: {Count} unique active listings", activeListingIds.Count);
+        var activeSummaries = await SearchListings(searchTerm, sold: false, maxPages);
+        _logger.LogInformation("Active search complete: {Count} unique active listings", activeSummaries.Count);
 
-        scrapeRun.CurrentPhase = "Detecting Transitions";
+        scrapeRun.CurrentPhase = "Classifying";
         await _dbContext.SaveChangesAsync();
 
-        var filterResult = await FilterNewListings(activeListingIds, soldListingIds, jobId);
+        var classified = await ClassifyListings(activeSummaries, soldSummaries, jobId);
 
-        scrapeRun.TotalListingsFound = filterResult.TotalFound;
-        scrapeRun.ListingsFilteredPreQueue = filterResult.TerminalCount;
+        scrapeRun.TotalListingsFound = classified.TotalFound;
+        scrapeRun.ListingsFilteredPreQueue = classified.TerminalCount;
 
-        if (filterResult.NewListingIds.Count == 0)
+        if (classified.ToScrape.Count == 0 && classified.ToUpdateFromSummary.Count == 0)
         {
             scrapeRun.Status = "Completed";
             scrapeRun.CurrentPhase = "Completed";
             scrapeRun.CompletedUtc = DateTime.UtcNow;
-            _logger.LogInformation("No new listings found for job {JobId} - marking as completed", jobId);
+            _logger.LogInformation("No new or changed listings found for job {JobId} - marking as completed", jobId);
             await _dbContext.SaveChangesAsync();
             return;
         }
 
-        scrapeRun.Status = "Indexing";
-        scrapeRun.CurrentPhase = "Indexing";
-        await _dbContext.SaveChangesAsync();
+        if (classified.ToUpdateFromSummary.Count > 0)
+        {
+            scrapeRun.CurrentPhase = "Updating from summary";
+            await _dbContext.SaveChangesAsync();
 
-        await CreateAndEnqueueListings(filterResult.NewListingIds, scrapeRun, jobId);
+            await UpdateListingsFromSummary(classified.ToUpdateFromSummary, scrapeRun, jobId);
+            _logger.LogInformation("Updated {Count} listings from summary data", classified.ToUpdateFromSummary.Count);
+        }
+
+        if (classified.ToScrape.Count > 0)
+        {
+            scrapeRun.Status = "Indexing";
+            scrapeRun.CurrentPhase = "Indexing";
+            await _dbContext.SaveChangesAsync();
+
+            await CreateAndEnqueueListings(classified.ToScrape, scrapeRun, jobId);
+        }
+        else
+        {
+            scrapeRun.Status = "Completed";
+            scrapeRun.CurrentPhase = "Completed";
+            scrapeRun.CompletedUtc = DateTime.UtcNow;
+            await _dbContext.SaveChangesAsync();
+        }
     }
 
-    private async Task<FilterResult> FilterNewListings(
-        HashSet<string> activeListingIds, HashSet<string> soldListingIds, int jobId)
+    private async Task<ClassifiedListings> ClassifyListings(
+        List<IEbayProductSummary> activeSummaries, List<IEbayProductSummary> soldSummaries, int jobId)
     {
+        // Merge — sold wins if listing appears in both
+        var merged = new Dictionary<string, IEbayProductSummary>();
+        foreach (var summary in soldSummaries.Concat(activeSummaries))
+        {
+            if (string.IsNullOrEmpty(summary.ListingId)) continue;
+            merged.TryAdd(summary.ListingId, summary);
+        }
+
+        var allListingIds = merged.Keys.ToList();
+
+        // Transition detection (logging only)
+        var soldIds = soldSummaries
+            .Where(s => !string.IsNullOrEmpty(s.ListingId))
+            .Select(s => s.ListingId!)
+            .ToHashSet();
+
         var transitionCount = await _dbContext.Listings
             .Where(l => l.ScrapeJobId == jobId
-                     && soldListingIds.Contains(l.ListingId)
+                     && soldIds.Contains(l.ListingId)
                      && l.ListingStatus == "Active")
             .CountAsync();
 
         _logger.LogInformation("Found {Count} listings that transitioned from Active to Sold", transitionCount);
 
-        var allListingIds = new HashSet<string>(activeListingIds);
-        foreach (var id in soldListingIds)
-            allListingIds.Add(id);
+        // Load existing listings
+        var existingListings = await _dbContext.Listings
+            .Where(l => l.ScrapeJobId == jobId && allListingIds.Contains(l.ListingId))
+            .ToDictionaryAsync(l => l.ListingId);
 
-        var terminalListingIds = (await _dbContext.Listings
-            .Where(l => l.ScrapeJobId == jobId
-                     && allListingIds.Contains(l.ListingId)
-                     && l.ListingStatus != null
-                     && TerminalStatuses.Contains(l.ListingStatus))
-            .Select(l => l.ListingId)
-            .ToListAsync())
-            .ToHashSet();
+        var toScrape = new List<IEbayProductSummary>();
+        var toUpdate = new List<IEbayProductSummary>();
+        var terminalCount = 0;
 
-        var newListingIds = allListingIds
-            .Where(id => !terminalListingIds.Contains(id))
-            .ToList();
+        foreach (var (listingId, summary) in merged)
+        {
+            if (!existingListings.TryGetValue(listingId, out var existing))
+            {
+                toScrape.Add(summary);  // New
+            }
+            else if (TerminalStatuses.Contains(existing.ListingStatus ?? ""))
+            {
+                terminalCount++;  // Terminal — skip
+            }
+            else if (summary.IsSold)
+            {
+                toScrape.Add(summary);  // Sold transition — full scrape
+            }
+            else
+            {
+                toUpdate.Add(summary);  // Existing active — summary update
+            }
+        }
 
-        _logger.LogInformation("Filtered to {NewCount} listings to process ({TerminalCount} have terminal status)",
-            newListingIds.Count, terminalListingIds.Count);
+        _logger.LogInformation(
+            "Classified {Total} listings: {ScrapeCount} to scrape, {UpdateCount} to update from summary, {TerminalCount} terminal",
+            merged.Count, toScrape.Count, toUpdate.Count, terminalCount);
 
-        return new FilterResult(newListingIds, allListingIds.Count, terminalListingIds.Count);
+        return new ClassifiedListings(toScrape, toUpdate, merged.Count, terminalCount);
+    }
+
+    private async Task UpdateListingsFromSummary(
+        List<IEbayProductSummary> summaries, ScrapeRun scrapeRun, int jobId)
+    {
+        foreach (var summary in summaries)
+        {
+            var listing = await _dbContext.Listings
+                .FirstOrDefaultAsync(l => l.ListingId == summary.ListingId && l.ScrapeJobId == jobId);
+
+            if (listing == null) continue;
+
+            var priceChanged = listing.Price != summary.Price;
+            var shippingChanged = listing.ShippingCost != summary.ShippingCost;
+
+            if (priceChanged || shippingChanged)
+            {
+                listing.Price = summary.Price;
+                listing.ShippingCost = summary.ShippingCost;
+                listing.UpdatedUtc = DateTime.UtcNow;
+
+                if (priceChanged)
+                {
+                    _dbContext.ListingStatusHistory.Add(new ListingStatusHistory
+                    {
+                        ListingId = listing.Id,
+                        ListingStatus = listing.ListingStatus ?? "Active",
+                        Price = summary.Price,
+                        RecordedUtc = DateTime.UtcNow,
+                        Source = "SummaryUpdate"
+                    });
+                }
+
+                scrapeRun.ListingsUpdated++;
+                _logger.LogInformation("Updated listing {ListingId} from summary (price: {Price}, shipping: {Shipping})",
+                    summary.ListingId, summary.Price, summary.ShippingCost);
+            }
+            else
+            {
+                scrapeRun.ListingsSkipped++;
+            }
+
+            scrapeRun.ListingsProcessed++;
+        }
+
+        await _dbContext.SaveChangesAsync();
     }
 
     private async Task CreateAndEnqueueListings(
-        List<string> newListingIds, ScrapeRun scrapeRun, int jobId)
+        List<IEbayProductSummary> summaries, ScrapeRun scrapeRun, int jobId)
     {
-        foreach (var listingId in newListingIds)
+        foreach (var summary in summaries)
         {
+            if (string.IsNullOrEmpty(summary.ListingId)) continue;
+
             _dbContext.ScrapeRunListings.Add(new ScrapeRunListing
             {
                 ScrapeRunId = scrapeRun.Id,
                 ScrapeJobId = jobId,
-                ListingId = listingId,
+                ListingId = summary.ListingId,
                 Status = "Pending",
                 CreatedUtc = DateTime.UtcNow
             });
         }
         await _dbContext.SaveChangesAsync();
 
-        var workItems = newListingIds.Select(id => new ScrapeWorkItem(
-            id,
-            _urlBuilder.BuildListingUrl(id),
-            _urlBuilder.BuildDescriptionUrl(id)));
+        var workItems = summaries
+            .Where(s => !string.IsNullOrEmpty(s.ListingId))
+            .Select(s => new ScrapeWorkItem(
+                s.ListingId!,
+                _urlBuilder.BuildListingUrl(s.ListingId!),
+                _urlBuilder.BuildDescriptionUrl(s.ListingId!)));
 
         await _webscraperClient.EnqueueScrapeWork(workItems, scrapeRun.Id, jobId);
 
         _logger.LogInformation("Enqueued {Count} listings for processing. Search phase complete for job {JobId}.",
-            newListingIds.Count, jobId);
+            summaries.Count, jobId);
     }
 
-    private async Task<HashSet<string>> SearchListings(string searchTerm, bool sold, int maxPages)
+    private async Task<List<IEbayProductSummary>> SearchListings(string searchTerm, bool sold, int maxPages)
     {
-        var listingIds = new HashSet<string>();
+        var results = new List<IEbayProductSummary>();
+        var seenIds = new HashSet<string>();
         var page = 1;
 
         while (page <= maxPages)
@@ -192,20 +293,17 @@ public class ScrapeJobProcessor : IScrapeJobProcessor
             var document = await browsingContext.OpenAsync(request => request.Content(html));
 
             var products = _searchParser.ParseSearchResults(document);
-            var pageListingIds = products
-                .Where(p => !string.IsNullOrEmpty(p.ListingId))
-                .Select(p => p.ListingId!)
+            var pageResults = products
+                .Where(p => !string.IsNullOrEmpty(p.ListingId) && seenIds.Add(p.ListingId!))
                 .ToList();
 
-            if (pageListingIds.Count == 0)
+            if (pageResults.Count == 0)
                 break;
 
-            foreach (var id in pageListingIds)
-                listingIds.Add(id);
-
+            results.AddRange(pageResults);
             page++;
         }
 
-        return listingIds;
+        return results;
     }
 }
