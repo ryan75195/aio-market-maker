@@ -49,7 +49,8 @@ namespace AIOMarketMaker.Core.Parsers
                        Url: GetListingUrl(li),
                        EndDateUtc: isSold ? ExtractDate(li) : null,
                        BuyingFormat: ExtractBuyingFormat(li),
-                       Condition: ExtractCondition(li)!
+                       Condition: ExtractCondition(li)!,
+                       IsSold: isSold
                    );
             }
         }

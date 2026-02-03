@@ -36,6 +36,7 @@ namespace AIOMarketMaker.Models.Ebay
         string? Description,
         string? ItemSpecifics, // make a dict
         DateTime? EndDateUtc,
-        string? Location
+        string? Location,
+        bool IsSold
     ) : IEbayProductSummary;
 }

@@ -5,6 +5,7 @@ namespace AIOMarketMaker.Models.Ebay
     {
         decimal? ShippingCost { get; init; }
         IEnumerable<string>? Images { get; init; }
+        bool IsSold { get; init; }
     }
 
     public record EbayProductSummary(
@@ -17,6 +18,7 @@ namespace AIOMarketMaker.Models.Ebay
            BuyingFormat? BuyingFormat,
            Condition? Condition,
            IEnumerable<string>? Images,
-           DateTime? EndDateUtc
+           DateTime? EndDateUtc,
+           bool IsSold
     ) : IEbayProductSummary;
 }

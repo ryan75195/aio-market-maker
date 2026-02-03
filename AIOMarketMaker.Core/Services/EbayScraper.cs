@@ -139,7 +139,8 @@ namespace AIOMarketMaker.Core.Services
                     EndDateUtc: listing.SoldDateUtc,
                     ListingStatus: listing.listingStatus,
                     PurchaseFormat: listing.purchaseFormat,
-                    Location: listing.Location
+                    Location: listing.Location,
+                    IsSold: listing.listingStatus == EbayListingStatus.Sold
                 );
             });
 
