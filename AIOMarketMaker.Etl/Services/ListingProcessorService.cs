@@ -75,12 +75,16 @@ public class ListingProcessorService : IListingProcessorService
         if (existingListing != null && !ListingStatusHelper.CanUpdateStatus(existingListing.ListingStatus, newStatus))
             return await HandleInvalidTransition(request, scrapeRunListing, existingListing.ListingStatus, newStatus);
 
+        // Capture old values before upsert mutates the entity
+        var oldStatus = existingListing?.ListingStatus;
+        var oldPrice = existingListing?.Price;
+
         var (listing, status) = UpsertListing(existingListing, parsedListing, request);
 
         MarkScrapeRunListingComplete(scrapeRunListing);
         await _dbContext.SaveChangesAsync();
 
-        await CreateStatusHistory(existingListing, listing, parsedListing, newStatus);
+        await CreateStatusHistory(existingListing != null, listing, parsedListing, newStatus, oldStatus, oldPrice);
         await _counterService.Increment(request.ScrapeRunId, status, newStatus);
 
         _logger.LogInformation("Processed listing {ListingId} with status {Status}", request.ListingId, status);
@@ -208,18 +212,16 @@ public class ListingProcessorService : IListingProcessorService
     }
 
     private async Task CreateStatusHistory(
-        Listing? existingListing, Listing listing,
-        ExtractedEbayListing parsed, string? newStatus)
+        bool isUpdate, Listing listing,
+        ExtractedEbayListing parsed, string? newStatus,
+        string? oldStatus, decimal? oldPrice)
     {
-        var oldStatus = existingListing?.ListingStatus;
-        var oldPrice = existingListing?.Price;
+        var statusChanged = isUpdate && oldStatus != newStatus;
+        var priceChanged = isUpdate && oldPrice != parsed.price;
 
-        var statusChanged = existingListing != null && oldStatus != newStatus;
-        var priceChanged = existingListing != null && oldPrice != parsed.price;
-
-        if (existingListing == null || statusChanged || priceChanged)
+        if (!isUpdate || statusChanged || priceChanged)
         {
-            var source = existingListing == null
+            var source = !isUpdate
                 ? "InitialScrape"
                 : (statusChanged ? "StatusUpdate" : "PriceUpdate");
 

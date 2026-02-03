@@ -7,6 +7,7 @@ using AIOMarketMaker.Core.Data;
 using AIOMarketMaker.Core.Data.Models;
 using AIOMarketMaker.Core.Parsers;
 using AIOMarketMaker.Etl.Endpoints;
+using AIOMarketMaker.Etl.Services;
 using AIOMarketMaker.Tests.Utils;
 using AIOMarketMaker.Models.Ebay;
 using AngleSharp.Dom;
@@ -40,15 +41,25 @@ public class ProcessListingEndpoint_UnitTests
         _dbContext?.Dispose();
     }
 
+    private ProcessListingEndpoint CreateEndpoint()
+    {
+        var counterService = new EfCoreScrapeRunCounterService(
+            _dbContext,
+            new Mock<ILogger<EfCoreScrapeRunCounterService>>().Object);
+        var processorService = new ListingProcessorService(
+            _blobServiceMock.Object,
+            _dbContext,
+            _listingParserMock.Object,
+            counterService,
+            new Mock<ILogger<ListingProcessorService>>().Object);
+        return new ProcessListingEndpoint(processorService, _loggerMock.Object);
+    }
+
     [Test]
     public void Should_construct_with_all_dependencies()
     {
         // Act
-        var endpoint = new ProcessListingEndpoint(
-            _blobServiceMock.Object,
-            _dbContext,
-            _listingParserMock.Object,
-            _loggerMock.Object);
+        var endpoint = CreateEndpoint();
 
         // Assert
         Assert.That(endpoint, Is.Not.Null);
@@ -197,11 +208,7 @@ public class ProcessListingEndpoint_UnitTests
             .Setup(s => s.GetBlobContainerClient("html"))
             .Returns(mockBlobContainerClient.Object);
 
-        var endpoint = new ProcessListingEndpoint(
-            _blobServiceMock.Object,
-            _dbContext,
-            _listingParserMock.Object,
-            _loggerMock.Object);
+        var endpoint = CreateEndpoint();
 
         var request = new ProcessListingRequest(
             ScrapeRunId: 1,
@@ -246,11 +253,7 @@ public class ProcessListingEndpoint_UnitTests
         _dbContext.ScrapeRunListings.Add(scrapeRunListing);
         await _dbContext.SaveChangesAsync();
 
-        var endpoint = new ProcessListingEndpoint(
-            _blobServiceMock.Object,
-            _dbContext,
-            _listingParserMock.Object,
-            _loggerMock.Object);
+        var endpoint = CreateEndpoint();
 
         var request = new ProcessListingRequest(
             ScrapeRunId: 1,
@@ -320,11 +323,7 @@ public class ProcessListingEndpoint_UnitTests
             .Setup(p => p.ParseProductListing(It.IsAny<IDocument>(), It.IsAny<string>()))
             .Returns(parsedListing);
 
-        var endpoint = new ProcessListingEndpoint(
-            _blobServiceMock.Object,
-            _dbContext,
-            _listingParserMock.Object,
-            _loggerMock.Object);
+        var endpoint = CreateEndpoint();
 
         var request = new ProcessListingRequest(
             ScrapeRunId: 1,
@@ -395,11 +394,7 @@ public class ProcessListingEndpoint_UnitTests
             .Setup(p => p.ParseProductListing(It.IsAny<IDocument>(), It.IsAny<string>()))
             .Returns(parsedListing);
 
-        var endpoint = new ProcessListingEndpoint(
-            _blobServiceMock.Object,
-            _dbContext,
-            _listingParserMock.Object,
-            _loggerMock.Object);
+        var endpoint = CreateEndpoint();
 
         var request = new ProcessListingRequest(
             ScrapeRunId: 1,
@@ -502,11 +497,7 @@ public class ProcessListingEndpoint_UnitTests
             .Setup(p => p.ParseProductListing(It.IsAny<IDocument>(), It.IsAny<string>()))
             .Returns(parsedListing);
 
-        var endpoint = new ProcessListingEndpoint(
-            _blobServiceMock.Object,
-            _dbContext,
-            _listingParserMock.Object,
-            _loggerMock.Object);
+        var endpoint = CreateEndpoint();
 
         var request = new ProcessListingRequest(
             ScrapeRunId: 1,
@@ -586,11 +577,7 @@ public class ProcessListingEndpoint_UnitTests
             .Setup(p => p.ParseProductListing(It.IsAny<IDocument>(), It.IsAny<string>()))
             .Returns(parsedListing);
 
-        var endpoint = new ProcessListingEndpoint(
-            _blobServiceMock.Object,
-            _dbContext,
-            _listingParserMock.Object,
-            _loggerMock.Object);
+        var endpoint = CreateEndpoint();
 
         var request = new ProcessListingRequest(
             ScrapeRunId: 1,
@@ -671,11 +658,7 @@ public class ProcessListingEndpoint_UnitTests
             .Setup(p => p.ParseProductListing(It.IsAny<IDocument>(), It.IsAny<string>()))
             .Returns(parsedListing);
 
-        var endpoint = new ProcessListingEndpoint(
-            _blobServiceMock.Object,
-            _dbContext,
-            _listingParserMock.Object,
-            _loggerMock.Object);
+        var endpoint = CreateEndpoint();
 
         var request = new ProcessListingRequest(
             ScrapeRunId: 1,
@@ -753,11 +736,7 @@ public class ProcessListingEndpoint_UnitTests
             .Setup(p => p.ParseProductListing(It.IsAny<IDocument>(), It.IsAny<string>()))
             .Returns(parsedListing);
 
-        var endpoint = new ProcessListingEndpoint(
-            _blobServiceMock.Object,
-            _dbContext,
-            _listingParserMock.Object,
-            _loggerMock.Object);
+        var endpoint = CreateEndpoint();
 
         var request = new ProcessListingRequest(1, 0, "123", 1, "path");
         var httpRequest = MockHttpRequestData.Create(request);
@@ -808,7 +787,7 @@ public class ProcessListingEndpoint_UnitTests
 
         SetupBlobWithContent("<html></html>");
 
-        // Parser returns Sold status (valid transition: Active→Sold)
+        // Parser returns Sold status (valid transition: Active->Sold)
         var parsedListing = new ExtractedEbayListing(
             id: "123",
             title: "Product",
@@ -830,11 +809,7 @@ public class ProcessListingEndpoint_UnitTests
             .Setup(p => p.ParseProductListing(It.IsAny<IDocument>(), It.IsAny<string>()))
             .Returns(parsedListing);
 
-        var endpoint = new ProcessListingEndpoint(
-            _blobServiceMock.Object,
-            _dbContext,
-            _listingParserMock.Object,
-            _loggerMock.Object);
+        var endpoint = CreateEndpoint();
 
         var request = new ProcessListingRequest(1, 0, "123", 1, "path");
         var httpRequest = MockHttpRequestData.Create(request);
@@ -893,11 +868,7 @@ public class ProcessListingEndpoint_UnitTests
             .Setup(p => p.ParseProductListing(It.IsAny<IDocument>(), It.IsAny<string>()))
             .Returns(parsedListing);
 
-        var endpoint = new ProcessListingEndpoint(
-            _blobServiceMock.Object,
-            _dbContext,
-            _listingParserMock.Object,
-            _loggerMock.Object);
+        var endpoint = CreateEndpoint();
 
         var request = new ProcessListingRequest(1, 0, "456", 1, "path");
         var httpRequest = MockHttpRequestData.Create(request);
@@ -965,11 +936,7 @@ public class ProcessListingEndpoint_UnitTests
             .Setup(p => p.ParseProductListing(It.IsAny<IDocument>(), It.IsAny<string>()))
             .Returns(parsedListing);
 
-        var endpoint = new ProcessListingEndpoint(
-            _blobServiceMock.Object,
-            _dbContext,
-            _listingParserMock.Object,
-            _loggerMock.Object);
+        var endpoint = CreateEndpoint();
 
         var request = new ProcessListingRequest(1, 0, "789", 1, "path");
         var httpRequest = MockHttpRequestData.Create(request);
@@ -991,7 +958,7 @@ public class ProcessListingEndpoint_UnitTests
         });
     }
 
-[Test]
+    [Test]
     public async Task Run_should_increment_ListingsUpdated_when_existing_listing_is_updated()
     {
         // Arrange - Existing active listing that will be updated
@@ -1039,11 +1006,7 @@ public class ProcessListingEndpoint_UnitTests
             .Setup(p => p.ParseProductListing(It.IsAny<IDocument>(), It.IsAny<string>()))
             .Returns(parsedListing);
 
-        var endpoint = new ProcessListingEndpoint(
-            _blobServiceMock.Object,
-            _dbContext,
-            _listingParserMock.Object,
-            _loggerMock.Object);
+        var endpoint = CreateEndpoint();
 
         var request = new ProcessListingRequest(1, 0, "UPDATE123", 1, "path");
         var httpRequest = MockHttpRequestData.Create(request);
@@ -1098,11 +1061,7 @@ public class ProcessListingEndpoint_UnitTests
             .Setup(p => p.ParseProductListing(It.IsAny<IDocument>(), It.IsAny<string>()))
             .Returns(parsedListing);
 
-        var endpoint = new ProcessListingEndpoint(
-            _blobServiceMock.Object,
-            _dbContext,
-            _listingParserMock.Object,
-            _loggerMock.Object);
+        var endpoint = CreateEndpoint();
 
         var request = new ProcessListingRequest(1, 0, "SOLD123", 1, "path");
         var httpRequest = MockHttpRequestData.Create(request);
@@ -1168,11 +1127,7 @@ public class ProcessListingEndpoint_UnitTests
             .Setup(p => p.ParseProductListing(It.IsAny<IDocument>(), It.IsAny<string>()))
             .Returns(parsedListing);
 
-        var endpoint = new ProcessListingEndpoint(
-            _blobServiceMock.Object,
-            _dbContext,
-            _listingParserMock.Object,
-            _loggerMock.Object);
+        var endpoint = CreateEndpoint();
 
         var request = new ProcessListingRequest(1, 0, "999", 1, "path");
         var httpRequest = MockHttpRequestData.Create(request);
@@ -1252,11 +1207,7 @@ public class ProcessListingEndpoint_UnitTests
             .Setup(p => p.ParseProductListing(It.IsAny<IDocument>(), It.IsAny<string>()))
             .Returns(parsedListing);
 
-        var endpoint = new ProcessListingEndpoint(
-            _blobServiceMock.Object,
-            _dbContext,
-            _listingParserMock.Object,
-            _loggerMock.Object);
+        var endpoint = CreateEndpoint();
 
         var request = new ProcessListingRequest(
             ScrapeRunId: 1,
@@ -1294,7 +1245,7 @@ public class ProcessListingEndpoint_UnitTests
         Assert.That(updatedRun!.ListingsSkipped, Is.EqualTo(1), "ListingsSkipped should be incremented");
     }
 
-[Test]
+    [Test]
     public async Task Run_should_mark_ScrapeRun_as_Completed_when_last_listing_processed()
     {
         // Arrange - ScrapeRun with 3 listings to process (5 total - 2 filtered pre-queue)
@@ -1346,11 +1297,7 @@ public class ProcessListingEndpoint_UnitTests
             .Setup(p => p.ParseProductListing(It.IsAny<IDocument>(), It.IsAny<string>()))
             .Returns(parsedListing);
 
-        var endpoint = new ProcessListingEndpoint(
-            _blobServiceMock.Object,
-            _dbContext,
-            _listingParserMock.Object,
-            _loggerMock.Object);
+        var endpoint = CreateEndpoint();
 
         var request = new ProcessListingRequest(1, 0, "LAST123", 1, "path");
         var httpRequest = MockHttpRequestData.Create(request);
@@ -1421,11 +1368,7 @@ public class ProcessListingEndpoint_UnitTests
             .Setup(p => p.ParseProductListing(It.IsAny<IDocument>(), It.IsAny<string>()))
             .Returns(parsedListing);
 
-        var endpoint = new ProcessListingEndpoint(
-            _blobServiceMock.Object,
-            _dbContext,
-            _listingParserMock.Object,
-            _loggerMock.Object);
+        var endpoint = CreateEndpoint();
 
         var request = new ProcessListingRequest(1, 0, "MID123", 1, "path");
         var httpRequest = MockHttpRequestData.Create(request);
