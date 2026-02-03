@@ -267,6 +267,25 @@ Focus on parser logic (`EbaySearchParser`, `EbayListingParser`) with AngleSharp 
 - The `WebscraperClient.RunJobAsync()` polls every 5 seconds until job completes
 - **Fail Fast for External Services**: Do NOT swallow errors from external services like Pinecone, OpenAI, etc. Let exceptions propagate so issues are caught early rather than silently degrading functionality. If a service is optional, configure it to not be used at all rather than catching and ignoring errors at runtime.
 
+### Coding Standards
+
+**Naming:**
+- **Don't suffix async methods with `Async`.** The return type (`Task<T>`) already communicates this.
+
+**Type Safety:**
+- **No tuples as return types or parameters.** If a method returns multiple values, define a named record.
+- **No anonymous types.** Always use named records for data objects, including HTTP response bodies, error responses, and projections.
+- **Prefer `IEnumerable<T>` over `IReadOnlyList<T>` or `List<T>`** in method signatures (parameters and return types). Use `List<T>` only as a local implementation detail.
+
+**File Organization:**
+- **Interfaces at the top of the file**, above records and class implementations.
+- **Records above the class.** DTOs/records declared in the same file go between the namespace and the class definition.
+
+**Architecture:**
+- **Thin controllers/triggers.** HTTP/timer triggers handle only request parsing, response building, and status codes. Business logic belongs in a service.
+- **Don't leak entities across boundaries.** Services return their own result types (e.g., `EnqueuedScrapeRun`), not EF Core entities (e.g., `ScrapeRun`).
+- **Clean, small high-level methods.** Public trigger/controller methods should be short and read like a summary. Extract details into well-named private or service methods.
+
 ### Anti-Patterns to Avoid
 - Don't parse prices with culture-specific decimal separators without normalization
 - Don't assume all listings have descriptions or item specifics

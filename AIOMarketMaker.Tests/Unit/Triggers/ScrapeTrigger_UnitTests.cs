@@ -8,6 +8,7 @@ using Azure;
 using AIOMarketMaker.Core.Data;
 using AIOMarketMaker.Core.Data.Models;
 using AIOMarketMaker.Etl.Triggers;
+using AIOMarketMaker.Etl.Services;
 using AIOMarketMaker.Tests.Utils;
 using Microsoft.EntityFrameworkCore;
 using System.Net;
@@ -16,24 +17,22 @@ using AIOMarketMaker.Etl.Models;
 
 namespace AIOMarketMaker.Tests.Unit.Triggers;
 
-/// <summary>
-/// Unit tests for SimplifiedScrapeTrigger.
-/// Tests the fire-and-forget queue pattern used by both RunManual and RunNightly.
-/// Note: The actual scrape logic is tested in ScrapeJobQueueTrigger_UnitTests.
-/// </summary>
 [TestFixture]
 [Category("Unit")]
-public class SimplifiedScrapeTrigger_UnitTests
+public class ScrapeTrigger_UnitTests
 {
-    private Mock<ILogger<SimplifiedScrapeTrigger>> _loggerMock;
+    private Mock<ILogger<ScrapeTrigger>> _loggerMock;
+    private Mock<ILogger<ScrapeRunService>> _serviceLoggerMock;
     private EtlDbContext _dbContext;
     private Mock<QueueServiceClient> _queueServiceMock;
     private Mock<QueueClient> _jobQueueClientMock;
+    private IScrapeRunService _scrapeRunService;
 
     [SetUp]
     public void SetUp()
     {
-        _loggerMock = new Mock<ILogger<SimplifiedScrapeTrigger>>();
+        _loggerMock = new Mock<ILogger<ScrapeTrigger>>();
+        _serviceLoggerMock = new Mock<ILogger<ScrapeRunService>>();
         _dbContext = InMemoryDbContextFactory.Create();
         _queueServiceMock = new Mock<QueueServiceClient>();
         _jobQueueClientMock = new Mock<QueueClient>();
@@ -41,6 +40,11 @@ public class SimplifiedScrapeTrigger_UnitTests
         _queueServiceMock
             .Setup(q => q.GetQueueClient("scrape-jobs"))
             .Returns(_jobQueueClientMock.Object);
+
+        _scrapeRunService = new ScrapeRunService(
+            _dbContext,
+            _queueServiceMock.Object,
+            _serviceLoggerMock.Object);
     }
 
     [TearDown]
@@ -52,20 +56,17 @@ public class SimplifiedScrapeTrigger_UnitTests
     [Test]
     public void Should_construct_with_all_dependencies()
     {
-        // Act
-        var trigger = new SimplifiedScrapeTrigger(
+        var trigger = new ScrapeTrigger(
             _loggerMock.Object,
-            _dbContext,
-            _queueServiceMock.Object);
+            _scrapeRunService);
 
-        // Assert
         Assert.That(trigger, Is.Not.Null);
     }
 
     [Test]
     public async Task RunNightly_should_enqueue_job_for_each_enabled_job()
     {
-        // Arrange - Create two enabled jobs and one disabled job
+        // Arrange
         var job1 = new ScrapeJob { Id = 1, SearchTerm = "product 1", IsEnabled = true };
         var job2 = new ScrapeJob { Id = 2, SearchTerm = "product 2", IsEnabled = true };
         var job3 = new ScrapeJob { Id = 3, SearchTerm = "disabled product", IsEnabled = false };
@@ -80,18 +81,16 @@ public class SimplifiedScrapeTrigger_UnitTests
                 QueuesModelFactory.SendReceipt("messageId", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, "popReceipt", DateTimeOffset.UtcNow.AddMinutes(1)),
                 Mock.Of<Response>()));
 
-        var trigger = new SimplifiedScrapeTrigger(
+        var trigger = new ScrapeTrigger(
             _loggerMock.Object,
-            _dbContext,
-            _queueServiceMock.Object);
+            _scrapeRunService);
 
         // Act
         await trigger.RunNightly(null!);
 
-        // Assert - Two job messages should be enqueued (one for each enabled job)
+        // Assert
         Assert.That(enqueuedMessages.Count, Is.EqualTo(2), "Should enqueue one message per enabled job");
 
-        // Verify ScrapeRuns were created with Queued status
         var scrapeRuns = await _dbContext.ScrapeRuns.ToListAsync();
         Assert.That(scrapeRuns.Count, Is.EqualTo(2));
         Assert.Multiple(() =>
@@ -102,7 +101,6 @@ public class SimplifiedScrapeTrigger_UnitTests
             Assert.That(scrapeRuns.All(r => r.CurrentPhase == "Queued"), Is.True);
         });
 
-        // Verify message contents
         var messages = enqueuedMessages.Select(m => JsonSerializer.Deserialize<ScrapeJobMessage>(m)!).ToList();
         Assert.Multiple(() =>
         {
@@ -114,15 +112,14 @@ public class SimplifiedScrapeTrigger_UnitTests
     [Test]
     public async Task RunNightly_should_not_enqueue_anything_when_no_enabled_jobs()
     {
-        // Arrange - Create only disabled jobs
+        // Arrange
         var job = new ScrapeJob { Id = 1, SearchTerm = "disabled product", IsEnabled = false };
         _dbContext.ScrapeJobs.Add(job);
         await _dbContext.SaveChangesAsync();
 
-        var trigger = new SimplifiedScrapeTrigger(
+        var trigger = new ScrapeTrigger(
             _loggerMock.Object,
-            _dbContext,
-            _queueServiceMock.Object);
+            _scrapeRunService);
 
         // Act
         await trigger.RunNightly(null!);
@@ -147,10 +144,9 @@ public class SimplifiedScrapeTrigger_UnitTests
             .Callback<string>((msg) => enqueuedMessages.Add(msg))
             .ReturnsAsync(Mock.Of<Azure.Response<SendReceipt>>());
 
-        var trigger = new SimplifiedScrapeTrigger(
+        var trigger = new ScrapeTrigger(
             _loggerMock.Object,
-            _dbContext,
-            _queueServiceMock.Object);
+            _scrapeRunService);
 
         var request = MockHttpRequestData.CreateEmpty();
 
@@ -161,14 +157,12 @@ public class SimplifiedScrapeTrigger_UnitTests
         Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK));
         Assert.That(enqueuedMessages, Has.Count.EqualTo(1), "Should enqueue one job message");
 
-        // Verify ScrapeRun was created with Queued status
         var scrapeRun = await _dbContext.ScrapeRuns.FirstOrDefaultAsync();
         Assert.That(scrapeRun, Is.Not.Null);
         Assert.That(scrapeRun!.Status, Is.EqualTo("Queued"));
         Assert.That(scrapeRun.CurrentPhase, Is.EqualTo("Queued"));
         Assert.That(scrapeRun.TriggerType, Is.EqualTo("Manual"));
 
-        // Verify message contains correct data
         var message = JsonSerializer.Deserialize<ScrapeJobMessage>(enqueuedMessages[0]);
         Assert.That(message!.ScrapeRunId, Is.EqualTo(scrapeRun.Id));
         Assert.That(message.JobId, Is.EqualTo(job.Id));
@@ -179,7 +173,7 @@ public class SimplifiedScrapeTrigger_UnitTests
     [Test]
     public async Task RunManual_should_return_OK_on_success()
     {
-        // Arrange - Create an enabled job
+        // Arrange
         var job = new ScrapeJob { Id = 1, SearchTerm = "test product", IsEnabled = true };
         _dbContext.ScrapeJobs.Add(job);
         await _dbContext.SaveChangesAsync();
@@ -190,12 +184,10 @@ public class SimplifiedScrapeTrigger_UnitTests
                 QueuesModelFactory.SendReceipt("messageId", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, "popReceipt", DateTimeOffset.UtcNow.AddMinutes(1)),
                 Mock.Of<Response>()));
 
-        var trigger = new SimplifiedScrapeTrigger(
+        var trigger = new ScrapeTrigger(
             _loggerMock.Object,
-            _dbContext,
-            _queueServiceMock.Object);
+            _scrapeRunService);
 
-        // Create mock HTTP request with empty body (no specific jobId)
         var httpRequest = MockHttpRequestData.CreateEmpty();
 
         // Act
@@ -208,7 +200,7 @@ public class SimplifiedScrapeTrigger_UnitTests
     [Test]
     public async Task RunManual_should_run_specific_job_when_jobId_provided()
     {
-        // Arrange - Create two enabled jobs
+        // Arrange
         var job1 = new ScrapeJob { Id = 1, SearchTerm = "product 1", IsEnabled = true };
         var job2 = new ScrapeJob { Id = 2, SearchTerm = "product 2", IsEnabled = true };
         _dbContext.ScrapeJobs.AddRange(job1, job2);
@@ -222,18 +214,16 @@ public class SimplifiedScrapeTrigger_UnitTests
                 QueuesModelFactory.SendReceipt("messageId", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, "popReceipt", DateTimeOffset.UtcNow.AddMinutes(1)),
                 Mock.Of<Response>()));
 
-        var trigger = new SimplifiedScrapeTrigger(
+        var trigger = new ScrapeTrigger(
             _loggerMock.Object,
-            _dbContext,
-            _queueServiceMock.Object);
+            _scrapeRunService);
 
-        // Create mock HTTP request with specific jobId
-        var httpRequest = MockHttpRequestData.Create(new { jobId = 2 });
+        var httpRequest = MockHttpRequestData.Create(new ManualScrapeRequest(JobId: 2));
 
         // Act
         var response = await trigger.RunManual(httpRequest);
 
-        // Assert - Only one ScrapeRun should be created for job 2
+        // Assert
         Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK));
         Assert.That(enqueuedMessages.Count, Is.EqualTo(1), "Should only enqueue job 2");
 
@@ -246,21 +236,17 @@ public class SimplifiedScrapeTrigger_UnitTests
         Assert.That(message.SearchTerm, Is.EqualTo("product 2"));
     }
 
-    // Note: Test for "job not found returns 404" is skipped because HttpRequestData.CreateResponse(HttpStatusCode)
-    // is an extension method that cannot be mocked with Moq. The behavior is tested via integration tests.
-
     [Test]
     public async Task RunManual_should_return_OK_with_empty_results_when_no_enabled_jobs()
     {
-        // Arrange - Only disabled jobs
+        // Arrange
         var job = new ScrapeJob { Id = 1, SearchTerm = "disabled", IsEnabled = false };
         _dbContext.ScrapeJobs.Add(job);
         await _dbContext.SaveChangesAsync();
 
-        var trigger = new SimplifiedScrapeTrigger(
+        var trigger = new ScrapeTrigger(
             _loggerMock.Object,
-            _dbContext,
-            _queueServiceMock.Object);
+            _scrapeRunService);
 
         var httpRequest = MockHttpRequestData.CreateEmpty();
 
@@ -275,7 +261,7 @@ public class SimplifiedScrapeTrigger_UnitTests
     [Test]
     public async Task RunManual_should_enqueue_multiple_jobs_when_no_specific_job_requested()
     {
-        // Arrange - Create multiple enabled jobs
+        // Arrange
         var job1 = new ScrapeJob { Id = 1, SearchTerm = "product 1", IsEnabled = true };
         var job2 = new ScrapeJob { Id = 2, SearchTerm = "product 2", IsEnabled = true };
         var job3 = new ScrapeJob { Id = 3, SearchTerm = "product 3", IsEnabled = true };
@@ -290,10 +276,9 @@ public class SimplifiedScrapeTrigger_UnitTests
                 QueuesModelFactory.SendReceipt("messageId", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, "popReceipt", DateTimeOffset.UtcNow.AddMinutes(1)),
                 Mock.Of<Response>()));
 
-        var trigger = new SimplifiedScrapeTrigger(
+        var trigger = new ScrapeTrigger(
             _loggerMock.Object,
-            _dbContext,
-            _queueServiceMock.Object);
+            _scrapeRunService);
 
         var httpRequest = MockHttpRequestData.CreateEmpty();
 

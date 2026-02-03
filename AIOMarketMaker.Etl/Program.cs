@@ -8,6 +8,7 @@ using AIOMarketMaker.Core.Data;
 using AIOMarketMaker.Core.Data.Migrations;
 using AIOMarketMaker.Core.Services;
 using AIOMarketMaker.Core.Parsers;
+using AIOMarketMaker.Etl.Services;
 using ScraperWorker.Services;
 using Azure.Data.Tables;
 using Azure.Storage.Blobs;
@@ -69,6 +70,7 @@ var host = new HostBuilder()
         };
         services.AddSingleton(_ => new QueueServiceClient(queueConnectionString, queueClientOptions));
         services.AddSingleton<IQueueService, AzureStorageQueueService>();
+        services.AddScoped<IScrapeRunService, ScrapeRunService>();
 
         services.AddSingleton<IJobRepository>(sp =>
             new AzureJobRepository(
