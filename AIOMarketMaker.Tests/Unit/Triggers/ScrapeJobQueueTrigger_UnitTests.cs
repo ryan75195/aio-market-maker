@@ -2,16 +2,9 @@ using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Moq;
 using NUnit.Framework;
-using AIOMarketMaker.Core.Data;
-using AIOMarketMaker.Core.Data.Models;
-using AIOMarketMaker.Models.Ebay;
 using AIOMarketMaker.Etl.Models;
+using AIOMarketMaker.Etl.Services;
 using AIOMarketMaker.Etl.Triggers;
-using AIOMarketMaker.Core.Parsers;
-using AIOMarketMaker.Core.Services;
-using AIOMarketMaker.Tests.Utils;
-using Azure.Storage.Queues;
-using AngleSharp.Dom;
 
 namespace AIOMarketMaker.Tests.Unit.Triggers;
 
@@ -19,149 +12,40 @@ namespace AIOMarketMaker.Tests.Unit.Triggers;
 [Category("Unit")]
 public class ScrapeJobQueueTrigger_UnitTests
 {
-    private EtlDbContext _dbContext = null!;
     private Mock<ILogger<ScrapeJobQueueTrigger>> _loggerMock = null!;
-    private Mock<IWebscraperClient> _webscraperClientMock = null!;
-    private Mock<ISearchParser> _searchParserMock = null!;
-    private Mock<QueueServiceClient> _queueServiceMock = null!;
+    private Mock<IScrapeJobProcessor> _processorMock = null!;
 
     [SetUp]
     public void Setup()
     {
-        _dbContext = InMemoryDbContextFactory.Create();
         _loggerMock = new Mock<ILogger<ScrapeJobQueueTrigger>>();
-        _webscraperClientMock = new Mock<IWebscraperClient>();
-        _searchParserMock = new Mock<ISearchParser>();
-        _queueServiceMock = new Mock<QueueServiceClient>();
-
-        // Setup queue client mock
-        var queueClientMock = new Mock<QueueClient>();
-        _queueServiceMock
-            .Setup(q => q.GetQueueClient(It.IsAny<string>()))
-            .Returns(queueClientMock.Object);
-
-        // Setup default webscraperClient behavior - return empty HTML
-        _webscraperClientMock
-            .Setup(w => w.GetPageHtmlAsync(
-                It.IsAny<string>(),
-                It.IsAny<IEnumerable<object>?>(),
-                It.IsAny<string?>(),
-                It.IsAny<TimeSpan?>(),
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync("<html><body></body></html>");
-
-        // Setup default searchParser behavior - return empty results
-        _searchParserMock
-            .Setup(p => p.ParseSearchResults(It.IsAny<IDocument>()))
-            .Returns(Enumerable.Empty<IEbayProductSummary>());
-    }
-
-    [TearDown]
-    public void TearDown()
-    {
-        _dbContext.Dispose();
+        _processorMock = new Mock<IScrapeJobProcessor>();
     }
 
     [Test]
-    public async Task ProcessJob_should_update_status_to_Searching_when_started()
+    public async Task Should_delegate_to_processor_with_deserialized_message()
     {
-        // Arrange
-        var job = new ScrapeJob { Id = 1, SearchTerm = "Test", IsEnabled = true };
-        _dbContext.ScrapeJobs.Add(job);
-
-        var scrapeRun = new ScrapeRun
-        {
-            Id = 100,
-            JobId = 1,
-            Status = "Queued",
-            CurrentPhase = "Queued",
-            TriggerType = "Manual",
-            StartedUtc = DateTime.UtcNow,
-            InstanceId = Guid.NewGuid().ToString()
-        };
-        _dbContext.ScrapeRuns.Add(scrapeRun);
-        await _dbContext.SaveChangesAsync();
-
         var message = new ScrapeJobMessage(100, 1, "Test", "Manual");
         var messageJson = JsonSerializer.Serialize(message);
 
-        // This will fail because ScrapeJobQueueTrigger doesn't exist yet
-        var trigger = new ScrapeJobQueueTrigger(
-            _loggerMock.Object,
-            _dbContext,
-            _webscraperClientMock.Object,
-            _searchParserMock.Object,
-            _queueServiceMock.Object);
+        var trigger = new ScrapeJobQueueTrigger(_loggerMock.Object, _processorMock.Object);
 
-        // Act
         await trigger.ProcessJob(messageJson);
 
-        // Assert - with no listings found, it should complete
-        var updatedRun = await _dbContext.ScrapeRuns.FindAsync(100);
-        Assert.That(updatedRun!.Status, Is.EqualTo("Completed"));
+        _processorMock.Verify(
+            p => p.Process(It.Is<ScrapeJobMessage>(m =>
+                m.ScrapeRunId == 100 && m.JobId == 1
+                && m.SearchTerm == "Test" && m.TriggerType == "Manual")),
+            Times.Once);
     }
 
     [Test]
-    public async Task ProcessJob_should_set_ListingsFilteredPreQueue_for_terminal_status_listings()
+    public async Task Should_not_call_processor_when_message_is_invalid()
     {
-        // Arrange - Create job with existing Sold listing
-        var job = new ScrapeJob { Id = 1, SearchTerm = "Test", IsEnabled = true };
-        _dbContext.ScrapeJobs.Add(job);
+        var trigger = new ScrapeJobQueueTrigger(_loggerMock.Object, _processorMock.Object);
 
-        // Create an existing listing with terminal status (Sold)
-        var existingSoldListing = new Listing
-        {
-            ListingId = "SOLD123",
-            ScrapeJobId = 1,
-            Title = "Already Sold Item",
-            ListingStatus = "Sold"
-        };
-        _dbContext.Listings.Add(existingSoldListing);
+        await trigger.ProcessJob("not valid json {{{");
 
-        var scrapeRun = new ScrapeRun
-        {
-            Id = 100,
-            JobId = 1,
-            Status = "Queued",
-            CurrentPhase = "Queued",
-            TriggerType = "Manual",
-            StartedUtc = DateTime.UtcNow,
-            InstanceId = Guid.NewGuid().ToString()
-        };
-        _dbContext.ScrapeRuns.Add(scrapeRun);
-        await _dbContext.SaveChangesAsync();
-
-        // Setup search to return the sold listing ID (simulating it appeared in search results)
-        var mockSummary = new Mock<IEbayProductSummary>();
-        mockSummary.Setup(s => s.ListingId).Returns("SOLD123");
-        _searchParserMock
-            .Setup(p => p.ParseSearchResults(It.IsAny<IDocument>()))
-            .Returns(new[] { mockSummary.Object });
-
-        var message = new ScrapeJobMessage(100, 1, "Test", "Manual");
-        var messageJson = JsonSerializer.Serialize(message);
-
-        var trigger = new ScrapeJobQueueTrigger(
-            _loggerMock.Object,
-            _dbContext,
-            _webscraperClientMock.Object,
-            _searchParserMock.Object,
-            _queueServiceMock.Object);
-
-        // Act
-        await trigger.ProcessJob(messageJson);
-
-        // Assert - ListingsFilteredPreQueue tracks terminal status listings filtered before queueing
-        // ListingsSkipped remains 0 (only incremented during processing for PRODUCT_PAGE, etc.)
-        var updatedRun = await _dbContext.ScrapeRuns.FindAsync(100);
-        Assert.Multiple(() =>
-        {
-            Assert.That(updatedRun!.ListingsFilteredPreQueue, Is.EqualTo(1),
-                "ListingsFilteredPreQueue should count terminal status listings filtered before queueing");
-            Assert.That(updatedRun.ListingsSkipped, Is.EqualTo(0),
-                "ListingsSkipped should remain 0 (only for runtime skips like PRODUCT_PAGE)");
-            Assert.That(updatedRun.TotalListingsFound, Is.EqualTo(1),
-                "TotalListingsFound should include all found listings before filtering");
-        });
+        _processorMock.Verify(p => p.Process(It.IsAny<ScrapeJobMessage>()), Times.Never);
     }
 }
