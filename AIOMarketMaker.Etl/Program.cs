@@ -72,6 +72,8 @@ var host = new HostBuilder()
         services.AddSingleton<IQueueService, AzureStorageQueueService>();
         services.AddScoped<IScrapeRunService, ScrapeRunService>();
         services.AddScoped<IScrapeJobProcessor, ScrapeJobProcessor>();
+        services.AddScoped<IListingProcessorService, ListingProcessorService>();
+        services.AddScoped<IScrapeRunCounterService, SqlScrapeRunCounterService>();
 
         services.AddSingleton<IJobRepository>(sp =>
             new AzureJobRepository(
