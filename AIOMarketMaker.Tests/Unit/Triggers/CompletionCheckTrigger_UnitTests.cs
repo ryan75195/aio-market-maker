@@ -245,6 +245,46 @@ public class CompletionCheckTrigger_UnitTests
     }
 
     [Test]
+    public async Task Run_should_mark_run_as_completed_when_ListingsFilteredPreQueue_accounts_for_difference()
+    {
+        // Arrange - Run where TotalListingsFound includes pre-filtered listings
+        // TotalListingsFound = 1665 (all found in search)
+        // ListingsFilteredPreQueue = 709 (terminal status - Sold/Ended/OutOfStock)
+        // Actual to process = 1665 - 709 = 956
+        // ListingsProcessed = 956 (all actual listings processed)
+        var scrapeRun = new ScrapeRun
+        {
+            JobId = 1,
+            TriggerType = "Manual",
+            StartedUtc = DateTime.UtcNow.AddMinutes(-10),
+            Status = "Indexing",
+            CurrentPhase = "Indexing",
+            TotalListingsFound = 1665,
+            ListingsFilteredPreQueue = 709,
+            ListingsProcessed = 956  // 1665 - 709 = 956
+        };
+        _dbContext.ScrapeRuns.Add(scrapeRun);
+        await _dbContext.SaveChangesAsync();
+
+        var trigger = new CompletionCheckTrigger(
+            _loggerMock.Object,
+            _dbContext);
+
+        // Act
+        await trigger.Run(null!);
+
+        // Assert
+        var updatedRun = await _dbContext.ScrapeRuns.FindAsync(scrapeRun.Id);
+        Assert.Multiple(() =>
+        {
+            Assert.That(updatedRun!.Status, Is.EqualTo("Completed"),
+                "Run should be marked Completed when ListingsProcessed equals actual listings to process (TotalFound - FilteredPreQueue)");
+            Assert.That(updatedRun.CurrentPhase, Is.EqualTo("Completed"));
+            Assert.That(updatedRun.CompletedUtc, Is.Not.Null);
+        });
+    }
+
+    [Test]
     public async Task Run_should_handle_multiple_runs_and_only_complete_eligible_ones()
     {
         // Arrange - Mix of eligible and ineligible runs

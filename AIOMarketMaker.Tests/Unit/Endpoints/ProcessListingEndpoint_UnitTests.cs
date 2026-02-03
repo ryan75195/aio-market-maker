@@ -1194,6 +1194,256 @@ public class ProcessListingEndpoint_UnitTests
         });
     }
 
+    [Test]
+    public async Task Run_should_skip_product_catalog_pages_with_PRODUCT_PAGE_reason()
+    {
+        // Arrange - Product catalog page (redirected from /itm/ to /p/)
+        var htmlContent = @"<!DOCTYPE html>
+<html>
+<head>
+    <link rel=""canonical"" href=""https://www.ebay.co.uk/p/12345678"" />
+</head>
+<body>
+    <h1>Product Catalog Page</h1>
+</body>
+</html>";
+
+        var scrapeRun = new ScrapeRun { Id = 1, Status = "Running", ListingsProcessed = 0, ListingsSkipped = 0 };
+        var scrapeJob = new ScrapeJob { Id = 1, SearchTerm = "test" };
+        _dbContext.ScrapeRuns.Add(scrapeRun);
+        _dbContext.ScrapeJobs.Add(scrapeJob);
+
+        var scrapeRunListing = new ScrapeRunListing
+        {
+            ScrapeRunId = 1,
+            ScrapeJobId = 1,
+            ListingId = "123456789",
+            Status = "Pending"
+        };
+        _dbContext.ScrapeRunListings.Add(scrapeRunListing);
+        await _dbContext.SaveChangesAsync();
+
+        SetupBlobWithContent(htmlContent);
+
+        // Setup parser to detect product catalog page
+        _listingParserMock
+            .Setup(p => p.IsProductCatalogPage(It.IsAny<IDocument>()))
+            .Returns(true);
+
+        // Parser returns null title (product pages have different structure)
+        var parsedListing = new ExtractedEbayListing(
+            id: "123456789",
+            title: null,  // No title on product catalog pages
+            price: null,
+            currency: null,
+            shippingCost: null,
+            Condition: null,
+            images: null,
+            listingStatus: null,
+            purchaseFormat: null,
+            ItemSpecifics: null,
+            descriptionSource: null,
+            SoldDateUtc: null,
+            Location: null,
+            Url: null
+        );
+
+        _listingParserMock
+            .Setup(p => p.ParseProductListing(It.IsAny<IDocument>(), It.IsAny<string>()))
+            .Returns(parsedListing);
+
+        var endpoint = new ProcessListingEndpoint(
+            _blobServiceMock.Object,
+            _dbContext,
+            _listingParserMock.Object,
+            _loggerMock.Object);
+
+        var request = new ProcessListingRequest(
+            ScrapeRunId: 1,
+            ScrapeRunListingId: 0,
+            ListingId: "123456789",
+            ScrapeJobId: 1,
+            BlobPath: "1/123456789/listing.html");
+
+        var httpRequest = MockHttpRequestData.Create(request);
+
+        // Act
+        var response = await endpoint.Run(httpRequest);
+
+        // Assert - response should indicate skipped (not failed)
+        Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK));
+
+        var responseBody = await MockHttpRequestData.ReadResponseAsync<ProcessListingResponse>(response);
+        Assert.Multiple(() =>
+        {
+            Assert.That(responseBody.Success, Is.True, "Product page detection should be a success (not an error)");
+            Assert.That(responseBody.Status, Is.EqualTo("skipped"), "Product pages should be marked as skipped");
+        });
+
+        // Assert - ScrapeRunListing should be marked as Skipped with PRODUCT_PAGE reason
+        var updatedSrl = await _dbContext.ScrapeRunListings
+            .FirstOrDefaultAsync(srl => srl.ScrapeRunId == 1 && srl.ListingId == "123456789");
+        Assert.Multiple(() =>
+        {
+            Assert.That(updatedSrl!.Status, Is.EqualTo("Skipped"), "ScrapeRunListing should be Skipped");
+            Assert.That(updatedSrl.FailureReason, Is.EqualTo("PRODUCT_PAGE"), "Should have PRODUCT_PAGE failure reason");
+        });
+
+        // Assert - ListingsSkipped counter should be incremented
+        var updatedRun = await _dbContext.ScrapeRuns.AsNoTracking().FirstOrDefaultAsync(sr => sr.Id == 1);
+        Assert.That(updatedRun!.ListingsSkipped, Is.EqualTo(1), "ListingsSkipped should be incremented");
+    }
+
+[Test]
+    public async Task Run_should_mark_ScrapeRun_as_Completed_when_last_listing_processed()
+    {
+        // Arrange - ScrapeRun with 3 listings to process (5 total - 2 filtered pre-queue)
+        // This is the LAST listing being processed (2 already done)
+        var scrapeRun = new ScrapeRun
+        {
+            Id = 1,
+            Status = "Indexing",
+            CurrentPhase = "Indexing",
+            TotalListingsFound = 5,
+            ListingsFilteredPreQueue = 2,  // 2 terminal status listings filtered
+            ListingsProcessed = 2,  // 2 already processed, this will be the 3rd (last)
+            ListingsAddedActive = 2
+        };
+        var scrapeJob = new ScrapeJob { Id = 1, SearchTerm = "test" };
+        _dbContext.ScrapeRuns.Add(scrapeRun);
+        _dbContext.ScrapeJobs.Add(scrapeJob);
+
+        var scrapeRunListing = new ScrapeRunListing
+        {
+            ScrapeRunId = 1,
+            ScrapeJobId = 1,
+            ListingId = "LAST123",
+            Status = "Pending"
+        };
+        _dbContext.ScrapeRunListings.Add(scrapeRunListing);
+        await _dbContext.SaveChangesAsync();
+
+        SetupBlobWithContent("<html></html>");
+
+        var parsedListing = new ExtractedEbayListing(
+            id: "LAST123",
+            title: "Last Product",
+            price: 50m,
+            currency: "GBP",
+            shippingCost: null,
+            Condition: Condition.NEW,
+            images: null,
+            listingStatus: EbayListingStatus.Active,
+            purchaseFormat: null,
+            ItemSpecifics: null,
+            descriptionSource: null,
+            SoldDateUtc: null,
+            Location: null,
+            Url: null
+        );
+
+        _listingParserMock
+            .Setup(p => p.ParseProductListing(It.IsAny<IDocument>(), It.IsAny<string>()))
+            .Returns(parsedListing);
+
+        var endpoint = new ProcessListingEndpoint(
+            _blobServiceMock.Object,
+            _dbContext,
+            _listingParserMock.Object,
+            _loggerMock.Object);
+
+        var request = new ProcessListingRequest(1, 0, "LAST123", 1, "path");
+        var httpRequest = MockHttpRequestData.Create(request);
+
+        // Act
+        await endpoint.Run(httpRequest);
+
+        // Assert - ScrapeRun should now be Completed
+        var updatedRun = await _dbContext.ScrapeRuns.AsNoTracking().FirstOrDefaultAsync(sr => sr.Id == 1);
+        Assert.Multiple(() =>
+        {
+            Assert.That(updatedRun!.ListingsProcessed, Is.EqualTo(3), "ListingsProcessed should be incremented to 3");
+            Assert.That(updatedRun.Status, Is.EqualTo("Completed"),
+                "ScrapeRun should be marked Completed when ListingsProcessed reaches TotalListingsFound - ListingsFilteredPreQueue");
+            Assert.That(updatedRun.CurrentPhase, Is.EqualTo("Completed"));
+            Assert.That(updatedRun.CompletedUtc, Is.Not.Null, "CompletedUtc should be set");
+        });
+    }
+
+    [Test]
+    public async Task Run_should_NOT_mark_ScrapeRun_as_Completed_when_more_listings_remain()
+    {
+        // Arrange - ScrapeRun with 5 listings to process, only 1 done so far
+        var scrapeRun = new ScrapeRun
+        {
+            Id = 1,
+            Status = "Indexing",
+            CurrentPhase = "Indexing",
+            TotalListingsFound = 5,
+            ListingsFilteredPreQueue = 0,
+            ListingsProcessed = 1,  // Only 1 done, this will be 2nd
+            ListingsAddedActive = 1
+        };
+        var scrapeJob = new ScrapeJob { Id = 1, SearchTerm = "test" };
+        _dbContext.ScrapeRuns.Add(scrapeRun);
+        _dbContext.ScrapeJobs.Add(scrapeJob);
+
+        var scrapeRunListing = new ScrapeRunListing
+        {
+            ScrapeRunId = 1,
+            ScrapeJobId = 1,
+            ListingId = "MID123",
+            Status = "Pending"
+        };
+        _dbContext.ScrapeRunListings.Add(scrapeRunListing);
+        await _dbContext.SaveChangesAsync();
+
+        SetupBlobWithContent("<html></html>");
+
+        var parsedListing = new ExtractedEbayListing(
+            id: "MID123",
+            title: "Middle Product",
+            price: 50m,
+            currency: "GBP",
+            shippingCost: null,
+            Condition: Condition.NEW,
+            images: null,
+            listingStatus: EbayListingStatus.Active,
+            purchaseFormat: null,
+            ItemSpecifics: null,
+            descriptionSource: null,
+            SoldDateUtc: null,
+            Location: null,
+            Url: null
+        );
+
+        _listingParserMock
+            .Setup(p => p.ParseProductListing(It.IsAny<IDocument>(), It.IsAny<string>()))
+            .Returns(parsedListing);
+
+        var endpoint = new ProcessListingEndpoint(
+            _blobServiceMock.Object,
+            _dbContext,
+            _listingParserMock.Object,
+            _loggerMock.Object);
+
+        var request = new ProcessListingRequest(1, 0, "MID123", 1, "path");
+        var httpRequest = MockHttpRequestData.Create(request);
+
+        // Act
+        await endpoint.Run(httpRequest);
+
+        // Assert - ScrapeRun should still be Indexing (not Completed)
+        var updatedRun = await _dbContext.ScrapeRuns.AsNoTracking().FirstOrDefaultAsync(sr => sr.Id == 1);
+        Assert.Multiple(() =>
+        {
+            Assert.That(updatedRun!.ListingsProcessed, Is.EqualTo(2), "ListingsProcessed should be incremented to 2");
+            Assert.That(updatedRun.Status, Is.EqualTo("Indexing"), "ScrapeRun should still be Indexing (3 more listings remain)");
+            Assert.That(updatedRun.CurrentPhase, Is.EqualTo("Indexing"));
+            Assert.That(updatedRun.CompletedUtc, Is.Null, "CompletedUtc should still be null");
+        });
+    }
+
     private void SetupBlobWithContent(string htmlContent)
     {
         var mockBlobContainerClient = new Mock<BlobContainerClient>();

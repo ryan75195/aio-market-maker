@@ -34,6 +34,7 @@ namespace AIOMarketMaker.Core.Parsers
     {
         ExtractedEbayListing ParseProductListing(IDocument document, string url);
         string? ParseDescription(IDocument document);
+        bool IsProductCatalogPage(IDocument document);
     }
 
     public class EbayListingParser : IListingParser
@@ -371,6 +372,16 @@ namespace AIOMarketMaker.Core.Parsers
             }
 
             return locationStr;
+        }
+
+        /// <summary>
+        /// Detects if the page is a product catalog page (redirected from /itm/ to /p/).
+        /// Product catalog pages have a different HTML structure and cannot be parsed as individual listings.
+        /// </summary>
+        public bool IsProductCatalogPage(IDocument document)
+        {
+            var canonical = document.QuerySelector("link[rel='canonical']")?.GetAttribute("href");
+            return canonical != null && canonical.Contains("/p/");
         }
     }
 }

@@ -612,5 +612,43 @@ namespace AIOMarketMaker.Tests.Unit
                 Assert.That(title, Does.Contain("Mac Mini"), "Title should contain Mac Mini");
             });
         }
+
+        [Test]
+        public void Should_detect_product_catalog_page_by_canonical_url()
+        {
+            // Product catalog pages have canonical URLs containing "/p/" (e.g., /p/12345678)
+            var doc = PageBuilder.BuildProductPageWithCanonical(
+                canonicalUrl: "https://www.ebay.co.uk/p/12345678");
+            var parser = (EbayListingParser)_serviceUnderTest;
+
+            var result = parser.IsProductCatalogPage(doc);
+
+            Assert.That(result, Is.True, "Should detect product catalog page from canonical URL containing /p/");
+        }
+
+        [Test]
+        public void Should_not_detect_regular_listing_as_product_page()
+        {
+            // Regular listing pages have canonical URLs containing "/itm/" (e.g., /itm/123456789)
+            var doc = PageBuilder.BuildProductPageWithCanonical(
+                canonicalUrl: "https://www.ebay.co.uk/itm/123456789");
+            var parser = (EbayListingParser)_serviceUnderTest;
+
+            var result = parser.IsProductCatalogPage(doc);
+
+            Assert.That(result, Is.False, "Should not detect regular item listing as product catalog page");
+        }
+
+        [Test]
+        public void Should_return_false_when_canonical_link_is_missing()
+        {
+            // Some pages might not have a canonical link at all
+            var doc = PageBuilder.BuildEmptyDocument();
+            var parser = (EbayListingParser)_serviceUnderTest;
+
+            var result = parser.IsProductCatalogPage(doc);
+
+            Assert.That(result, Is.False, "Should return false when canonical link is missing");
+        }
     }
 }

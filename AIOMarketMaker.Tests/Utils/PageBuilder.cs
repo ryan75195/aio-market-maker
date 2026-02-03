@@ -116,7 +116,20 @@ namespace AIOMarketMaker.Tests.Utils
 
         public static IDocument LoadDocument(string html)
         {
-            // AngleSharp’s HtmlParser.ParseDocument is fully synchronous
+            // AngleSharp's HtmlParser.ParseDocument is fully synchronous
+            return new HtmlParser().ParseDocument(html);
+        }
+
+        public static IDocument BuildProductPageWithCanonical(string canonicalUrl)
+        {
+            var html = $@"<!DOCTYPE html>
+<html>
+<head>
+    <link rel=""canonical"" href=""{canonicalUrl}"" />
+</head>
+<body>
+</body>
+</html>";
             return new HtmlParser().ParseDocument(html);
         }
     }

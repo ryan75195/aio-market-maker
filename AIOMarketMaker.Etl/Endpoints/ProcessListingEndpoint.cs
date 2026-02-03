@@ -123,6 +123,30 @@ public class ProcessListingEndpoint
         var document = await context.OpenAsync(request => request.Content(html));
         var listingUrl = $"https://www.ebay.co.uk/itm/{input.ListingId}";
 
+        // Check if this is a product catalog page (redirected from /itm/ to /p/)
+        // These are valid eBay pages, just not individual item listings - skip them
+        if (_listingParser.IsProductCatalogPage(document))
+        {
+            _logger.LogInformation("Listing {ListingId} redirected to product catalog page, skipping",
+                input.ListingId);
+
+            var skippedSrl = existingEntry ?? await _dbContext.ScrapeRunListings
+                .FirstOrDefaultAsync(srl => srl.ScrapeRunId == input.ScrapeRunId && srl.ListingId == input.ListingId);
+            if (skippedSrl != null)
+            {
+                skippedSrl.Status = "Skipped";
+                skippedSrl.FailureReason = "PRODUCT_PAGE";
+                skippedSrl.CompletedUtc = DateTime.UtcNow;
+                await _dbContext.SaveChangesAsync();
+            }
+
+            await IncrementScrapeRunCountersAsync(input.ScrapeRunId, "skipped");
+
+            var productPageResponse = req.CreateResponse(HttpStatusCode.OK);
+            await productPageResponse.WriteAsJsonAsync(new ProcessListingResponse(true, "skipped", null));
+            return productPageResponse;
+        }
+
         // Parse the listing
         var parsedListing = _listingParser.ParseProductListing(document, listingUrl);
 
@@ -285,6 +309,7 @@ public class ProcessListingEndpoint
     /// Atomically increment ScrapeRun counters using SQL UPDATE to prevent race conditions.
     /// Multiple workers processing different listings concurrently were causing lost updates
     /// with the previous read-modify-write pattern.
+    /// Also checks if this was the last listing and marks the run as Completed.
     /// </summary>
     private async Task IncrementScrapeRunCountersAsync(int scrapeRunId, string status, string? listingStatus = null)
     {
@@ -311,6 +336,25 @@ public class ProcessListingEndpoint
             if (rowsAffected == 0)
             {
                 _logger.LogWarning("ScrapeRun {ScrapeRunId} not found while incrementing counters", scrapeRunId);
+                return;
+            }
+
+            // Check if this was the last listing and mark as Completed
+            // Use atomic SQL to avoid race conditions with other workers
+            var completionSql = @"
+                UPDATE ScrapeRuns
+                SET Status = 'Completed', CurrentPhase = 'Completed', CompletedUtc = {1}
+                WHERE Id = {0}
+                  AND (Status = 'Running' OR Status = 'Indexing')
+                  AND CurrentPhase = 'Indexing'
+                  AND TotalListingsFound > 0
+                  AND ListingsProcessed >= (TotalListingsFound - ListingsFilteredPreQueue)";
+
+            var completedRows = await _dbContext.Database.ExecuteSqlRawAsync(completionSql, scrapeRunId, DateTime.UtcNow);
+
+            if (completedRows > 0)
+            {
+                _logger.LogInformation("Marked ScrapeRun {ScrapeRunId} as Completed (last listing processed)", scrapeRunId);
             }
         }
         else
@@ -325,6 +369,20 @@ public class ProcessListingEndpoint
                 else if (status == "updated") scrapeRun.ListingsUpdated++;
                 else if (status == "skipped") scrapeRun.ListingsSkipped++;
                 else if (status == "failed") scrapeRun.ListingsFailed++;
+
+                // Check if this was the last listing and mark as Completed
+                var listingsToProcess = scrapeRun.TotalListingsFound - scrapeRun.ListingsFilteredPreQueue;
+                if ((scrapeRun.Status == "Running" || scrapeRun.Status == "Indexing") &&
+                    scrapeRun.CurrentPhase == "Indexing" &&
+                    scrapeRun.TotalListingsFound > 0 &&
+                    scrapeRun.ListingsProcessed >= listingsToProcess)
+                {
+                    scrapeRun.Status = "Completed";
+                    scrapeRun.CurrentPhase = "Completed";
+                    scrapeRun.CompletedUtc = DateTime.UtcNow;
+                    _logger.LogInformation("Marked ScrapeRun {ScrapeRunId} as Completed (last listing processed)", scrapeRunId);
+                }
+
                 await _dbContext.SaveChangesAsync();
             }
         }
