@@ -187,7 +187,7 @@ namespace AIOMarketMaker.Core.Services
             var downloadLink = metadata.Url;
             var html = await _jobRepository.GetFileContentsAsync(jobId, downloadLink, new CancellationToken());
             var doc = await LoadDocumentAsync(html);
-            return _listingParser.ParseProductListing(doc, downloadLink);
+            return _listingParser.ParseProductListing(doc);
         }
 
         private async Task<IEnumerable<EbayProductSummary>> GetProductsFromPageAsync(string query, int pageNumber, bool sold, Condition condition, BuyingFormat buyingFormat)

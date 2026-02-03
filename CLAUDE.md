@@ -281,6 +281,9 @@ Focus on parser logic (`EbaySearchParser`, `EbayListingParser`) with AngleSharp 
 - **Interfaces at the top of the file**, above records and class implementations.
 - **Records above the class.** DTOs/records declared in the same file go between the namespace and the class definition.
 
+**Style:**
+- **Always use braces for `if`, `else`, `for`, `foreach`, `while`, and `using` blocks**, even for single-line bodies.
+
 **Architecture:**
 - **Thin controllers/triggers.** HTTP/timer triggers handle only request parsing, response building, and status codes. Business logic belongs in a service.
 - **Don't leak entities across boundaries.** Services return their own result types (e.g., `EnqueuedScrapeRun`), not EF Core entities (e.g., `ScrapeRun`).

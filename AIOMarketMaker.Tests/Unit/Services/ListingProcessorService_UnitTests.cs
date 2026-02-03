@@ -118,7 +118,7 @@ public class ListingProcessorService_UnitTests
             Location: "London", Url: $"http://www.ebay.co.uk/itm/{id}");
 
         _listingParserMock
-            .Setup(p => p.ParseProductListing(It.IsAny<IDocument>(), It.IsAny<string>()))
+            .Setup(p => p.ParseProductListing(It.IsAny<IDocument>()))
             .Returns(parsed);
     }
 }

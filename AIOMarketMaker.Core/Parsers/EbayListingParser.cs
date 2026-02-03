@@ -32,14 +32,14 @@ namespace AIOMarketMaker.Core.Parsers
 
     public interface IListingParser
     {
-        ExtractedEbayListing ParseProductListing(IDocument document, string url);
+        ExtractedEbayListing ParseProductListing(IDocument document);
         string? ParseDescription(IDocument document);
         bool IsProductCatalogPage(IDocument document);
     }
 
     public class EbayListingParser : IListingParser
     {
-        public ExtractedEbayListing ParseProductListing(IDocument document, string url)
+        public ExtractedEbayListing ParseProductListing(IDocument document)
         {
             var id = GetProductId(document);
             var title = GetProductTitle(document);
@@ -54,6 +54,7 @@ namespace AIOMarketMaker.Core.Parsers
             var purchaseFormat = GetPurchaseFormat(document);
             var soldDate = GetEndDate(document);
             var location = GetLocation(document);
+            var url = id != null ? $"https://www.ebay.co.uk/itm/{id}" : null;
 
             return new ExtractedEbayListing(
                 id: id,

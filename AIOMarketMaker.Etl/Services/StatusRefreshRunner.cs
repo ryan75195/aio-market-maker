@@ -131,7 +131,7 @@ public class StatusRefreshRunner : IStatusRefreshRunner
             try
             {
                 var doc = await LoadDocumentAsync(html);
-                var parsed = _listingParser.ParseProductListing(doc, listing.Url!);
+                var parsed = _listingParser.ParseProductListing(doc);
                 var newStatus = parsed.listingStatus?.ToString() ?? "Unknown";
 
                 if (newStatus != listing.CurrentStatus)

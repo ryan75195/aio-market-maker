@@ -320,7 +320,7 @@ public class ProcessListingEndpoint_UnitTests
         );
 
         _listingParserMock
-            .Setup(p => p.ParseProductListing(It.IsAny<IDocument>(), It.IsAny<string>()))
+            .Setup(p => p.ParseProductListing(It.IsAny<IDocument>()))
             .Returns(parsedListing);
 
         var endpoint = CreateEndpoint();
@@ -391,7 +391,7 @@ public class ProcessListingEndpoint_UnitTests
         );
 
         _listingParserMock
-            .Setup(p => p.ParseProductListing(It.IsAny<IDocument>(), It.IsAny<string>()))
+            .Setup(p => p.ParseProductListing(It.IsAny<IDocument>()))
             .Returns(parsedListing);
 
         var endpoint = CreateEndpoint();
@@ -494,7 +494,7 @@ public class ProcessListingEndpoint_UnitTests
         );
 
         _listingParserMock
-            .Setup(p => p.ParseProductListing(It.IsAny<IDocument>(), It.IsAny<string>()))
+            .Setup(p => p.ParseProductListing(It.IsAny<IDocument>()))
             .Returns(parsedListing);
 
         var endpoint = CreateEndpoint();
@@ -574,7 +574,7 @@ public class ProcessListingEndpoint_UnitTests
         );
 
         _listingParserMock
-            .Setup(p => p.ParseProductListing(It.IsAny<IDocument>(), It.IsAny<string>()))
+            .Setup(p => p.ParseProductListing(It.IsAny<IDocument>()))
             .Returns(parsedListing);
 
         var endpoint = CreateEndpoint();
@@ -655,7 +655,7 @@ public class ProcessListingEndpoint_UnitTests
         );
 
         _listingParserMock
-            .Setup(p => p.ParseProductListing(It.IsAny<IDocument>(), It.IsAny<string>()))
+            .Setup(p => p.ParseProductListing(It.IsAny<IDocument>()))
             .Returns(parsedListing);
 
         var endpoint = CreateEndpoint();
@@ -733,7 +733,7 @@ public class ProcessListingEndpoint_UnitTests
         );
 
         _listingParserMock
-            .Setup(p => p.ParseProductListing(It.IsAny<IDocument>(), It.IsAny<string>()))
+            .Setup(p => p.ParseProductListing(It.IsAny<IDocument>()))
             .Returns(parsedListing);
 
         var endpoint = CreateEndpoint();
@@ -806,7 +806,7 @@ public class ProcessListingEndpoint_UnitTests
         );
 
         _listingParserMock
-            .Setup(p => p.ParseProductListing(It.IsAny<IDocument>(), It.IsAny<string>()))
+            .Setup(p => p.ParseProductListing(It.IsAny<IDocument>()))
             .Returns(parsedListing);
 
         var endpoint = CreateEndpoint();
@@ -865,7 +865,7 @@ public class ProcessListingEndpoint_UnitTests
         );
 
         _listingParserMock
-            .Setup(p => p.ParseProductListing(It.IsAny<IDocument>(), It.IsAny<string>()))
+            .Setup(p => p.ParseProductListing(It.IsAny<IDocument>()))
             .Returns(parsedListing);
 
         var endpoint = CreateEndpoint();
@@ -933,7 +933,7 @@ public class ProcessListingEndpoint_UnitTests
         );
 
         _listingParserMock
-            .Setup(p => p.ParseProductListing(It.IsAny<IDocument>(), It.IsAny<string>()))
+            .Setup(p => p.ParseProductListing(It.IsAny<IDocument>()))
             .Returns(parsedListing);
 
         var endpoint = CreateEndpoint();
@@ -1003,7 +1003,7 @@ public class ProcessListingEndpoint_UnitTests
         );
 
         _listingParserMock
-            .Setup(p => p.ParseProductListing(It.IsAny<IDocument>(), It.IsAny<string>()))
+            .Setup(p => p.ParseProductListing(It.IsAny<IDocument>()))
             .Returns(parsedListing);
 
         var endpoint = CreateEndpoint();
@@ -1058,7 +1058,7 @@ public class ProcessListingEndpoint_UnitTests
         );
 
         _listingParserMock
-            .Setup(p => p.ParseProductListing(It.IsAny<IDocument>(), It.IsAny<string>()))
+            .Setup(p => p.ParseProductListing(It.IsAny<IDocument>()))
             .Returns(parsedListing);
 
         var endpoint = CreateEndpoint();
@@ -1124,7 +1124,7 @@ public class ProcessListingEndpoint_UnitTests
         );
 
         _listingParserMock
-            .Setup(p => p.ParseProductListing(It.IsAny<IDocument>(), It.IsAny<string>()))
+            .Setup(p => p.ParseProductListing(It.IsAny<IDocument>()))
             .Returns(parsedListing);
 
         var endpoint = CreateEndpoint();
@@ -1204,7 +1204,7 @@ public class ProcessListingEndpoint_UnitTests
         );
 
         _listingParserMock
-            .Setup(p => p.ParseProductListing(It.IsAny<IDocument>(), It.IsAny<string>()))
+            .Setup(p => p.ParseProductListing(It.IsAny<IDocument>()))
             .Returns(parsedListing);
 
         var endpoint = CreateEndpoint();
@@ -1294,7 +1294,7 @@ public class ProcessListingEndpoint_UnitTests
         );
 
         _listingParserMock
-            .Setup(p => p.ParseProductListing(It.IsAny<IDocument>(), It.IsAny<string>()))
+            .Setup(p => p.ParseProductListing(It.IsAny<IDocument>()))
             .Returns(parsedListing);
 
         var endpoint = CreateEndpoint();
@@ -1365,7 +1365,7 @@ public class ProcessListingEndpoint_UnitTests
         );
 
         _listingParserMock
-            .Setup(p => p.ParseProductListing(It.IsAny<IDocument>(), It.IsAny<string>()))
+            .Setup(p => p.ParseProductListing(It.IsAny<IDocument>()))
             .Returns(parsedListing);
 
         var endpoint = CreateEndpoint();

@@ -16,6 +16,8 @@ public interface IListingProcessorService
     Task<ProcessListingResponse> Process(ProcessListingRequest request);
 }
 
+public record UpsertResult(Listing Listing, string Status, bool IsUpdate, string? OldStatus, decimal? OldPrice);
+
 public class ListingProcessorService : IListingProcessorService
 {
     private readonly BlobServiceClient _blobService;
@@ -52,20 +54,30 @@ public class ListingProcessorService : IListingProcessorService
 
         var html = await FetchHtml(request.BlobPath);
         if (html == null)
+        {
             return new ProcessListingResponse(false, "failed", "Blob not found");
+        }
 
-        var context = BrowsingContext.New(Configuration.Default);
-        var document = await context.OpenAsync(req => req.Content(html));
+        var document = await ParseHtml(html);
 
         if (_listingParser.IsProductCatalogPage(document))
+        {
             return await HandleProductCatalogPage(request, scrapeRunListing);
+        }
 
-        var listingUrl = $"https://www.ebay.co.uk/itm/{request.ListingId}";
-        var parsedListing = _listingParser.ParseProductListing(document, listingUrl);
+        var parsedListing = _listingParser.ParseProductListing(document);
 
         if (string.IsNullOrEmpty(parsedListing.title))
+        {
             return await HandleParseFailed(request, scrapeRunListing, html.Length);
+        }
 
+        return await UpsertAndRecordHistory(request, scrapeRunListing, parsedListing);
+    }
+
+    private async Task<ProcessListingResponse> UpsertAndRecordHistory(
+        ProcessListingRequest request, ScrapeRunListing? scrapeRunListing, ExtractedEbayListing parsedListing)
+    {
         var existingListing = await _dbContext.Listings
             .FirstOrDefaultAsync(l => l.ListingId == request.ListingId
                                    && l.ScrapeJobId == request.ScrapeJobId);
@@ -73,22 +85,20 @@ public class ListingProcessorService : IListingProcessorService
         var newStatus = parsedListing.listingStatus?.ToString();
 
         if (existingListing != null && !ListingStatusHelper.CanUpdateStatus(existingListing.ListingStatus, newStatus))
+        {
             return await HandleInvalidTransition(request, scrapeRunListing, existingListing.ListingStatus, newStatus);
+        }
 
-        // Capture old values before upsert mutates the entity
-        var oldStatus = existingListing?.ListingStatus;
-        var oldPrice = existingListing?.Price;
-
-        var (listing, status) = UpsertListing(existingListing, parsedListing, request);
+        var result = UpsertListing(existingListing, parsedListing, request);
 
         MarkScrapeRunListingComplete(scrapeRunListing);
         await _dbContext.SaveChangesAsync();
 
-        await CreateStatusHistory(existingListing != null, listing, parsedListing, newStatus, oldStatus, oldPrice);
-        await _counterService.Increment(request.ScrapeRunId, status, newStatus);
+        await CreateStatusHistory(result, parsedListing);
+        await _counterService.Increment(request.ScrapeRunId, result.Status, newStatus);
 
-        _logger.LogInformation("Processed listing {ListingId} with status {Status}", request.ListingId, status);
-        return new ProcessListingResponse(true, status, null);
+        _logger.LogInformation("Processed listing {ListingId} with status {Status}", request.ListingId, result.Status);
+        return new ProcessListingResponse(true, result.Status, null);
     }
 
     private async Task<string?> FetchHtml(string blobPath)
@@ -163,9 +173,12 @@ public class ListingProcessorService : IListingProcessorService
             $"Invalid status transition: {oldStatus} -> {newStatus}");
     }
 
-    private (Listing listing, string status) UpsertListing(
+    private UpsertResult UpsertListing(
         Listing? existing, ExtractedEbayListing parsed, ProcessListingRequest request)
     {
+        var oldStatus = existing?.ListingStatus;
+        var oldPrice = existing?.Price;
+
         if (existing != null)
         {
             existing.Title = parsed.title;
@@ -180,7 +193,7 @@ public class ListingProcessorService : IListingProcessorService
             existing.Location = parsed.Location;
             existing.Url = parsed.Url;
             existing.UpdatedUtc = DateTime.UtcNow;
-            return (existing, "updated");
+            return new UpsertResult(existing, "updated", IsUpdate: true, oldStatus, oldPrice);
         }
 
         var newListing = new Listing
@@ -201,23 +214,32 @@ public class ListingProcessorService : IListingProcessorService
             CreatedUtc = DateTime.UtcNow
         };
         _dbContext.Listings.Add(newListing);
-        return (newListing, "added");
+        return new UpsertResult(newListing, "added", IsUpdate: false, null, null);
     }
 
     private void MarkScrapeRunListingComplete(ScrapeRunListing? scrapeRunListing)
     {
-        if (scrapeRunListing == null) return;
+        if (scrapeRunListing == null)
+        {
+            return;
+        }
+
         scrapeRunListing.Status = "Complete";
         scrapeRunListing.CompletedUtc = DateTime.UtcNow;
     }
 
-    private async Task CreateStatusHistory(
-        bool isUpdate, Listing listing,
-        ExtractedEbayListing parsed, string? newStatus,
-        string? oldStatus, decimal? oldPrice)
+    private static async Task<AngleSharp.Dom.IDocument> ParseHtml(string html)
     {
-        var statusChanged = isUpdate && oldStatus != newStatus;
-        var priceChanged = isUpdate && oldPrice != parsed.price;
+        var context = BrowsingContext.New(Configuration.Default);
+        return await context.OpenAsync(req => req.Content(html));
+    }
+
+    private async Task CreateStatusHistory(UpsertResult result, ExtractedEbayListing parsed)
+    {
+        var isUpdate = result.IsUpdate;
+        var newStatus = parsed.listingStatus?.ToString();
+        var statusChanged = isUpdate && result.OldStatus != newStatus;
+        var priceChanged = isUpdate && result.OldPrice != parsed.price;
 
         if (!isUpdate || statusChanged || priceChanged)
         {
@@ -227,7 +249,7 @@ public class ListingProcessorService : IListingProcessorService
 
             _dbContext.ListingStatusHistory.Add(new ListingStatusHistory
             {
-                ListingId = listing.Id,
+                ListingId = result.Listing.Id,
                 ListingStatus = newStatus ?? "Unknown",
                 Price = parsed.price,
                 SoldDateUtc = parsed.SoldDateUtc,
@@ -237,7 +259,7 @@ public class ListingProcessorService : IListingProcessorService
             await _dbContext.SaveChangesAsync();
 
             _logger.LogInformation("Created ListingStatusHistory for {ListingId}: {Source} ({Status}, {Price})",
-                listing.ListingId, source, newStatus, parsed.price);
+                result.Listing.ListingId, source, newStatus, parsed.price);
         }
     }
 }
