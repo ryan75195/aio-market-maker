@@ -59,10 +59,6 @@ public class ScrapeJobProcessor : IScrapeJobProcessor
 
         try
         {
-            scrapeRun.Status = "Searching";
-            scrapeRun.CurrentPhase = "Searching Sold";
-            await _dbContext.SaveChangesAsync();
-
             await RunScrape(scrapeRun, message.JobId, message.SearchTerm);
 
             _logger.LogInformation("Scrape job completed: RunId={RunId}", message.ScrapeRunId);
@@ -82,62 +78,50 @@ public class ScrapeJobProcessor : IScrapeJobProcessor
     {
         const int maxPages = 100;
 
-        var soldSummaries = await SearchListings(searchTerm, sold: true, maxPages);
-        _logger.LogInformation("Sold search complete: {Count} unique sold listings", soldSummaries.Count);
-
-        scrapeRun.CurrentPhase = "Searching Active";
-        await _dbContext.SaveChangesAsync();
-
-        var activeSummaries = await SearchListings(searchTerm, sold: false, maxPages);
-        _logger.LogInformation("Active search complete: {Count} unique active listings", activeSummaries.Count);
-
-        scrapeRun.CurrentPhase = "Classifying";
-        await _dbContext.SaveChangesAsync();
-
-        var classified = await ClassifyListings(activeSummaries, soldSummaries, jobId);
-
-        scrapeRun.TotalListingsFound = classified.TotalFound;
-        scrapeRun.ListingsFilteredPreQueue = classified.TerminalCount;
+        var soldSummaries = await SearchSoldListings(scrapeRun, searchTerm, maxPages);
+        var activeSummaries = await SearchActiveListings(scrapeRun, searchTerm, maxPages);
+        var classified = await ClassifyListings(scrapeRun, activeSummaries, soldSummaries, jobId);
 
         if (classified.ToScrape.Count == 0 && classified.ToUpdateFromSummary.Count == 0)
         {
-            scrapeRun.Status = "Completed";
-            scrapeRun.CurrentPhase = "Completed";
-            scrapeRun.CompletedUtc = DateTime.UtcNow;
-            _logger.LogInformation("No new or changed listings found for job {JobId} - marking as completed", jobId);
-            await _dbContext.SaveChangesAsync();
+            _logger.LogInformation("No new or changed listings found for job {JobId}", jobId);
+            await MarkCompleted(scrapeRun);
             return;
         }
 
         if (classified.ToUpdateFromSummary.Count > 0)
-        {
-            scrapeRun.CurrentPhase = "Updating from summary";
-            await _dbContext.SaveChangesAsync();
-
-            await UpdateListingsFromSummary(classified.ToUpdateFromSummary, scrapeRun, jobId);
-            _logger.LogInformation("Updated {Count} listings from summary data", classified.ToUpdateFromSummary.Count);
-        }
+            await UpdateListingsFromSummary(scrapeRun, classified.ToUpdateFromSummary, jobId);
 
         if (classified.ToScrape.Count > 0)
-        {
-            scrapeRun.Status = "Indexing";
-            scrapeRun.CurrentPhase = "Indexing";
-            await _dbContext.SaveChangesAsync();
-
-            await CreateAndEnqueueListings(classified.ToScrape, scrapeRun, jobId);
-        }
+            await EnqueueListingsForScrape(scrapeRun, classified.ToScrape, jobId);
         else
-        {
-            scrapeRun.Status = "Completed";
-            scrapeRun.CurrentPhase = "Completed";
-            scrapeRun.CompletedUtc = DateTime.UtcNow;
-            await _dbContext.SaveChangesAsync();
-        }
+            await MarkCompleted(scrapeRun);
+    }
+
+    private async Task<List<IEbayProductSummary>> SearchSoldListings(
+        ScrapeRun scrapeRun, string searchTerm, int maxPages)
+    {
+        await SetPhase(scrapeRun, "Searching Sold", status: "Searching");
+        var summaries = await SearchListings(searchTerm, sold: true, maxPages);
+        _logger.LogInformation("Sold search complete: {Count} unique sold listings", summaries.Count);
+        return summaries;
+    }
+
+    private async Task<List<IEbayProductSummary>> SearchActiveListings(
+        ScrapeRun scrapeRun, string searchTerm, int maxPages)
+    {
+        await SetPhase(scrapeRun, "Searching Active");
+        var summaries = await SearchListings(searchTerm, sold: false, maxPages);
+        _logger.LogInformation("Active search complete: {Count} unique active listings", summaries.Count);
+        return summaries;
     }
 
     private async Task<ClassifiedListings> ClassifyListings(
-        List<IEbayProductSummary> activeSummaries, List<IEbayProductSummary> soldSummaries, int jobId)
+        ScrapeRun scrapeRun, List<IEbayProductSummary> activeSummaries,
+        List<IEbayProductSummary> soldSummaries, int jobId)
     {
+        await SetPhase(scrapeRun, "Classifying");
+
         // Merge — sold wins if listing appears in both
         var merged = new Dictionary<string, IEbayProductSummary>();
         foreach (var summary in soldSummaries.Concat(activeSummaries))
@@ -174,33 +158,30 @@ public class ScrapeJobProcessor : IScrapeJobProcessor
         foreach (var (listingId, summary) in merged)
         {
             if (!existingListings.TryGetValue(listingId, out var existing))
-            {
-                toScrape.Add(summary);  // New
-            }
+                toScrape.Add(summary);
             else if (TerminalStatuses.Contains(existing.ListingStatus ?? ""))
-            {
-                terminalCount++;  // Terminal — skip
-            }
+                terminalCount++;
             else if (summary.IsSold)
-            {
-                toScrape.Add(summary);  // Sold transition — full scrape
-            }
+                toScrape.Add(summary);
             else
-            {
-                toUpdate.Add(summary);  // Existing active — summary update
-            }
+                toUpdate.Add(summary);
         }
 
         _logger.LogInformation(
             "Classified {Total} listings: {ScrapeCount} to scrape, {UpdateCount} to update from summary, {TerminalCount} terminal",
             merged.Count, toScrape.Count, toUpdate.Count, terminalCount);
 
+        scrapeRun.TotalListingsFound = merged.Count;
+        scrapeRun.ListingsFilteredPreQueue = terminalCount;
+
         return new ClassifiedListings(toScrape, toUpdate, merged.Count, terminalCount);
     }
 
     private async Task UpdateListingsFromSummary(
-        List<IEbayProductSummary> summaries, ScrapeRun scrapeRun, int jobId)
+        ScrapeRun scrapeRun, List<IEbayProductSummary> summaries, int jobId)
     {
+        await SetPhase(scrapeRun, "Updating from summary");
+
         var listingIds = summaries
             .Where(s => !string.IsNullOrEmpty(s.ListingId))
             .Select(s => s.ListingId!)
@@ -249,11 +230,14 @@ public class ScrapeJobProcessor : IScrapeJobProcessor
         }
 
         await _dbContext.SaveChangesAsync();
+        _logger.LogInformation("Updated {Count} listings from summary data", summaries.Count);
     }
 
-    private async Task CreateAndEnqueueListings(
-        List<IEbayProductSummary> summaries, ScrapeRun scrapeRun, int jobId)
+    private async Task EnqueueListingsForScrape(
+        ScrapeRun scrapeRun, List<IEbayProductSummary> summaries, int jobId)
     {
+        await SetPhase(scrapeRun, "Indexing", status: "Indexing");
+
         foreach (var summary in summaries)
         {
             if (string.IsNullOrEmpty(summary.ListingId)) continue;
@@ -280,6 +264,22 @@ public class ScrapeJobProcessor : IScrapeJobProcessor
 
         _logger.LogInformation("Enqueued {Count} listings for processing. Search phase complete for job {JobId}.",
             summaries.Count, jobId);
+    }
+
+    private async Task SetPhase(ScrapeRun scrapeRun, string phase, string? status = null)
+    {
+        if (status != null)
+            scrapeRun.Status = status;
+        scrapeRun.CurrentPhase = phase;
+        await _dbContext.SaveChangesAsync();
+    }
+
+    private async Task MarkCompleted(ScrapeRun scrapeRun)
+    {
+        scrapeRun.Status = "Completed";
+        scrapeRun.CurrentPhase = "Completed";
+        scrapeRun.CompletedUtc = DateTime.UtcNow;
+        await _dbContext.SaveChangesAsync();
     }
 
     private async Task<List<IEbayProductSummary>> SearchListings(string searchTerm, bool sold, int maxPages)

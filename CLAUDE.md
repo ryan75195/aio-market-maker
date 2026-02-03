@@ -285,6 +285,7 @@ Focus on parser logic (`EbaySearchParser`, `EbayListingParser`) with AngleSharp 
 - **Thin controllers/triggers.** HTTP/timer triggers handle only request parsing, response building, and status codes. Business logic belongs in a service.
 - **Don't leak entities across boundaries.** Services return their own result types (e.g., `EnqueuedScrapeRun`), not EF Core entities (e.g., `ScrapeRun`).
 - **Clean, small high-level methods.** Public trigger/controller methods should be short and read like a summary. Extract details into well-named private or service methods.
+- **Self-contained helper methods.** When extracting helpers, bundle all coupled concerns into the helper — state transitions, logging, and the work itself. If a phase sets status, does work, and logs the result, all three belong in the helper. The calling method should read as a clean pipeline without interleaved infrastructure.
 
 ### Anti-Patterns to Avoid
 - Don't parse prices with culture-specific decimal separators without normalization
