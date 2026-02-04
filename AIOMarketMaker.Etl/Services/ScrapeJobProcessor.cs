@@ -32,6 +32,7 @@ public class ScrapeJobProcessor : IScrapeJobProcessor
     private readonly ISearchParser _searchParser;
     private readonly IEbayUrlBuilder _urlBuilder;
     private readonly IListingIndexingService _indexingService;
+    private readonly IComparablesRefreshService _comparablesRefreshService;
 
     public ScrapeJobProcessor(
         ILogger<ScrapeJobProcessor> logger,
@@ -39,7 +40,8 @@ public class ScrapeJobProcessor : IScrapeJobProcessor
         IWebscraperClient webscraperClient,
         ISearchParser searchParser,
         IEbayUrlBuilder urlBuilder,
-        IListingIndexingService indexingService)
+        IListingIndexingService indexingService,
+        IComparablesRefreshService comparablesRefreshService)
     {
         _logger = logger;
         _dbContext = dbContext;
@@ -47,6 +49,7 @@ public class ScrapeJobProcessor : IScrapeJobProcessor
         _searchParser = searchParser;
         _urlBuilder = urlBuilder;
         _indexingService = indexingService;
+        _comparablesRefreshService = comparablesRefreshService;
     }
 
     public async Task Process(ScrapeJobMessage message)
@@ -86,20 +89,22 @@ public class ScrapeJobProcessor : IScrapeJobProcessor
         var activeSummaries = await SearchActiveListings(scrapeRun, searchTerm, maxPages);
         var classified = await ClassifyListings(scrapeRun, activeSummaries, soldSummaries, jobId);
 
-        if (classified.ToScrape.Count == 0 && classified.ToUpdateFromSummary.Count == 0)
+        if (classified.ToUpdateFromSummary.Count > 0)
         {
-            _logger.LogInformation("No new or changed listings found for job {JobId}", jobId);
-            await MarkCompleted(scrapeRun);
-            return;
+            await UpdateListingsFromSummary(scrapeRun, classified.ToUpdateFromSummary, classified.ExistingListings);
         }
 
-        if (classified.ToUpdateFromSummary.Count > 0)
-            await UpdateListingsFromSummary(scrapeRun, classified.ToUpdateFromSummary, classified.ExistingListings);
-
         if (classified.ToScrape.Count > 0)
+        {
             await EnqueueListingsForScrape(scrapeRun, classified.ToScrape, jobId);
-        else
+        }
+
+        await RefreshComparables(scrapeRun, jobId);
+
+        if (classified.ToScrape.Count == 0)
+        {
             await MarkCompleted(scrapeRun);
+        }
     }
 
     private async Task<List<IEbayProductSummary>> SearchSoldListings(
@@ -284,6 +289,26 @@ public class ScrapeJobProcessor : IScrapeJobProcessor
         scrapeRun.CurrentPhase = "Completed";
         scrapeRun.CompletedUtc = DateTime.UtcNow;
         await _dbContext.SaveChangesAsync();
+    }
+
+    private async Task RefreshComparables(ScrapeRun scrapeRun, int jobId)
+    {
+        await SetPhase(scrapeRun, "Refreshing comparables");
+
+        var activeListings = await _dbContext.Listings
+            .Where(l => l.ScrapeJobId == jobId && l.ListingStatus == "Active")
+            .ToListAsync();
+
+        if (activeListings.Count == 0)
+        {
+            _logger.LogInformation("No active listings to refresh comparables for job {JobId}", jobId);
+            return;
+        }
+
+        var result = await _comparablesRefreshService.Refresh(activeListings);
+        _logger.LogInformation(
+            "Refreshed comparables for job {JobId}: {Processed} listings, {Found} comparables",
+            jobId, result.ListingsProcessed, result.ComparablesFound);
     }
 
     private async Task<List<IEbayProductSummary>> SearchListings(string searchTerm, bool sold, int maxPages)

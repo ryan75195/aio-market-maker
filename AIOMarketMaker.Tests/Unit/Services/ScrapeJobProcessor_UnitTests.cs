@@ -23,6 +23,7 @@ public class ScrapeJobProcessor_UnitTests
     private Mock<ISearchParser> _searchParserMock = null!;
     private Mock<IEbayUrlBuilder> _urlBuilderMock = null!;
     private Mock<IListingIndexingService> _indexingServiceMock = null!;
+    private Mock<IComparablesRefreshService> _comparablesRefreshMock = null!;
 
     [SetUp]
     public void Setup()
@@ -36,6 +37,11 @@ public class ScrapeJobProcessor_UnitTests
         _searchParserMock = new Mock<ISearchParser>();
         _urlBuilderMock = new Mock<IEbayUrlBuilder>();
         _indexingServiceMock = new Mock<IListingIndexingService>();
+        _comparablesRefreshMock = new Mock<IComparablesRefreshService>();
+
+        _comparablesRefreshMock
+            .Setup(c => c.Refresh(It.IsAny<IEnumerable<Listing>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ComparablesRefreshResult(0, 0));
 
         _indexingServiceMock
             .Setup(i => i.Index(It.IsAny<Listing>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()))
@@ -72,7 +78,8 @@ public class ScrapeJobProcessor_UnitTests
 
     private ScrapeJobProcessor CreateProcessor() => new(
         _loggerMock.Object, _dbContext, _webscraperClientMock.Object,
-        _searchParserMock.Object, _urlBuilderMock.Object, _indexingServiceMock.Object);
+        _searchParserMock.Object, _urlBuilderMock.Object, _indexingServiceMock.Object,
+        _comparablesRefreshMock.Object);
 
     private static EbayProductSummary CreateSummary(
         string listingId, decimal? price = 100m, bool isSold = false,
@@ -559,5 +566,41 @@ public class ScrapeJobProcessor_UnitTests
 
         _indexingServiceMock.Verify(i => i.Index(
             It.IsAny<Listing>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Test]
+    public async Task Should_refresh_comparables_for_active_listings()
+    {
+        CreateAndSeedScrapeRun();
+
+        _dbContext.Listings.Add(new Listing
+        {
+            ListingId = "COMP1", ScrapeJobId = 1,
+            Title = "Active Item", ListingStatus = "Active",
+            Price = 100m, Condition = "USED", ShippingCost = 5m
+        });
+        await _dbContext.SaveChangesAsync();
+
+        var summary = CreateSummary("COMP1", price: 90m, isSold: false);
+
+        var callCount = 0;
+        _searchParserMock
+            .Setup(p => p.ParseSearchResults(It.IsAny<IDocument>()))
+            .Returns(() =>
+            {
+                callCount++;
+                return callCount == 2
+                    ? new[] { summary }
+                    : Enumerable.Empty<IEbayProductSummary>();
+            });
+
+        var message = new ScrapeJobMessage(1, 1, "Test", "Manual");
+
+        await CreateProcessor().Process(message);
+
+        _comparablesRefreshMock.Verify(c => c.Refresh(
+            It.Is<IEnumerable<Listing>>(listings =>
+                listings.Any(l => l.ListingId == "COMP1")),
+            It.IsAny<CancellationToken>()), Times.Once);
     }
 }
