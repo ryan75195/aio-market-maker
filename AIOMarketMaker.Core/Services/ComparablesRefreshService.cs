@@ -20,7 +20,7 @@ public class ComparablesRefreshService : IComparablesRefreshService
     private const int TopK = 50;
     private const int MaxConcurrency = 10;
 
-    private static readonly Metadata SoldFilter = new()
+    private static Metadata CreateSoldFilter() => new()
     {
         ["listingStatus"] = new Metadata { ["$eq"] = "Sold" }
     };
@@ -46,7 +46,7 @@ public class ComparablesRefreshService : IComparablesRefreshService
         var listings = activeListings.ToList();
         var totalComparables = 0;
 
-        var semaphore = new SemaphoreSlim(MaxConcurrency);
+        using var semaphore = new SemaphoreSlim(MaxConcurrency);
         var results = new List<(Listing Listing, SemanticSearchResult Result)>();
 
         // Query Pinecone in parallel
@@ -56,7 +56,7 @@ public class ComparablesRefreshService : IComparablesRefreshService
             try
             {
                 var result = await _searchService.FindSimilar(
-                    listing.ListingId, metadataFilter: SoldFilter, topK: TopK, ct: ct);
+                    listing.ListingId, metadataFilter: CreateSoldFilter(), topK: TopK, ct: ct);
                 lock (results)
                 {
                     results.Add((listing, result));
