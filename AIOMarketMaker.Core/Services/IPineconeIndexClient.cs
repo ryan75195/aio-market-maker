@@ -4,10 +4,11 @@ namespace AIOMarketMaker.Core.Services;
 
 public interface IPineconeIndexClient
 {
-    Task UpsertAsync(UpsertRequest request, CancellationToken ct = default);
-    Task<QueryResponse> QueryAsync(QueryRequest request, CancellationToken ct = default);
-    Task DeleteAsync(DeleteRequest request, CancellationToken ct = default);
-    Task<FetchResponse> FetchAsync(FetchRequest request, CancellationToken ct = default);
+    Task Upsert(UpsertRequest request, CancellationToken ct = default);
+    Task<QueryResponse> Query(QueryRequest request, CancellationToken ct = default);
+    Task Delete(DeleteRequest request, CancellationToken ct = default);
+    Task<FetchResponse> Fetch(FetchRequest request, CancellationToken ct = default);
+    Task Update(UpdateRequest request, CancellationToken ct = default);
 }
 
 public class PineconeIndexClientWrapper : IPineconeIndexClient
@@ -20,15 +21,18 @@ public class PineconeIndexClientWrapper : IPineconeIndexClient
         _index = client.Index(indexName);
     }
 
-    public Task UpsertAsync(UpsertRequest request, CancellationToken ct = default)
+    public Task Upsert(UpsertRequest request, CancellationToken ct = default)
         => _index.UpsertAsync(request);
 
-    public Task<QueryResponse> QueryAsync(QueryRequest request, CancellationToken ct = default)
+    public Task<QueryResponse> Query(QueryRequest request, CancellationToken ct = default)
         => _index.QueryAsync(request);
 
-    public Task DeleteAsync(DeleteRequest request, CancellationToken ct = default)
+    public Task Delete(DeleteRequest request, CancellationToken ct = default)
         => _index.DeleteAsync(request);
 
-    public Task<FetchResponse> FetchAsync(FetchRequest request, CancellationToken ct = default)
+    public Task<FetchResponse> Fetch(FetchRequest request, CancellationToken ct = default)
         => _index.FetchAsync(request);
+
+    public Task Update(UpdateRequest request, CancellationToken ct = default)
+        => _index.UpdateAsync(request);
 }

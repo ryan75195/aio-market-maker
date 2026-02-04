@@ -103,7 +103,7 @@ public class SemanticSearchService : ISemanticSearchService
                     })
                     .ToList();
 
-                await _index.UpsertAsync(new UpsertRequest { Vectors = vectors });
+                await _index.Upsert(new UpsertRequest { Vectors = vectors });
                 upsertedCount += vectors.Count;
 
                 _logger.LogDebug("Upserted batch of {Count} vectors", vectors.Count);
@@ -153,7 +153,7 @@ public class SemanticSearchService : ISemanticSearchService
             Filter = BuildIdFilter(filterIds)
         };
 
-        var response = await _index.QueryAsync(request);
+        var response = await _index.Query(request);
 
         var hits = response.Matches?
             .Where(m => m.Score >= _config.SimilarityThreshold)
@@ -184,7 +184,7 @@ public class SemanticSearchService : ISemanticSearchService
             Filter = BuildIdFilter(filterIds)
         };
 
-        var response = await _index.QueryAsync(request);
+        var response = await _index.Query(request);
 
         var hits = response.Matches?
             .Where(m => m.Id != listingId)
@@ -207,7 +207,7 @@ public class SemanticSearchService : ISemanticSearchService
 
         ct.ThrowIfCancellationRequested();
 
-        await _index.DeleteAsync(new DeleteRequest { Ids = ids });
+        await _index.Delete(new DeleteRequest { Ids = ids });
     }
 
     public async Task<bool> ExistsAsync(
@@ -216,7 +216,7 @@ public class SemanticSearchService : ISemanticSearchService
     {
         ct.ThrowIfCancellationRequested();
 
-        var response = await _index.FetchAsync(new FetchRequest { Ids = [listingId] });
+        var response = await _index.Fetch(new FetchRequest { Ids = [listingId] });
         return response.Vectors?.ContainsKey(listingId) ?? false;
     }
 
