@@ -116,15 +116,13 @@ var host = new HostBuilder()
             client.Timeout = TimeSpan.FromMinutes(5);
         });
 
-        // Embedding service (optional)
-        var openAiKey = configuration.GetValue<string>("OpenAi:ApiKey") ?? "";
-        if (!string.IsNullOrEmpty(openAiKey))
-        {
-            var embeddingModel = configuration.GetValue<string>("Embedding:Model") ?? "text-embedding-3-large";
-            var embeddingDimensions = configuration.GetValue<int>("Embedding:Dimensions", 3072);
-            services.AddSingleton(new EmbeddingConfig(openAiKey, embeddingModel, embeddingDimensions));
-            services.AddSingleton<IEmbeddingService, EmbeddingService>();
-        }
+        // Embedding service (required)
+        var openAiKey = configuration.GetValue<string>("OpenAi:ApiKey")
+            ?? throw new InvalidOperationException("OpenAi:ApiKey is required. Add it to local.settings.json.");
+        var embeddingModel = configuration.GetValue<string>("Embedding:Model") ?? "text-embedding-3-large";
+        var embeddingDimensions = configuration.GetValue<int>("Embedding:Dimensions", 3072);
+        services.AddSingleton(new EmbeddingConfig(openAiKey, embeddingModel, embeddingDimensions));
+        services.AddSingleton<IEmbeddingService, EmbeddingService>();
 
         // Clustering service
         var clusteringConfig = new ClusteringConfig(
@@ -133,43 +131,27 @@ var host = new HostBuilder()
         services.AddSingleton(clusteringConfig);
         services.AddSingleton<IClusteringService, ClusteringService>();
 
-        // Semantic search service (Pinecone) - optional
-        var pineconeApiKey = configuration.GetValue<string>("Pinecone:ApiKey") ?? "";
-        if (!string.IsNullOrEmpty(pineconeApiKey))
+        // Semantic search service (Pinecone - required)
+        var pineconeApiKey = configuration.GetValue<string>("Pinecone:ApiKey")
+            ?? throw new InvalidOperationException("Pinecone:ApiKey is required. Add it to local.settings.json.");
+        var pineconeConfig = new PineconeConfig(
+            ApiKey: pineconeApiKey,
+            IndexName: configuration.GetValue<string>("Pinecone:IndexName") ?? "arbitrage",
+            TopK: configuration.GetValue<int>("Pinecone:TopK", 30),
+            SimilarityThreshold: configuration.GetValue<float>("Pinecone:SimilarityThreshold", 0.80f));
+        services.AddSingleton(pineconeConfig);
+        services.AddSingleton<IPineconeIndexClient>(sp =>
         {
-            var pineconeConfig = new PineconeConfig(
-                ApiKey: pineconeApiKey,
-                IndexName: configuration.GetValue<string>("Pinecone:IndexName") ?? "arbitrage",
-                TopK: configuration.GetValue<int>("Pinecone:TopK", 30),
-                SimilarityThreshold: configuration.GetValue<float>("Pinecone:SimilarityThreshold", 0.80f));
-            services.AddSingleton(pineconeConfig);
-            services.AddSingleton<IPineconeIndexClient>(sp =>
-            {
-                var config = sp.GetRequiredService<PineconeConfig>();
-                return new PineconeIndexClientWrapper(config.ApiKey, config.IndexName);
-            });
-            services.AddSingleton<ISemanticSearchService, SemanticSearchService>();
-        }
+            var config = sp.GetRequiredService<PineconeConfig>();
+            return new PineconeIndexClientWrapper(config.ApiKey, config.IndexName);
+        });
+        services.AddSingleton<ISemanticSearchService, SemanticSearchService>();
 
-        // Listing indexing service - requires both embedding and Pinecone
-        if (!string.IsNullOrEmpty(openAiKey) && !string.IsNullOrEmpty(pineconeApiKey))
-        {
-            services.AddSingleton<IListingIndexingService, ListingIndexingService>();
-        }
-        else
-        {
-            services.AddSingleton<IListingIndexingService, NullListingIndexingService>();
-        }
+        // Listing indexing service
+        services.AddSingleton<IListingIndexingService, ListingIndexingService>();
 
-        // Comparables refresh service - requires Pinecone for similarity search
-        if (!string.IsNullOrEmpty(pineconeApiKey))
-        {
-            services.AddScoped<IComparablesRefreshService, ComparablesRefreshService>();
-        }
-        else
-        {
-            services.AddSingleton<IComparablesRefreshService, NullComparablesRefreshService>();
-        }
+        // Comparables refresh service
+        services.AddScoped<IComparablesRefreshService, ComparablesRefreshService>();
 
         // Pricing analysis service
         services.AddSingleton<IPricingAnalysisService, PricingAnalysisService>();
