@@ -33,7 +33,7 @@ public class SearchTask : ITask
         System.Console.WriteLine($"Searching for: \"{query}\" (top {topK})");
         System.Console.WriteLine();
 
-        var result = await _searchService.SearchAsync(query, topK: topK, ct: ct);
+        var result = await _searchService.Search(query, topK: topK, ct: ct);
 
         if (result.Hits.Count == 0)
         {

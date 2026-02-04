@@ -53,7 +53,7 @@ public class PricingTask : ITask
         System.Console.WriteLine();
 
         // Get semantic search results
-        var result = await _searchService.SearchAsync(query, topK: topK, ct: ct);
+        var result = await _searchService.Search(query, topK: topK, ct: ct);
 
         if (result.Hits.Count == 0)
         {

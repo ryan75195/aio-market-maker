@@ -55,7 +55,7 @@ public class SemanticSearchServiceIntegrationTests
     [Test]
     public async Task Should_return_zero_counts_when_indexing_empty_list()
     {
-        var result = await _service.IndexListingsAsync(Array.Empty<Listing>());
+        var result = await _service.IndexListings(Array.Empty<Listing>());
 
         Assert.Multiple(() =>
         {
@@ -69,13 +69,13 @@ public class SemanticSearchServiceIntegrationTests
     public void Should_throw_argument_exception_when_searching_with_empty_query()
     {
         Assert.ThrowsAsync<ArgumentException>(async () =>
-            await _service.SearchAsync(""));
+            await _service.Search(""));
     }
 
     [Test]
     public async Task Should_succeed_when_deleting_empty_list()
     {
-        await _service.DeleteAsync(Array.Empty<string>());
+        await _service.Delete(Array.Empty<string>());
         Assert.Pass();
     }
 
@@ -92,18 +92,18 @@ public class SemanticSearchServiceIntegrationTests
 
         try
         {
-            var indexResult = await _service.IndexListingsAsync(new[] { listing });
+            var indexResult = await _service.IndexListings(new[] { listing });
             Assert.That(indexResult.UpsertedCount, Is.EqualTo(1));
 
             await Task.Delay(2000);
 
-            var searchResult = await _service.SearchAsync("PS5 console disc version");
+            var searchResult = await _service.Search("PS5 console disc version");
             Assert.That(searchResult.Hits.Any(h => h.ListingId == testListingId), Is.True,
                 "Search should find the indexed listing");
         }
         finally
         {
-            await _service.DeleteAsync(new[] { testListingId });
+            await _service.Delete(new[] { testListingId });
         }
     }
 
@@ -134,12 +134,12 @@ public class SemanticSearchServiceIntegrationTests
 
         try
         {
-            var indexResult = await _service.IndexListingsAsync(listings);
+            var indexResult = await _service.IndexListings(listings);
             Assert.That(indexResult.UpsertedCount, Is.EqualTo(2));
 
             await Task.Delay(2000);
 
-            var similarResult = await _service.FindSimilarAsync(testIds[0]);
+            var similarResult = await _service.FindSimilar(testIds[0]);
             Assert.That(similarResult.Hits.Any(h => h.ListingId == testIds[1]), Is.True,
                 "Should find similar listing");
             Assert.That(similarResult.Hits.All(h => h.ListingId != testIds[0]), Is.True,
@@ -147,7 +147,7 @@ public class SemanticSearchServiceIntegrationTests
         }
         finally
         {
-            await _service.DeleteAsync(testIds);
+            await _service.Delete(testIds);
         }
     }
 
@@ -164,15 +164,15 @@ public class SemanticSearchServiceIntegrationTests
 
         try
         {
-            await _service.IndexListingsAsync(new[] { listing });
+            await _service.IndexListings(new[] { listing });
             await Task.Delay(2000);
 
-            var exists = await _service.ExistsAsync(testListingId);
+            var exists = await _service.Exists(testListingId);
             Assert.That(exists, Is.True);
         }
         finally
         {
-            await _service.DeleteAsync(new[] { testListingId });
+            await _service.Delete(new[] { testListingId });
         }
     }
 
@@ -181,7 +181,7 @@ public class SemanticSearchServiceIntegrationTests
     {
         var nonExistentId = $"non-existent-{Guid.NewGuid():N}";
 
-        var exists = await _service.ExistsAsync(nonExistentId);
+        var exists = await _service.Exists(nonExistentId);
         Assert.That(exists, Is.False);
     }
 
@@ -209,10 +209,10 @@ public class SemanticSearchServiceIntegrationTests
 
         try
         {
-            await _service.IndexListingsAsync(listings);
+            await _service.IndexListings(listings);
             await Task.Delay(2000);
 
-            var result = await _service.SearchAsync(
+            var result = await _service.Search(
                 "PlayStation 5",
                 filterToListingIds: new[] { includedId });
 
@@ -226,7 +226,7 @@ public class SemanticSearchServiceIntegrationTests
         }
         finally
         {
-            await _service.DeleteAsync(new[] { includedId, excludedId });
+            await _service.Delete(new[] { includedId, excludedId });
         }
     }
 
@@ -240,7 +240,7 @@ public class SemanticSearchServiceIntegrationTests
             Description = ""
         };
 
-        var result = await _service.IndexListingsAsync(new[] { emptyListing });
+        var result = await _service.IndexListings(new[] { emptyListing });
 
         Assert.Multiple(() =>
         {

@@ -28,7 +28,7 @@ public class SemanticSearchServiceTests
     [Test]
     public async Task Should_return_zero_counts_when_indexing_empty_list()
     {
-        var result = await _service.IndexListingsAsync(Array.Empty<Listing>());
+        var result = await _service.IndexListings(Array.Empty<Listing>());
 
         Assert.Multiple(() =>
         {
@@ -54,7 +54,7 @@ public class SemanticSearchServiceTests
     {
         var listing = new Listing { ListingId = "1", Title = title, Description = description };
 
-        var result = await _service.IndexListingsAsync(new[] { listing });
+        var result = await _service.IndexListings(new[] { listing });
 
         Assert.Multiple(() =>
         {
@@ -81,7 +81,7 @@ public class SemanticSearchServiceTests
             .Setup(x => x.GetEmbeddings(It.IsAny<IEnumerable<string>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new[] { new float[] { 0.1f } });
 
-        var result = await _service.IndexListingsAsync(new[] { listing });
+        var result = await _service.IndexListings(new[] { listing });
 
         Assert.That(result.UpsertedCount, Is.EqualTo(1));
         _mockPinecone.Verify(x => x.Upsert(
@@ -101,7 +101,7 @@ public class SemanticSearchServiceTests
     [TestCaseSource(nameof(InvalidQueryCases))]
     public void Should_throw_when_searching_with_invalid_query(string query)
     {
-        Assert.ThrowsAsync<ArgumentException>(async () => await _service.SearchAsync(query));
+        Assert.ThrowsAsync<ArgumentException>(async () => await _service.Search(query));
     }
 
     private static IEnumerable<TestCaseData> ThresholdBoundaryCases()
@@ -130,7 +130,7 @@ public class SemanticSearchServiceTests
                 Matches = new List<ScoredVector> { new() { Id = "test-id", Score = score } }
             });
 
-        var result = await _service.SearchAsync("test query");
+        var result = await _service.Search("test query");
 
         Assert.That(result.Hits.Any(h => h.ListingId == "test-id"), Is.EqualTo(shouldBeIncluded));
     }
@@ -149,7 +149,7 @@ public class SemanticSearchServiceTests
                 }
             });
 
-        var result = await _service.FindSimilarAsync("source-listing");
+        var result = await _service.FindSimilar("source-listing");
 
         Assert.Multiple(() =>
         {
@@ -161,7 +161,7 @@ public class SemanticSearchServiceTests
     [Test]
     public async Task Should_not_call_delete_when_list_is_empty()
     {
-        await _service.DeleteAsync(Array.Empty<string>());
+        await _service.Delete(Array.Empty<string>());
 
         _mockPinecone.Verify(x => x.Delete(It.IsAny<DeleteRequest>(), It.IsAny<CancellationToken>()), Times.Never);
     }
@@ -171,7 +171,7 @@ public class SemanticSearchServiceTests
     {
         var ids = new[] { "id1", "id2" };
 
-        await _service.DeleteAsync(ids);
+        await _service.Delete(ids);
 
         _mockPinecone.Verify(x => x.Delete(
             It.Is<DeleteRequest>(r => r.Ids.SequenceEqual(ids)),
@@ -188,7 +188,7 @@ public class SemanticSearchServiceTests
                 Vectors = new Dictionary<string, Vector> { ["listing-123"] = new Vector { Id = "listing-123" } }
             });
 
-        var exists = await _service.ExistsAsync("listing-123");
+        var exists = await _service.Exists("listing-123");
 
         Assert.That(exists, Is.True);
     }
@@ -203,7 +203,7 @@ public class SemanticSearchServiceTests
                 Vectors = new Dictionary<string, Vector>()
             });
 
-        var exists = await _service.ExistsAsync("non-existent");
+        var exists = await _service.Exists("non-existent");
 
         Assert.That(exists, Is.False);
     }
@@ -217,7 +217,7 @@ public class SemanticSearchServiceTests
         _mockPinecone.Setup(x => x.Query(It.IsAny<QueryRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new QueryResponse { Matches = new List<ScoredVector>() });
 
-        await _service.SearchAsync("test");
+        await _service.Search("test");
 
         _mockPinecone.Verify(x => x.Query(
             It.Is<QueryRequest>(r => r.TopK == 5),
@@ -233,7 +233,7 @@ public class SemanticSearchServiceTests
         _mockPinecone.Setup(x => x.Query(It.IsAny<QueryRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new QueryResponse { Matches = new List<ScoredVector>() });
 
-        await _service.SearchAsync("test", topK: 20);
+        await _service.Search("test", topK: 20);
 
         _mockPinecone.Verify(x => x.Query(
             It.Is<QueryRequest>(r => r.TopK == 20),
@@ -250,7 +250,7 @@ public class SemanticSearchServiceTests
             .ReturnsAsync(new QueryResponse { Matches = new List<ScoredVector>() });
 
         var filterIds = new[] { "id1", "id2", "id3" };
-        await _service.SearchAsync("test", filterToListingIds: filterIds);
+        await _service.Search("test", filterToListingIds: filterIds);
 
         _mockPinecone.Verify(x => x.Query(
             It.Is<QueryRequest>(r => r.Filter != null),
@@ -266,7 +266,7 @@ public class SemanticSearchServiceTests
         _mockPinecone.Setup(x => x.Query(It.IsAny<QueryRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new QueryResponse { Matches = new List<ScoredVector>() });
 
-        await _service.SearchAsync("test");
+        await _service.Search("test");
 
         _mockPinecone.Verify(x => x.Query(
             It.Is<QueryRequest>(r => r.Filter == null),
@@ -291,7 +291,7 @@ public class SemanticSearchServiceTests
             .ReturnsAsync((IEnumerable<string> texts, CancellationToken _) =>
                 texts.Select(_ => new float[] { 0.1f }).ToArray());
 
-        var result = await service.IndexListingsAsync(listings);
+        var result = await service.IndexListings(listings);
 
         Assert.That(result.UpsertedCount, Is.EqualTo(3));
         _mockPinecone.Verify(x => x.Upsert(It.IsAny<UpsertRequest>(), It.IsAny<CancellationToken>()), Times.Exactly(2));
@@ -325,7 +325,7 @@ public class SemanticSearchServiceTests
                 return Task.CompletedTask;
             });
 
-        var result = await service.IndexListingsAsync(listings);
+        var result = await service.IndexListings(listings);
 
         Assert.Multiple(() =>
         {
@@ -351,7 +351,7 @@ public class SemanticSearchServiceTests
             .ReturnsAsync((IEnumerable<string> texts, CancellationToken _) =>
                 texts.Select(_ => new float[] { 0.1f }).ToArray());
 
-        var result = await _service.IndexListingsAsync(listings);
+        var result = await _service.IndexListings(listings);
 
         Assert.Multiple(() =>
         {
@@ -370,7 +370,7 @@ public class SemanticSearchServiceTests
             .Setup(x => x.Query(It.IsAny<QueryRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new QueryResponse { Matches = new List<ScoredVector>() });
 
-        await _service.FindSimilarAsync("source-id", topK: 5);
+        await _service.FindSimilar("source-id", topK: 5);
 
         _mockPinecone.Verify(x => x.Query(
             It.Is<QueryRequest>(r => r.TopK == 6),
@@ -386,7 +386,7 @@ public class SemanticSearchServiceTests
         _mockPinecone.Setup(x => x.Query(It.IsAny<QueryRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new QueryResponse { Matches = null });
 
-        var result = await _service.SearchAsync("test");
+        var result = await _service.Search("test");
 
         Assert.That(result.Hits, Is.Empty);
     }

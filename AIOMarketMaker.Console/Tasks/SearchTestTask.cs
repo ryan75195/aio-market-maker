@@ -56,7 +56,7 @@ public class SearchTestTask : ITask
         System.Console.WriteLine($"Searching with query length: {searchQuery.Length} chars");
 
         // Search
-        var result = await _searchService.SearchAsync(searchQuery, topK: topK, ct: ct);
+        var result = await _searchService.Search(searchQuery, topK: topK, ct: ct);
 
         // Get listing details for results
         var listingIds = result.Hits.Select(h => h.ListingId).ToList();

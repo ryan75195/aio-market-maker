@@ -6,27 +6,27 @@ namespace AIOMarketMaker.Core.Services;
 
 public interface ISemanticSearchService
 {
-    Task<IndexResult> IndexListingsAsync(
+    Task<IndexResult> IndexListings(
         IEnumerable<Listing> listings,
         CancellationToken ct = default);
 
-    Task<SemanticSearchResult> SearchAsync(
+    Task<SemanticSearchResult> Search(
         string queryText,
         IEnumerable<string>? filterToListingIds = null,
         int? topK = null,
         CancellationToken ct = default);
 
-    Task<SemanticSearchResult> FindSimilarAsync(
+    Task<SemanticSearchResult> FindSimilar(
         string listingId,
         IEnumerable<string>? filterToListingIds = null,
         int? topK = null,
         CancellationToken ct = default);
 
-    Task DeleteAsync(
+    Task Delete(
         IEnumerable<string> listingIds,
         CancellationToken ct = default);
 
-    Task<bool> ExistsAsync(
+    Task<bool> Exists(
         string listingId,
         CancellationToken ct = default);
 }
@@ -50,7 +50,7 @@ public class SemanticSearchService : ISemanticSearchService
         _logger = logger;
     }
 
-    public async Task<IndexResult> IndexListingsAsync(
+    public async Task<IndexResult> IndexListings(
         IEnumerable<Listing> listings,
         CancellationToken ct = default)
     {
@@ -125,7 +125,7 @@ public class SemanticSearchService : ISemanticSearchService
         return new IndexResult(upsertedCount, skippedCount, errors);
     }
 
-    public async Task<SemanticSearchResult> SearchAsync(
+    public async Task<SemanticSearchResult> Search(
         string queryText,
         IEnumerable<string>? filterToListingIds = null,
         int? topK = null,
@@ -163,7 +163,7 @@ public class SemanticSearchService : ISemanticSearchService
         return new SemanticSearchResult(hits);
     }
 
-    public async Task<SemanticSearchResult> FindSimilarAsync(
+    public async Task<SemanticSearchResult> FindSimilar(
         string listingId,
         IEnumerable<string>? filterToListingIds = null,
         int? topK = null,
@@ -196,7 +196,7 @@ public class SemanticSearchService : ISemanticSearchService
         return new SemanticSearchResult(hits);
     }
 
-    public async Task DeleteAsync(
+    public async Task Delete(
         IEnumerable<string> listingIds,
         CancellationToken ct = default)
     {
@@ -210,7 +210,7 @@ public class SemanticSearchService : ISemanticSearchService
         await _index.Delete(new DeleteRequest { Ids = ids });
     }
 
-    public async Task<bool> ExistsAsync(
+    public async Task<bool> Exists(
         string listingId,
         CancellationToken ct = default)
     {
