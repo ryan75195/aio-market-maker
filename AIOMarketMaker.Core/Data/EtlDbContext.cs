@@ -23,6 +23,7 @@ public class EtlDbContext : DbContext
     public DbSet<ScrapeRun> ScrapeRuns { get; set; } = null!;
     public DbSet<ScrapeRunListing> ScrapeRunListings { get; set; } = null!;
     public DbSet<ScrapeRunIssue> ScrapeRunIssues { get; set; } = null!;
+    public DbSet<ListingPricingComparable> ListingPricingComparables { get; set; } = null!;
 
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
     {
@@ -139,6 +140,28 @@ public class EtlDbContext : DbContext
                 .WithMany()
                 .HasForeignKey(e => e.ScrapeRunId)
                 .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<ListingPricingComparable>(entity =>
+        {
+            entity.ToTable("ListingPricingComparables");
+            entity.HasKey(e => e.Id);
+
+            entity.Property(e => e.SimilarityScore).IsRequired();
+            entity.Property(e => e.CreatedUtc).HasDefaultValueSql(dateDefaultSql);
+
+            entity.HasIndex(e => e.ListingId);
+            entity.HasIndex(e => e.ComparableListingId);
+
+            entity.HasOne(e => e.Listing)
+                .WithMany()
+                .HasForeignKey(e => e.ListingId)
+                .OnDelete(DeleteBehavior.NoAction);
+
+            entity.HasOne(e => e.ComparableListing)
+                .WithMany()
+                .HasForeignKey(e => e.ComparableListingId)
+                .OnDelete(DeleteBehavior.NoAction);
         });
     }
 }
