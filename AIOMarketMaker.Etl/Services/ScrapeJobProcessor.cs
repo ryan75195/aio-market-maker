@@ -31,19 +31,22 @@ public class ScrapeJobProcessor : IScrapeJobProcessor
     private readonly IWebscraperClient _webscraperClient;
     private readonly ISearchParser _searchParser;
     private readonly IEbayUrlBuilder _urlBuilder;
+    private readonly IListingIndexingService _indexingService;
 
     public ScrapeJobProcessor(
         ILogger<ScrapeJobProcessor> logger,
         EtlDbContext dbContext,
         IWebscraperClient webscraperClient,
         ISearchParser searchParser,
-        IEbayUrlBuilder urlBuilder)
+        IEbayUrlBuilder urlBuilder,
+        IListingIndexingService indexingService)
     {
         _logger = logger;
         _dbContext = dbContext;
         _webscraperClient = webscraperClient;
         _searchParser = searchParser;
         _urlBuilder = urlBuilder;
+        _indexingService = indexingService;
     }
 
     public async Task Process(ScrapeJobMessage message)
@@ -183,6 +186,7 @@ public class ScrapeJobProcessor : IScrapeJobProcessor
         Dictionary<string, Listing> existingListings)
     {
         await SetPhase(scrapeRun, "Updating from summary");
+        var updatedListings = new List<Listing>();
 
         foreach (var summary in summaries)
         {
@@ -211,6 +215,7 @@ public class ScrapeJobProcessor : IScrapeJobProcessor
                 }
 
                 scrapeRun.ListingsUpdated++;
+                updatedListings.Add(listing);
                 _logger.LogInformation("Updated listing {ListingId} from summary (price: {Price}, shipping: {Shipping})",
                     summary.ListingId, summary.Price, summary.ShippingCost);
             }
@@ -223,6 +228,12 @@ public class ScrapeJobProcessor : IScrapeJobProcessor
         }
 
         await _dbContext.SaveChangesAsync();
+
+        foreach (var listing in updatedListings)
+        {
+            await _indexingService.Index(listing, isNew: false);
+        }
+
         _logger.LogInformation("Updated {Count} listings from summary data", summaries.Count);
     }
 

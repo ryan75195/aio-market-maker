@@ -22,6 +22,7 @@ public class ScrapeJobProcessor_UnitTests
     private Mock<IWebscraperClient> _webscraperClientMock = null!;
     private Mock<ISearchParser> _searchParserMock = null!;
     private Mock<IEbayUrlBuilder> _urlBuilderMock = null!;
+    private Mock<IListingIndexingService> _indexingServiceMock = null!;
 
     [SetUp]
     public void Setup()
@@ -34,6 +35,11 @@ public class ScrapeJobProcessor_UnitTests
         _webscraperClientMock = new Mock<IWebscraperClient>();
         _searchParserMock = new Mock<ISearchParser>();
         _urlBuilderMock = new Mock<IEbayUrlBuilder>();
+        _indexingServiceMock = new Mock<IListingIndexingService>();
+
+        _indexingServiceMock
+            .Setup(i => i.Index(It.IsAny<Listing>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new IndexingResult(IndexingAction.MetadataUpdated));
 
         // Default: empty search results (stops pagination)
         _webscraperClientMock
@@ -66,7 +72,7 @@ public class ScrapeJobProcessor_UnitTests
 
     private ScrapeJobProcessor CreateProcessor() => new(
         _loggerMock.Object, _dbContext, _webscraperClientMock.Object,
-        _searchParserMock.Object, _urlBuilderMock.Object);
+        _searchParserMock.Object, _urlBuilderMock.Object, _indexingServiceMock.Object);
 
     private static EbayProductSummary CreateSummary(
         string listingId, decimal? price = 100m, bool isSold = false,
@@ -484,5 +490,74 @@ public class ScrapeJobProcessor_UnitTests
             Assert.That(run.ErrorMessage, Is.EqualTo("Connection refused"));
             Assert.That(run.CompletedUtc, Is.Not.Null);
         });
+    }
+
+    [Test]
+    public async Task Should_update_pinecone_metadata_for_changed_listings()
+    {
+        CreateAndSeedScrapeRun();
+
+        _dbContext.Listings.Add(new Listing
+        {
+            ListingId = "IDX1", ScrapeJobId = 1,
+            Title = "Indexed Item", ListingStatus = "Active",
+            Price = 100m, Condition = "USED", ShippingCost = 5m
+        });
+        await _dbContext.SaveChangesAsync();
+
+        var summary = CreateSummary("IDX1", price: 80m, isSold: false);
+
+        var callCount = 0;
+        _searchParserMock
+            .Setup(p => p.ParseSearchResults(It.IsAny<IDocument>()))
+            .Returns(() =>
+            {
+                callCount++;
+                return callCount == 2
+                    ? new[] { summary }
+                    : Enumerable.Empty<IEbayProductSummary>();
+            });
+
+        var message = new ScrapeJobMessage(1, 1, "Test", "Manual");
+
+        await CreateProcessor().Process(message);
+
+        _indexingServiceMock.Verify(i => i.Index(
+            It.Is<Listing>(l => l.ListingId == "IDX1"),
+            false, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Test]
+    public async Task Should_not_update_pinecone_for_unchanged_listings()
+    {
+        CreateAndSeedScrapeRun();
+
+        _dbContext.Listings.Add(new Listing
+        {
+            ListingId = "NOIDX1", ScrapeJobId = 1,
+            Title = "Unchanged Item", ListingStatus = "Active",
+            Price = 100m, Condition = "USED", ShippingCost = 5m
+        });
+        await _dbContext.SaveChangesAsync();
+
+        var summary = CreateSummary("NOIDX1", price: 100m, isSold: false, shippingCost: 5m);
+
+        var callCount = 0;
+        _searchParserMock
+            .Setup(p => p.ParseSearchResults(It.IsAny<IDocument>()))
+            .Returns(() =>
+            {
+                callCount++;
+                return callCount == 2
+                    ? new[] { summary }
+                    : Enumerable.Empty<IEbayProductSummary>();
+            });
+
+        var message = new ScrapeJobMessage(1, 1, "Test", "Manual");
+
+        await CreateProcessor().Process(message);
+
+        _indexingServiceMock.Verify(i => i.Index(
+            It.IsAny<Listing>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 }
