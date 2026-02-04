@@ -103,6 +103,7 @@ public class ListingIndexingService : IListingIndexingService
             ["condition"] = listing.Condition ?? "",
             ["listingStatus"] = listing.ListingStatus ?? "",
             ["purchaseFormat"] = listing.PurchaseFormat ?? "",
+            ["soldDateUtc"] = "",
             ["createdUtc"] = listing.CreatedUtc.ToString("O")
         };
 

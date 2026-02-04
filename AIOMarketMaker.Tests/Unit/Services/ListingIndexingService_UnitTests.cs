@@ -149,6 +149,7 @@ public class ListingIndexingService_UnitTests
             Assert.That(capturedMetadata["condition"].AsT0, Is.EqualTo("NEW"));
             Assert.That(capturedMetadata["listingStatus"].AsT0, Is.EqualTo("Active"));
             Assert.That(capturedMetadata["purchaseFormat"].AsT0, Is.EqualTo("BuyItNow"));
+            Assert.That(capturedMetadata["soldDateUtc"].AsT0, Is.EqualTo(""));
             Assert.That(capturedMetadata["createdUtc"].AsT0, Is.EqualTo("2026-01-15T10:00:00.0000000Z"));
             Assert.That(capturedMetadata["price"].AsT1, Is.EqualTo(99.99));
             Assert.That(capturedMetadata["shippingCost"].AsT1, Is.EqualTo(5.0));
