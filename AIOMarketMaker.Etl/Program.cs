@@ -152,6 +152,15 @@ var host = new HostBuilder()
 
         // Pricing analysis service
         services.AddSingleton<IPricingAnalysisService, PricingAnalysisService>();
+
+        // ListingComparisonService (LLM classification)
+        var chatModel = configuration.GetValue<string>("OpenAi:ChatModel") ?? "gpt-5-nano";
+        var comparisonConfig = new ListingComparisonConfig(openAiKey, chatModel);
+        services.AddSingleton(comparisonConfig);
+        services.AddSingleton<IListingComparisonService, ListingComparisonService>();
+
+        // ComparablesEtlService
+        services.AddScoped<IComparablesEtlService, ComparablesEtlService>();
     })
     .ConfigureLogging(logging =>
     {
@@ -160,5 +169,26 @@ var host = new HostBuilder()
     })
     .UseSerilog()
     .Build();
+
+if (args.Contains("--comparables"))
+{
+    using var scope = host.Services.CreateScope();
+    var etl = scope.ServiceProvider.GetRequiredService<IComparablesEtlService>();
+    var dryRun = args.Contains("--dry-run");
+    var result = await etl.Run(dryRun);
+
+    Console.WriteLine();
+    Console.WriteLine(dryRun ? "Dry Run Summary" : "Run Summary");
+    Console.WriteLine("===============");
+    Console.WriteLine($"Listings processed:     {result.ListingsProcessed}");
+    Console.WriteLine($"Pinecone queries:       {result.PineconeQueries}");
+    Console.WriteLine($"Candidate pairs found:  {result.CandidatePairsFound}");
+    Console.WriteLine($"Cache hits:             {result.CacheHits}");
+    Console.WriteLine($"LLM calls required:     {result.LlmCallsRequired}");
+    Console.WriteLine($"LLM calls made:         {result.LlmCallsMade}");
+    Console.WriteLine($"Comparables found:      {result.ComparablesFound}");
+    Console.WriteLine($"Predictions written:    {result.PredictionsWritten}");
+    return;
+}
 
 host.Run();
