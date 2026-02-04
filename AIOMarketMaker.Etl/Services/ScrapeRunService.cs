@@ -13,6 +13,8 @@ public interface IScrapeRunService
     Task<IEnumerable<ScrapeJobConfig>> GetScrapeJobConfigs();
     Task<ScrapeJobConfig?> GetScrapeJobConfig(int jobId);
     Task<IEnumerable<StartedScrapeRun>> StartRuns(IEnumerable<ScrapeJobConfig> jobs, string triggerType);
+    Task<StartedScrapeRun> StartRun(ScrapeJobConfig job, string triggerType);
+    Task<bool> IsRunComplete(int runId);
 }
 
 public class ScrapeRunService : IScrapeRunService
@@ -86,5 +88,27 @@ public class ScrapeRunService : IScrapeRunService
         var message = new ScrapeJobMessage(run.Id, job.Id, job.SearchTerm, triggerType);
         var messageJson = JsonSerializer.Serialize(message);
         await _jobQueueClient.SendMessageAsync(messageJson);
+    }
+
+    public async Task<StartedScrapeRun> StartRun(ScrapeJobConfig job, string triggerType)
+    {
+        var run = await CreateScrapeRun(job.Id, triggerType);
+        await SendToQueue(run, job, triggerType);
+
+        _logger.LogInformation("Started scrape run for {SearchTerm} (RunId: {RunId})", job.SearchTerm, run.Id);
+        return new StartedScrapeRun(run.Id, job.Id, run.Status, run.InstanceId);
+    }
+
+    public async Task<bool> IsRunComplete(int runId)
+    {
+        var run = await _dbContext.ScrapeRuns.FindAsync(runId);
+
+        // Treat missing runs as complete (nothing to wait for)
+        if (run == null)
+        {
+            return true;
+        }
+
+        return run.Status == "Completed" || run.Status == "Failed";
     }
 }
