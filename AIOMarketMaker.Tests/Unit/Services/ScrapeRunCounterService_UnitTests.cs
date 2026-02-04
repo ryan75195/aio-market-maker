@@ -38,7 +38,7 @@ public class ScrapeRunCounterService_UnitTests
         _dbContext.ScrapeRuns.Add(new ScrapeRun { Id = 1, Status = "Indexing", CurrentPhase = "Indexing" });
         await _dbContext.SaveChangesAsync();
 
-        await CreateService().Increment(1, "added", "Active");
+        await CreateService().Increment(1, 1, "added", "Active");
 
         var run = await _dbContext.ScrapeRuns.AsNoTracking().FirstAsync(r => r.Id == 1);
         Assert.Multiple(() =>
@@ -55,7 +55,7 @@ public class ScrapeRunCounterService_UnitTests
         _dbContext.ScrapeRuns.Add(new ScrapeRun { Id = 1, Status = "Indexing", CurrentPhase = "Indexing" });
         await _dbContext.SaveChangesAsync();
 
-        await CreateService().Increment(1, "added", "Sold");
+        await CreateService().Increment(1, 1, "added", "Sold");
 
         var run = await _dbContext.ScrapeRuns.AsNoTracking().FirstAsync(r => r.Id == 1);
         Assert.Multiple(() =>
@@ -72,7 +72,7 @@ public class ScrapeRunCounterService_UnitTests
         _dbContext.ScrapeRuns.Add(new ScrapeRun { Id = 1, Status = "Indexing", CurrentPhase = "Indexing" });
         await _dbContext.SaveChangesAsync();
 
-        await CreateService().Increment(1, "updated");
+        await CreateService().Increment(1, 1, "updated");
 
         var run = await _dbContext.ScrapeRuns.AsNoTracking().FirstAsync(r => r.Id == 1);
         Assert.That(run.ListingsUpdated, Is.EqualTo(1));
@@ -84,7 +84,7 @@ public class ScrapeRunCounterService_UnitTests
         _dbContext.ScrapeRuns.Add(new ScrapeRun { Id = 1, Status = "Indexing", CurrentPhase = "Indexing" });
         await _dbContext.SaveChangesAsync();
 
-        await CreateService().Increment(1, "skipped");
+        await CreateService().Increment(1, 1, "skipped");
 
         var run = await _dbContext.ScrapeRuns.AsNoTracking().FirstAsync(r => r.Id == 1);
         Assert.That(run.ListingsSkipped, Is.EqualTo(1));
@@ -96,7 +96,7 @@ public class ScrapeRunCounterService_UnitTests
         _dbContext.ScrapeRuns.Add(new ScrapeRun { Id = 1, Status = "Indexing", CurrentPhase = "Indexing" });
         await _dbContext.SaveChangesAsync();
 
-        await CreateService().Increment(1, "failed");
+        await CreateService().Increment(1, 1, "failed");
 
         var run = await _dbContext.ScrapeRuns.AsNoTracking().FirstAsync(r => r.Id == 1);
         Assert.That(run.ListingsFailed, Is.EqualTo(1));
@@ -113,7 +113,7 @@ public class ScrapeRunCounterService_UnitTests
         });
         await _dbContext.SaveChangesAsync();
 
-        await CreateService().Increment(1, "added", "Active");
+        await CreateService().Increment(1, 1, "added", "Active");
 
         var run = await _dbContext.ScrapeRuns.AsNoTracking().FirstAsync(r => r.Id == 1);
         Assert.Multiple(() =>
@@ -135,7 +135,7 @@ public class ScrapeRunCounterService_UnitTests
         });
         await _dbContext.SaveChangesAsync();
 
-        await CreateService().Increment(1, "added", "Active");
+        await CreateService().Increment(1, 1, "added", "Active");
 
         var run = await _dbContext.ScrapeRuns.AsNoTracking().FirstAsync(r => r.Id == 1);
         Assert.That(run.Status, Is.EqualTo("Indexing"));

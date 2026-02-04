@@ -63,7 +63,7 @@ public class ListingProcessorService : IListingProcessorService
             listing.DescriptionStatus = "missing";
             MarkScrapeRunListingComplete(scrapeRunListing);
             await _dbContext.SaveChangesAsync();
-            await _counterService.Increment(request.ScrapeRunId, "added", listing.ListingStatus);
+            await _counterService.Increment(request.ScrapeRunId, request.ScrapeJobId, "added", listing.ListingStatus);
             return new ProcessListingResponse(true, "complete", null);
         }
 
@@ -90,7 +90,7 @@ public class ListingProcessorService : IListingProcessorService
 
         MarkScrapeRunListingComplete(scrapeRunListing);
         await _dbContext.SaveChangesAsync();
-        await _counterService.Increment(request.ScrapeRunId, "added", listing.ListingStatus);
+        await _counterService.Increment(request.ScrapeRunId, request.ScrapeJobId, "added", listing.ListingStatus);
 
         _logger.LogInformation("Processed description for listing {ListingId}: {Status}",
             request.ListingId, listing.DescriptionStatus);

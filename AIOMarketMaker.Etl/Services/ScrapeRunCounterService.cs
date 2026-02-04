@@ -6,7 +6,7 @@ namespace AIOMarketMaker.Etl.Services;
 
 public interface IScrapeRunCounterService
 {
-    Task Increment(int scrapeRunId, string status, string? listingStatus = null);
+    Task Increment(int scrapeRunId, int scrapeJobId, string status, string? listingStatus = null);
 }
 
 public class SqlScrapeRunCounterService : IScrapeRunCounterService
@@ -20,7 +20,7 @@ public class SqlScrapeRunCounterService : IScrapeRunCounterService
         _logger = logger;
     }
 
-    public async Task Increment(int scrapeRunId, string status, string? listingStatus = null)
+    public async Task Increment(int scrapeRunId, int scrapeJobId, string status, string? listingStatus = null)
     {
         var isSold = listingStatus == "Sold";
 
@@ -69,7 +69,7 @@ public class EfCoreScrapeRunCounterService : IScrapeRunCounterService
         _logger = logger;
     }
 
-    public async Task Increment(int scrapeRunId, string status, string? listingStatus = null)
+    public async Task Increment(int scrapeRunId, int scrapeJobId, string status, string? listingStatus = null)
     {
         var scrapeRun = await _dbContext.ScrapeRuns.FirstOrDefaultAsync(sr => sr.Id == scrapeRunId);
         if (scrapeRun == null) return;
