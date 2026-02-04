@@ -19,6 +19,7 @@ public interface ISemanticSearchService
     Task<SemanticSearchResult> FindSimilar(
         string listingId,
         IEnumerable<string>? filterToListingIds = null,
+        Metadata? metadataFilter = null,
         int? topK = null,
         CancellationToken ct = default);
 
@@ -166,6 +167,7 @@ public class SemanticSearchService : ISemanticSearchService
     public async Task<SemanticSearchResult> FindSimilar(
         string listingId,
         IEnumerable<string>? filterToListingIds = null,
+        Metadata? metadataFilter = null,
         int? topK = null,
         CancellationToken ct = default)
     {
@@ -181,7 +183,7 @@ public class SemanticSearchService : ISemanticSearchService
             TopK = (uint)((topK ?? _config.TopK) + 1),
             IncludeMetadata = false,
             IncludeValues = false,
-            Filter = BuildIdFilter(filterIds)
+            Filter = MergeFilters(BuildIdFilter(filterIds), metadataFilter)
         };
 
         var response = await _index.Query(request);
@@ -236,11 +238,39 @@ public class SemanticSearchService : ISemanticSearchService
     private static Metadata? BuildIdFilter(List<string>? listingIds)
     {
         if (listingIds == null || listingIds.Count == 0)
+        {
             return null;
+        }
 
         return new Metadata
         {
             ["listingId"] = new Metadata { ["$in"] = listingIds }
         };
+    }
+
+    private static Metadata? MergeFilters(Metadata? idFilter, Metadata? metadataFilter)
+    {
+        if (idFilter == null && metadataFilter == null)
+        {
+            return null;
+        }
+
+        if (idFilter == null)
+        {
+            return metadataFilter;
+        }
+
+        if (metadataFilter == null)
+        {
+            return idFilter;
+        }
+
+        // Merge: copy all keys from metadataFilter into idFilter
+        foreach (var kvp in metadataFilter)
+        {
+            idFilter[kvp.Key] = kvp.Value;
+        }
+
+        return idFilter;
     }
 }

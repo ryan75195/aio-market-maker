@@ -378,6 +378,30 @@ public class SemanticSearchServiceTests
     }
 
     [Test]
+    public async Task Should_pass_metadata_filter_to_pinecone_query()
+    {
+        var metadataFilter = new Metadata { ["listingStatus"] = new Metadata { ["$eq"] = "Sold" } };
+
+        _mockPinecone
+            .Setup(p => p.Query(It.IsAny<QueryRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new QueryResponse
+            {
+                Matches = new List<ScoredVector>
+                {
+                    new() { Id = "other1", Score = 0.95f }
+                }
+            });
+
+        var result = await _service.FindSimilar("listing1", metadataFilter: metadataFilter, topK: 10);
+
+        _mockPinecone.Verify(p => p.Query(
+            It.Is<QueryRequest>(r => r.Filter != null && r.Filter.ContainsKey("listingStatus")),
+            It.IsAny<CancellationToken>()), Times.Once);
+
+        Assert.That(result.Hits, Has.Count.EqualTo(1));
+    }
+
+    [Test]
     public async Task Should_return_empty_hits_when_matches_is_null()
     {
         var queryEmbedding = new float[] { 0.1f };
