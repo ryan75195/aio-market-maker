@@ -151,6 +151,16 @@ var host = new HostBuilder()
             services.AddSingleton<ISemanticSearchService, SemanticSearchService>();
         }
 
+        // Listing indexing service - requires both embedding and Pinecone
+        if (!string.IsNullOrEmpty(openAiKey) && !string.IsNullOrEmpty(pineconeApiKey))
+        {
+            services.AddSingleton<IListingIndexingService, ListingIndexingService>();
+        }
+        else
+        {
+            services.AddSingleton<IListingIndexingService, NullListingIndexingService>();
+        }
+
         // Pricing analysis service
         services.AddSingleton<IPricingAnalysisService, PricingAnalysisService>();
     })

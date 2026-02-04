@@ -119,3 +119,9 @@ public class ListingIndexingService : IListingIndexingService
         return metadata;
     }
 }
+
+public class NullListingIndexingService : IListingIndexingService
+{
+    public Task<IndexingResult> Index(Listing listing, bool isNew, CancellationToken ct = default)
+        => Task.FromResult(new IndexingResult(IndexingAction.Skipped));
+}
