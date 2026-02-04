@@ -23,7 +23,8 @@ public class EtlDbContext : DbContext
     public DbSet<ScrapeRun> ScrapeRuns { get; set; } = null!;
     public DbSet<ScrapeRunListing> ScrapeRunListings { get; set; } = null!;
     public DbSet<ScrapeRunIssue> ScrapeRunIssues { get; set; } = null!;
-    public DbSet<ListingPricingComparable> ListingPricingComparables { get; set; } = null!;
+    public DbSet<ListingRelationship> ListingRelationships { get; set; } = null!;
+    public DbSet<ListingPrediction> ListingPredictions { get; set; } = null!;
 
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
     {
@@ -142,25 +143,37 @@ public class EtlDbContext : DbContext
                 .OnDelete(DeleteBehavior.Cascade);
         });
 
-        modelBuilder.Entity<ListingPricingComparable>(entity =>
+        // ListingRelationships
+        modelBuilder.Entity<ListingRelationship>(entity =>
         {
-            entity.ToTable("ListingPricingComparables");
-            entity.HasKey(e => e.Id);
+            entity.ToTable("ListingRelationships");
+            entity.HasIndex(e => new { e.ListingIdA, e.ListingIdB }).IsUnique();
+            entity.HasIndex(e => e.ListingIdA);
+            entity.HasIndex(e => e.ListingIdB);
+            entity.Property(e => e.Explanation).HasMaxLength(500);
 
-            entity.Property(e => e.SimilarityScore).IsRequired();
-            entity.Property(e => e.CreatedUtc).HasDefaultValueSql(dateDefaultSql);
+            entity.HasOne(e => e.ListingA)
+                .WithMany()
+                .HasForeignKey(e => e.ListingIdA)
+                .OnDelete(DeleteBehavior.NoAction);
 
-            entity.HasIndex(e => e.ListingId);
-            entity.HasIndex(e => e.ComparableListingId);
+            entity.HasOne(e => e.ListingB)
+                .WithMany()
+                .HasForeignKey(e => e.ListingIdB)
+                .OnDelete(DeleteBehavior.NoAction);
+        });
+
+        // ListingPredictions
+        modelBuilder.Entity<ListingPrediction>(entity =>
+        {
+            entity.ToTable("ListingPredictions");
+            entity.HasIndex(e => e.ListingId).IsUnique();
+            entity.Property(e => e.AverageSoldPrice).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.PotentialProfit).HasColumnType("decimal(18,2)");
 
             entity.HasOne(e => e.Listing)
                 .WithMany()
                 .HasForeignKey(e => e.ListingId)
-                .OnDelete(DeleteBehavior.NoAction);
-
-            entity.HasOne(e => e.ComparableListing)
-                .WithMany()
-                .HasForeignKey(e => e.ComparableListingId)
                 .OnDelete(DeleteBehavior.NoAction);
         });
     }
