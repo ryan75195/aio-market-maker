@@ -329,13 +329,14 @@ createApp({
     },
 
     async clearAllData() {
-      if (!confirm('Delete ALL scrape data (listings, run history, and tracking data)? This cannot be undone.')) return;
+      if (!confirm('Delete ALL scrape data (listings, run history, vector index, and tracking data)? This cannot be undone.')) return;
 
       this.loading = true;
       try {
         const data = await this.apiCall('/data/all', { method: 'DELETE' });
         const result = this.toCamelCase(data);
-        this.showToast(`Cleared ${result.deletedListings} listings and ${result.deletedRuns} history records`, 'success');
+        const indexMsg = result.indexCleared ? ', vector index cleared' : '';
+        this.showToast(`Cleared ${result.deletedListings} listings and ${result.deletedRuns} history records${indexMsg}`, 'success');
         if (this.currentView === 'history') {
           await this.loadHistory();
         } else if (this.currentView === 'opportunities') {
@@ -355,7 +356,8 @@ createApp({
       try {
         const data = await this.apiCall('/listings/all', { method: 'DELETE' });
         const result = this.toCamelCase(data);
-        this.showToast(`Cleared ${result.deleted} listings`, 'success');
+        const indexMsg = result.indexCleared ? ', vector index cleared' : '';
+        this.showToast(`Cleared ${result.deleted} listings${indexMsg}`, 'success');
         // Refresh opportunities if on that view
         if (this.currentView === 'opportunities') {
           await this.loadOpportunities();

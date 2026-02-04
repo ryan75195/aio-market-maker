@@ -7,6 +7,8 @@ using AIOMarketMaker.Core.Data;
 using AIOMarketMaker.Core.Data.Models;
 using System.Net;
 using System.Text.Json;
+using AIOMarketMaker.Core.Services;
+using Pinecone;
 
 namespace AIOMarketMaker.Functions.Functions;
 
@@ -38,12 +40,18 @@ public class ScrapeJobsApi
     private readonly EtlDbContext _dbContext;
     private readonly ILogger<ScrapeJobsApi> _logger;
     private readonly BlobServiceClient? _blobService;
+    private readonly IPineconeIndexClient? _pineconeClient;
 
-    public ScrapeJobsApi(EtlDbContext dbContext, ILogger<ScrapeJobsApi> logger, BlobServiceClient? blobService = null)
+    public ScrapeJobsApi(
+        EtlDbContext dbContext,
+        ILogger<ScrapeJobsApi> logger,
+        BlobServiceClient? blobService = null,
+        IPineconeIndexClient? pineconeClient = null)
     {
         _dbContext = dbContext;
         _logger = logger;
         _blobService = blobService;
+        _pineconeClient = pineconeClient;
     }
 
     /// <summary>
@@ -496,6 +504,26 @@ public class ScrapeJobsApi
         return response;
     }
 
+    private async Task<bool> ClearPineconeIndex()
+    {
+        if (_pineconeClient == null)
+        {
+            return false;
+        }
+
+        try
+        {
+            await _pineconeClient.Delete(new DeleteRequest { DeleteAll = true });
+            _logger.LogInformation("Cleared Pinecone vector index");
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to clear Pinecone index (non-fatal)");
+            return false;
+        }
+    }
+
     private static OpportunityListing ToOpportunityListing(
         Listing l, Dictionary<int, PricingAggregate> grouped)
     {
@@ -607,13 +635,16 @@ public class ScrapeJobsApi
 
         if (count > 0)
         {
-            // Use raw SQL for efficient bulk delete
+            // Delete comparables first (NoAction FK to Listings)
+            await _dbContext.Database.ExecuteSqlRawAsync("DELETE FROM ListingPricingComparables");
             await _dbContext.Database.ExecuteSqlRawAsync("DELETE FROM Listings");
             _logger.LogInformation("Cleared {Count} listings from database", count);
         }
 
+        bool indexCleared = await ClearPineconeIndex();
+
         var response = req.CreateResponse(HttpStatusCode.OK);
-        await response.WriteAsJsonAsync(new { deleted = count });
+        await response.WriteAsJsonAsync(new { deleted = count, indexCleared });
         return response;
     }
 
@@ -647,7 +678,8 @@ public class ScrapeJobsApi
         var listingsCount = await _dbContext.Listings.CountAsync();
         var runsCount = await _dbContext.ScrapeRuns.CountAsync();
 
-        // Delete in correct order: Listings first (no FK deps), then ScrapeRuns (cascades to ScrapeRunListings)
+        // Delete in correct order: comparables first (NoAction FK), then Listings, then ScrapeRuns (cascades)
+        await _dbContext.Database.ExecuteSqlRawAsync("DELETE FROM ListingPricingComparables");
         if (listingsCount > 0)
             await _dbContext.Database.ExecuteSqlRawAsync("DELETE FROM Listings");
         if (runsCount > 0)
@@ -676,10 +708,15 @@ public class ScrapeJobsApi
             }
         }
 
-        _logger.LogInformation("Cleared all data: {Listings} listings, {Runs} scrape runs, {Blobs} blobs", listingsCount, runsCount, blobsDeleted);
+        // Clear Pinecone vector index
+        bool indexCleared = await ClearPineconeIndex();
+
+        _logger.LogInformation(
+            "Cleared all data: {Listings} listings, {Runs} scrape runs, {Blobs} blobs, index cleared: {IndexCleared}",
+            listingsCount, runsCount, blobsDeleted, indexCleared);
 
         var response = req.CreateResponse(HttpStatusCode.OK);
-        await response.WriteAsJsonAsync(new { deletedListings = listingsCount, deletedRuns = runsCount, deletedBlobs = blobsDeleted });
+        await response.WriteAsJsonAsync(new { deletedListings = listingsCount, deletedRuns = runsCount, deletedBlobs = blobsDeleted, indexCleared });
         return response;
     }
 

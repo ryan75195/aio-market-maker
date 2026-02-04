@@ -8,6 +8,7 @@ using Azure.Storage.Blobs;
 using Serilog;
 using Serilog.Formatting.Compact;
 using AIOMarketMaker.Core.Data;
+using AIOMarketMaker.Core.Services;
 
 // Configure Serilog with optional file logging based on LOG_SESSION_PATH
 var logSessionPath = Environment.GetEnvironmentVariable("LOG_SESSION_PATH");
@@ -54,6 +55,15 @@ var host = new HostBuilder()
         if (!string.IsNullOrEmpty(blobConnectionString))
         {
             services.AddSingleton(new BlobServiceClient(blobConnectionString));
+        }
+
+        // Pinecone - for clearing vector index on data reset
+        var pineconeApiKey = configuration.GetValue<string>("Pinecone:ApiKey") ?? "";
+        if (!string.IsNullOrEmpty(pineconeApiKey))
+        {
+            var indexName = configuration.GetValue<string>("Pinecone:IndexName") ?? "arbitrage";
+            services.AddSingleton<IPineconeIndexClient>(
+                new PineconeIndexClientWrapper(pineconeApiKey, indexName));
         }
     })
     .ConfigureLogging(logging =>
