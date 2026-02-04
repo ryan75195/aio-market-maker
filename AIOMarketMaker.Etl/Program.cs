@@ -39,6 +39,27 @@ Log.Logger = loggerConfig.CreateLogger();
 
 var host = new HostBuilder()
     .ConfigureFunctionsWorkerDefaults()
+    .ConfigureAppConfiguration((context, config) =>
+    {
+        // Try multiple locations for local.settings.json (after ConfigureFunctionsWorkerDefaults)
+        var currentDir = Directory.GetCurrentDirectory();
+        var baseDir = AppContext.BaseDirectory;
+
+        config.AddJsonFile(Path.Combine(currentDir, "local.settings.json"), optional: true, reloadOnChange: false)
+              .AddJsonFile(Path.Combine(baseDir, "local.settings.json"), optional: true, reloadOnChange: false)
+              .AddEnvironmentVariables();
+
+        // Azure Functions stores values under "Values" section - flatten them to root
+        var tempConfig = config.Build();
+        var valuesSection = tempConfig.GetSection("Values");
+        if (valuesSection.Exists())
+        {
+            var values = valuesSection.GetChildren()
+                .Where(x => x.Value != null)
+                .ToDictionary(x => x.Key, x => x.Value!);
+            config.AddInMemoryCollection(values);
+        }
+    })
     .ConfigureServices((context, services) =>
     {
         var configuration = context.Configuration;
@@ -94,9 +115,14 @@ var host = new HostBuilder()
         }
 
         // SQL Server database (for Azure deployment)
-        var sqlConnectionString = configuration.GetValue<string>("SqlConnectionString");
+        var sqlConnectionString = configuration.GetValue<string>("SqlConnectionString")
+            ?? configuration.GetValue<string>("Values:SqlConnectionString");
         if (!string.IsNullOrEmpty(sqlConnectionString))
         {
+            // Run migrations on startup
+            var migrationRunner = new MigrationRunner(sqlConnectionString, null, useSqlServer: true);
+            migrationRunner.ApplyMigrations();
+
             services.AddDbContext<EtlDbContext>(options =>
                 options.UseSqlServer(sqlConnectionString));
         }
@@ -118,6 +144,7 @@ var host = new HostBuilder()
 
         // Embedding service (required)
         var openAiKey = configuration.GetValue<string>("OpenAi:ApiKey")
+            ?? configuration.GetValue<string>("Values:OpenAi:ApiKey")
             ?? throw new InvalidOperationException("OpenAi:ApiKey is required. Add it to local.settings.json.");
         var embeddingModel = configuration.GetValue<string>("Embedding:Model") ?? "text-embedding-3-large";
         var embeddingDimensions = configuration.GetValue<int>("Embedding:Dimensions", 3072);
@@ -133,12 +160,19 @@ var host = new HostBuilder()
 
         // Semantic search service (Pinecone - required)
         var pineconeApiKey = configuration.GetValue<string>("Pinecone:ApiKey")
+            ?? configuration.GetValue<string>("Values:Pinecone:ApiKey")
             ?? throw new InvalidOperationException("Pinecone:ApiKey is required. Add it to local.settings.json.");
         var pineconeConfig = new PineconeConfig(
             ApiKey: pineconeApiKey,
-            IndexName: configuration.GetValue<string>("Pinecone:IndexName") ?? "arbitrage",
-            TopK: configuration.GetValue<int>("Pinecone:TopK", 30),
-            SimilarityThreshold: configuration.GetValue<float>("Pinecone:SimilarityThreshold", 0.80f));
+            IndexName: configuration.GetValue<string>("Pinecone:IndexName")
+                ?? configuration.GetValue<string>("Values:Pinecone:IndexName")
+                ?? "arbitrage",
+            TopK: configuration.GetValue<int?>("Pinecone:TopK")
+                ?? configuration.GetValue<int?>("Values:Pinecone:TopK")
+                ?? 30,
+            SimilarityThreshold: configuration.GetValue<float?>("Pinecone:SimilarityThreshold")
+                ?? configuration.GetValue<float?>("Values:Pinecone:SimilarityThreshold")
+                ?? 0.80f);
         services.AddSingleton(pineconeConfig);
         services.AddSingleton<IPineconeIndexClient>(sp =>
         {
