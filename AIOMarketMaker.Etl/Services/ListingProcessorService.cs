@@ -24,6 +24,7 @@ public class ListingProcessorService : IListingProcessorService
     private readonly EtlDbContext _dbContext;
     private readonly IListingParser _listingParser;
     private readonly IScrapeRunCounterService _counterService;
+    private readonly IListingIndexingService _indexingService;
     private readonly ILogger<ListingProcessorService> _logger;
 
     public ListingProcessorService(
@@ -31,12 +32,14 @@ public class ListingProcessorService : IListingProcessorService
         EtlDbContext dbContext,
         IListingParser listingParser,
         IScrapeRunCounterService counterService,
+        IListingIndexingService indexingService,
         ILogger<ListingProcessorService> logger)
     {
         _blobService = blobService;
         _dbContext = dbContext;
         _listingParser = listingParser;
         _counterService = counterService;
+        _indexingService = indexingService;
         _logger = logger;
     }
 
@@ -90,11 +93,14 @@ public class ListingProcessorService : IListingProcessorService
         }
 
         var result = UpsertListing(existingListing, parsedListing, request);
+        await _dbContext.SaveChangesAsync();
+
+        await CreateStatusHistory(result, parsedListing);
+        await _indexingService.Index(result.Listing, isNew: !result.IsUpdate);
 
         MarkScrapeRunListingComplete(scrapeRunListing);
         await _dbContext.SaveChangesAsync();
 
-        await CreateStatusHistory(result, parsedListing);
         await _counterService.Increment(request.ScrapeRunId, result.Status, newStatus);
 
         _logger.LogInformation("Processed listing {ListingId} with status {Status}", request.ListingId, result.Status);

@@ -6,6 +6,7 @@ using Azure.Storage.Blobs.Models;
 using AIOMarketMaker.Core.Data;
 using AIOMarketMaker.Core.Data.Models;
 using AIOMarketMaker.Core.Parsers;
+using AIOMarketMaker.Core.Services;
 using AIOMarketMaker.Etl.Endpoints;
 using AIOMarketMaker.Etl.Services;
 using AIOMarketMaker.Tests.Utils;
@@ -46,11 +47,16 @@ public class ProcessListingEndpoint_UnitTests
         var counterService = new EfCoreScrapeRunCounterService(
             _dbContext,
             new Mock<ILogger<EfCoreScrapeRunCounterService>>().Object);
+        var indexingServiceMock = new Mock<IListingIndexingService>();
+        indexingServiceMock
+            .Setup(i => i.Index(It.IsAny<Listing>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new IndexingResult(IndexingAction.Embedded));
         var processorService = new ListingProcessorService(
             _blobServiceMock.Object,
             _dbContext,
             _listingParserMock.Object,
             counterService,
+            indexingServiceMock.Object,
             new Mock<ILogger<ListingProcessorService>>().Object);
         return new ProcessListingEndpoint(processorService, _loggerMock.Object);
     }
