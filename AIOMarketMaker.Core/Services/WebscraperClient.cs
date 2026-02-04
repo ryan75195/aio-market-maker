@@ -7,7 +7,7 @@ using Microsoft.Extensions.Logging;       // JobEntity, JobItemEntity
 
 namespace AIOMarketMaker.Core.Services
 {
-    public record ScrapeWorkItem(string ListingId, string ListingUrl, string DescriptionUrl);
+    public record ScrapeWorkItem(string ListingId, string DescriptionUrl);
 
     public record ScraperApiConfig(string BaseUrl, string ApiKey);
 
@@ -254,22 +254,9 @@ namespace AIOMarketMaker.Core.Services
             var messages = new List<ScrapeQueueMessage>();
             foreach (var item in items)
             {
-                var jobGuid = Guid.NewGuid().ToString("N");
-
                 messages.Add(new ScrapeQueueMessage
                 {
-                    JobId = jobGuid,
-                    Url = item.ListingUrl,
-                    GroupId = item.ListingId,
-                    FileKey = "listing",
-                    ScrapeRunId = scrapeRunId,
-                    ScrapeJobId = scrapeJobId,
-                    EnqueuedAt = DateTimeOffset.UtcNow
-                });
-
-                messages.Add(new ScrapeQueueMessage
-                {
-                    JobId = jobGuid,
+                    JobId = Guid.NewGuid().ToString("N"),
                     Url = item.DescriptionUrl,
                     GroupId = item.ListingId,
                     FileKey = "description",
@@ -281,8 +268,8 @@ namespace AIOMarketMaker.Core.Services
 
             await _queueService.EnqueueBatchAsync(messages, ct);
 
-            _logger.LogInformation("Enqueued {Count} scrape work messages for {ItemCount} listings",
-                messages.Count, messages.Count / 2);
+            _logger.LogInformation("Enqueued {Count} description scrape messages for {ItemCount} listings",
+                messages.Count, messages.Count);
         }
     }
 }

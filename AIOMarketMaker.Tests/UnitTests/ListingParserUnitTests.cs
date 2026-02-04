@@ -190,27 +190,6 @@ namespace AIOMarketMaker.Tests.Unit
         }
 
 
-        [Test, TestCaseSource(nameof(ParseLocationTestCases))]
-        public async Task Should_parse_product_location(string testCaseName, string expectedResponse, IDocument testDoc)
-        {
-            var parser = (EbayListingParser)_serviceUnderTest;
-            var result = parser.GetLocation(testDoc!);
-            Assert.That(result, Is.EqualTo(expectedResponse));
-        }
-
-        private static IEnumerable<object> ParseLocationTestCases()
-        {
-            yield return new TestCaseData("ActiveAuctionListing", "Sheffield, United Kingdom", PageBuilder.LoadTestHtmlDocument("ActiveAuctionListing"));
-            yield return new TestCaseData("ActiveAuctionWithOfferAvailable", "Worthing, United Kingdom", PageBuilder.LoadTestHtmlDocument("ActiveAuctionWithOfferAvailable"));
-            yield return new TestCaseData("ActiveBuyItNowListing", "Leek, United Kingdom", PageBuilder.LoadTestHtmlDocument("ActiveBuyItNowListing"));
-            yield return new TestCaseData("ActiveBuyNowListingWithOffer", "Skelmersdale, United Kingdom", PageBuilder.LoadTestHtmlDocument("ActiveBuyNowListingWithOffer"));
-            yield return new TestCaseData("BiddingEndedNoSale", "Croydon, United Kingdom", PageBuilder.LoadTestHtmlDocument("BiddingEndedNoSale"));
-            yield return new TestCaseData("SoldBidListing", "London, United Kingdom", PageBuilder.LoadTestHtmlDocument("SoldBidListing"));
-            yield return new TestCaseData("SoldBuyNowListing", "Preston, United Kingdom", PageBuilder.LoadTestHtmlDocument("SoldBuyNowListing"));
-            yield return new TestCaseData("MissingLocation", null, PageBuilder.BuildEmptyDocument());
-            yield return new TestCaseData("Location with no colon", "Some Location", PageBuilder.BuildProductPage(locationText: "Some Location", shippingCost: 0));
-        }
-
         [Test, TestCaseSource(nameof(ParseShippingCostTestCases))]
         public async Task Should_parse_product_shipping_cost(string testCaseName, decimal expectedResponse, IDocument testDoc)
         {
@@ -247,25 +226,6 @@ namespace AIOMarketMaker.Tests.Unit
             yield return new TestCaseData("SoldBidListing", Condition.USED, PageBuilder.LoadTestHtmlDocument("SoldBidListing"));
             yield return new TestCaseData("SoldBuyNowListing", Condition.USED, PageBuilder.LoadTestHtmlDocument("SoldBuyNowListing"));
             yield return new TestCaseData("MissingCondition", Condition.NULL, PageBuilder.BuildEmptyDocument());
-        }
-
-        [Test, TestCaseSource(nameof(ParseSpecificsTestCases))]
-        public async Task Should_parse_product_item_specifics(string testCaseName, string expectedResponse, IDocument testDoc)
-        {
-            var parser = (EbayListingParser)_serviceUnderTest;
-            var result = parser.GetItemSpecifics(testDoc!);
-            Assert.That(result?.Contains(expectedResponse) ?? expectedResponse == null);
-        }
-
-        private static IEnumerable<object> ParseSpecificsTestCases()
-        {
-            yield return new TestCaseData("ActiveAuctionWithOfferAvailable", "ConditionNew: A brand-new, unused, unopened and undamaged item in original retail packaging", PageBuilder.LoadTestHtmlDocument("ActiveAuctionWithOfferAvailable"));
-            yield return new TestCaseData("ActiveBuyItNowListing", "ConditionOpened – never used: An item in excellent, new condition with no wear. The item may be missing the", PageBuilder.LoadTestHtmlDocument("ActiveBuyItNowListing"));
-            yield return new TestCaseData("ActiveBuyNowListingWithOffer", "ConditionUsed: An item that has been previously used. The item may have some signs of cosmetic wear, but is", PageBuilder.LoadTestHtmlDocument("ActiveBuyNowListingWithOffer"));
-            yield return new TestCaseData("BiddingEndedNoSale", "ConditionNew: A brand-new, unused, unopened and undamaged item in original retail packaging", PageBuilder.LoadTestHtmlDocument("BiddingEndedNoSale"));
-            yield return new TestCaseData("SoldBidListing", "ConditionUsed: An item that has been previously used. The item may have some signs of cosmetic wear, but is", PageBuilder.LoadTestHtmlDocument("SoldBidListing"));
-            yield return new TestCaseData("SoldBuyNowListing", "ConditionUsed: An item that has been previously used. The item may have some signs of cosmetic wear, but is", PageBuilder.LoadTestHtmlDocument("SoldBuyNowListing"));
-            yield return new TestCaseData("MissingSpecifics", null, PageBuilder.BuildEmptyDocument());
         }
 
         [Test, TestCaseSource(nameof(ParseImagesTestCases))]

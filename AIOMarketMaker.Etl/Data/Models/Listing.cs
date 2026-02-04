@@ -28,16 +28,9 @@ public class Listing
     public string? Description { get; set; }
 
     /// <summary>
-    /// JSON serialized item specifics
-    /// </summary>
-    public string? ItemSpecifics { get; set; }
-
-    /// <summary>
     /// JSON serialized array of image URLs
     /// </summary>
     public string? Images { get; set; }
-
-    public string? Location { get; set; }
     public DateTime? EndDateUtc { get; set; }
     public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
     public DateTime? UpdatedUtc { get; set; }

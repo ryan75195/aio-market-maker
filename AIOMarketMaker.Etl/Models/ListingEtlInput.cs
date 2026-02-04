@@ -89,8 +89,6 @@ public record ListingData(
     string? Description,
     string? Url,
     DateTime? EndDateUtc,
-    string? Location,
-    string? ItemSpecifics,
     List<string>? Images
 );
 public record SaveListingsInput(int JobId, List<ListingData> Listings);
@@ -135,8 +133,5 @@ public record ParsedListingResult(
     string? PurchaseFormat,
     string? Url,
     DateTime? EndDateUtc,
-    string? Location,
-    string? ItemSpecifics,
-    List<string>? Images,
-    string? DescriptionSourceUrl
+    List<string>? Images
 );

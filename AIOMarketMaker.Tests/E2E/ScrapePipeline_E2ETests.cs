@@ -105,7 +105,7 @@ public class ScrapePipeline_E2ETests : E2ETestFixture
         Console.WriteLine($"  ListingStatus: {listing.ListingStatus}");
         Console.WriteLine($"  PurchaseFormat: {listing.PurchaseFormat}");
         Console.WriteLine($"  Images: {listing.Images?.Count() ?? 0}");
-        Console.WriteLine($"  Location: {listing.Location}");
+        Console.WriteLine($"  Description: {(listing.Description != null ? "present" : "null")}");
         Console.WriteLine($"  ShippingCost: {listing.ShippingCost}");
 
         Assert.Multiple(() =>

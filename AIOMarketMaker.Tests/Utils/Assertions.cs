@@ -29,12 +29,6 @@ namespace AIOMarketMaker.Tests.Utils
                 Assert.That(listing.Title, Is.Not.Null.And.Not.Empty,
                     "❌ Title must not be null or empty");
 
-                Assert.That(listing.Description, Is.Not.Null.And.Not.Empty,
-                    "❌ Description must not be null or empty");
-
-                Assert.That(listing.ItemSpecifics, Is.Not.Null.And.Not.Empty,
-                    "❌ ItemSpecifics must not be null or empty");
-
                 // Value checks
                 Assert.That(listing.Price, Is.GreaterThan(0),
                     $"❌ Price must be > 0 but was {listing.Price}");
@@ -72,12 +66,6 @@ namespace AIOMarketMaker.Tests.Utils
                     // Presence
                     Assert.That(listing.Title, Is.Not.Null.And.Not.Empty,
                         "❌ Title must not be null or empty");
-
-                    Assert.That(listing.Description, Is.Not.Null.And.Not.Empty,
-                        "❌ Description must not be null or empty");
-
-                    Assert.That(listing.ItemSpecifics, Is.Not.Null.And.Not.Empty,
-                        "❌ ItemSpecifics must not be null or empty");
 
                     // Value checks
                     Assert.That(listing.Price, Is.GreaterThan(0),
