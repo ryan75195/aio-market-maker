@@ -63,14 +63,19 @@ public class ListingIndexingService_UnitTests
     }
 
     [Test]
-    public async Task Should_update_metadata_only_when_not_new()
+    public async Task Should_embed_and_upsert_when_not_new()
     {
         var listing = CreateListing();
+        var expectedEmbedding = new float[] { 0.1f, 0.2f, 0.3f };
 
-        UpdateRequest? capturedRequest = null;
+        _embeddingMock
+            .Setup(x => x.GetEmbedding("Test Item Test description", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(expectedEmbedding);
+
+        UpsertRequest? capturedRequest = null;
         _pineconeMock
-            .Setup(x => x.Update(It.IsAny<UpdateRequest>(), It.IsAny<CancellationToken>()))
-            .Callback<UpdateRequest, CancellationToken>((req, _) => capturedRequest = req)
+            .Setup(x => x.Upsert(It.IsAny<UpsertRequest>(), It.IsAny<CancellationToken>()))
+            .Callback<UpsertRequest, CancellationToken>((req, _) => capturedRequest = req)
             .Returns(Task.CompletedTask);
 
         var result = await _service.Index(listing, isNew: false);
@@ -82,11 +87,16 @@ public class ListingIndexingService_UnitTests
         });
 
         _embeddingMock.Verify(
-            x => x.GetEmbedding(It.IsAny<string>(), It.IsAny<CancellationToken>()),
-            Times.Never);
+            x => x.GetEmbedding("Test Item Test description", It.IsAny<CancellationToken>()),
+            Times.Once);
 
         Assert.That(capturedRequest, Is.Not.Null);
-        Assert.That(capturedRequest!.Id, Is.EqualTo("ABC123"));
+        var vector = capturedRequest!.Vectors.First();
+        Assert.Multiple(() =>
+        {
+            Assert.That(vector.Id, Is.EqualTo("ABC123"));
+            Assert.That(vector.Values?.ToArray(), Is.EqualTo(expectedEmbedding));
+        });
     }
 
     private static IEnumerable<TestCaseData> SkipCases()

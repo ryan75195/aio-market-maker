@@ -46,35 +46,23 @@ public class ListingIndexingService : IListingIndexingService
 
         var metadata = BuildMetadata(listing);
 
-        if (isNew)
-        {
-            var embedding = await _embeddingService.GetEmbedding(text, ct);
+        var embedding = await _embeddingService.GetEmbedding(text, ct);
 
-            await _pinecone.Upsert(new UpsertRequest
+        await _pinecone.Upsert(new UpsertRequest
+        {
+            Vectors = new[]
             {
-                Vectors = new[]
+                new Vector
                 {
-                    new Vector
-                    {
-                        Id = listing.ListingId,
-                        Values = embedding,
-                        Metadata = metadata
-                    }
+                    Id = listing.ListingId,
+                    Values = embedding,
+                    Metadata = metadata
                 }
-            }, ct);
-
-            _logger.LogInformation("Embedded and indexed new listing {ListingId}", listing.ListingId);
-            return new IndexingResult(IndexingAction.Embedded);
-        }
-
-        await _pinecone.Update(new UpdateRequest
-        {
-            Id = listing.ListingId,
-            SetMetadata = metadata
+            }
         }, ct);
 
-        _logger.LogInformation("Updated metadata for listing {ListingId}", listing.ListingId);
-        return new IndexingResult(IndexingAction.MetadataUpdated);
+        _logger.LogInformation("Indexed listing {ListingId} (isNew={IsNew})", listing.ListingId, isNew);
+        return new IndexingResult(isNew ? IndexingAction.Embedded : IndexingAction.MetadataUpdated);
     }
 
     private static string BuildEmbeddingText(Listing listing)
