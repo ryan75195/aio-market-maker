@@ -40,7 +40,8 @@ public class ProcessListingEndpoint_UnitTests
     {
         var counterService = new EfCoreScrapeRunCounterService(
             _dbContext,
-            new Mock<ILogger<EfCoreScrapeRunCounterService>>().Object);
+            new Mock<ILogger<EfCoreScrapeRunCounterService>>().Object,
+            new NullComparablesRefreshService());
         var processorService = new ListingProcessorService(
             _blobServiceMock.Object,
             _dbContext,

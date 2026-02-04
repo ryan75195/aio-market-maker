@@ -33,7 +33,6 @@ public class ScrapeJobProcessor : IScrapeJobProcessor
     private readonly ISearchParser _searchParser;
     private readonly IEbayUrlBuilder _urlBuilder;
     private readonly IListingIndexingService _indexingService;
-    private readonly IComparablesRefreshService _comparablesRefreshService;
 
     public ScrapeJobProcessor(
         ILogger<ScrapeJobProcessor> logger,
@@ -41,8 +40,7 @@ public class ScrapeJobProcessor : IScrapeJobProcessor
         IWebscraperClient webscraperClient,
         ISearchParser searchParser,
         IEbayUrlBuilder urlBuilder,
-        IListingIndexingService indexingService,
-        IComparablesRefreshService comparablesRefreshService)
+        IListingIndexingService indexingService)
     {
         _logger = logger;
         _dbContext = dbContext;
@@ -50,7 +48,6 @@ public class ScrapeJobProcessor : IScrapeJobProcessor
         _searchParser = searchParser;
         _urlBuilder = urlBuilder;
         _indexingService = indexingService;
-        _comparablesRefreshService = comparablesRefreshService;
     }
 
     public async Task Process(ScrapeJobMessage message)
@@ -99,8 +96,6 @@ public class ScrapeJobProcessor : IScrapeJobProcessor
         {
             await CreateListingsAndEnqueueDescriptions(scrapeRun, classified.ToScrape, classified.ExistingListings, jobId);
         }
-
-        await RefreshComparables(scrapeRun, jobId);
 
         if (classified.ToScrape.Count == 0)
         {
@@ -364,26 +359,6 @@ public class ScrapeJobProcessor : IScrapeJobProcessor
         scrapeRun.CurrentPhase = "Completed";
         scrapeRun.CompletedUtc = DateTime.UtcNow;
         await _dbContext.SaveChangesAsync();
-    }
-
-    private async Task RefreshComparables(ScrapeRun scrapeRun, int jobId)
-    {
-        await SetPhase(scrapeRun, "Refreshing comparables");
-
-        var activeListings = await _dbContext.Listings
-            .Where(l => l.ScrapeJobId == jobId && l.ListingStatus == "Active")
-            .ToListAsync();
-
-        if (activeListings.Count == 0)
-        {
-            _logger.LogInformation("No active listings to refresh comparables for job {JobId}", jobId);
-            return;
-        }
-
-        var result = await _comparablesRefreshService.Refresh(activeListings);
-        _logger.LogInformation(
-            "Refreshed comparables for job {JobId}: {Processed} listings, {Found} comparables",
-            jobId, result.ListingsProcessed, result.ComparablesFound);
     }
 
     private async Task<List<IEbayProductSummary>> SearchListings(string searchTerm, bool sold, int maxPages)

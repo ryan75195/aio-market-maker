@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using AIOMarketMaker.Core.Data;
+using AIOMarketMaker.Core.Services;
 
 namespace AIOMarketMaker.Etl.Services;
 
@@ -13,11 +14,16 @@ public class SqlScrapeRunCounterService : IScrapeRunCounterService
 {
     private readonly EtlDbContext _dbContext;
     private readonly ILogger<SqlScrapeRunCounterService> _logger;
+    private readonly IComparablesRefreshService _comparablesRefreshService;
 
-    public SqlScrapeRunCounterService(EtlDbContext dbContext, ILogger<SqlScrapeRunCounterService> logger)
+    public SqlScrapeRunCounterService(
+        EtlDbContext dbContext,
+        ILogger<SqlScrapeRunCounterService> logger,
+        IComparablesRefreshService comparablesRefreshService)
     {
         _dbContext = dbContext;
         _logger = logger;
+        _comparablesRefreshService = comparablesRefreshService;
     }
 
     public async Task Increment(int scrapeRunId, int scrapeJobId, string status, string? listingStatus = null)
@@ -42,19 +48,32 @@ public class SqlScrapeRunCounterService : IScrapeRunCounterService
             return;
         }
 
-        var completionSql = @"
+        var refreshPhaseSql = @"
             UPDATE ScrapeRuns
-            SET Status = 'Completed', CurrentPhase = 'Completed', CompletedUtc = {1}
+            SET CurrentPhase = 'Refreshing comparables'
             WHERE Id = {0}
               AND (Status = 'Running' OR Status = 'Indexing')
               AND CurrentPhase IN ('Indexing', 'Refreshing comparables')
               AND TotalListingsFound > 0
               AND ListingsProcessed >= (TotalListingsFound - ListingsFilteredPreQueue)";
 
-        var completedRows = await _dbContext.Database.ExecuteSqlRawAsync(completionSql, scrapeRunId, DateTime.UtcNow);
+        var eligibleRows = await _dbContext.Database.ExecuteSqlRawAsync(refreshPhaseSql, scrapeRunId);
 
-        if (completedRows > 0)
+        if (eligibleRows > 0)
+        {
+            var activeListings = await _dbContext.Listings
+                .Where(l => l.ScrapeJobId == scrapeJobId && l.ListingStatus == "Active")
+                .ToListAsync();
+            await _comparablesRefreshService.Refresh(activeListings);
+
+            var completionSql = @"
+                UPDATE ScrapeRuns
+                SET Status = 'Completed', CurrentPhase = 'Completed', CompletedUtc = {1}
+                WHERE Id = {0}";
+
+            await _dbContext.Database.ExecuteSqlRawAsync(completionSql, scrapeRunId, DateTime.UtcNow);
             _logger.LogInformation("Marked ScrapeRun {ScrapeRunId} as Completed (last listing processed)", scrapeRunId);
+        }
     }
 }
 
@@ -62,11 +81,16 @@ public class EfCoreScrapeRunCounterService : IScrapeRunCounterService
 {
     private readonly EtlDbContext _dbContext;
     private readonly ILogger<EfCoreScrapeRunCounterService> _logger;
+    private readonly IComparablesRefreshService _comparablesRefreshService;
 
-    public EfCoreScrapeRunCounterService(EtlDbContext dbContext, ILogger<EfCoreScrapeRunCounterService> logger)
+    public EfCoreScrapeRunCounterService(
+        EtlDbContext dbContext,
+        ILogger<EfCoreScrapeRunCounterService> logger,
+        IComparablesRefreshService comparablesRefreshService)
     {
         _dbContext = dbContext;
         _logger = logger;
+        _comparablesRefreshService = comparablesRefreshService;
     }
 
     public async Task Increment(int scrapeRunId, int scrapeJobId, string status, string? listingStatus = null)
@@ -89,6 +113,14 @@ public class EfCoreScrapeRunCounterService : IScrapeRunCounterService
             scrapeRun.TotalListingsFound > 0 &&
             scrapeRun.ListingsProcessed >= listingsToProcess)
         {
+            scrapeRun.CurrentPhase = "Refreshing comparables";
+            await _dbContext.SaveChangesAsync();
+
+            var activeListings = await _dbContext.Listings
+                .Where(l => l.ScrapeJobId == scrapeJobId && l.ListingStatus == "Active")
+                .ToListAsync();
+            await _comparablesRefreshService.Refresh(activeListings);
+
             scrapeRun.Status = "Completed";
             scrapeRun.CurrentPhase = "Completed";
             scrapeRun.CompletedUtc = DateTime.UtcNow;
