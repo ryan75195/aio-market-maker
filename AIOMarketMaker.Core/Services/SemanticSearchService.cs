@@ -87,7 +87,7 @@ public class SemanticSearchService : ISemanticSearchService
 
                 if (validItems.Count == 0) continue;
 
-                var embeddings = await _embeddingService.GetEmbeddingsAsync(
+                var embeddings = await _embeddingService.GetEmbeddings(
                     validItems.Select(x => x.text),
                     ct);
 
@@ -140,7 +140,7 @@ public class SemanticSearchService : ISemanticSearchService
         _logger.LogDebug("Searching for: {Query} (filter to {Count} IDs)",
             queryText, filterIds?.Count ?? -1);
 
-        var queryEmbedding = await _embeddingService.GetEmbeddingAsync(queryText, ct);
+        var queryEmbedding = await _embeddingService.GetEmbedding(queryText, ct);
 
         ct.ThrowIfCancellationRequested();
 

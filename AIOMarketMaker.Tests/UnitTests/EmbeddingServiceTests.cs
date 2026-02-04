@@ -17,7 +17,7 @@ public class EmbeddingServiceTests
     }
 
     [Test]
-    public void GetEmbeddingAsync_WithNullText_ThrowsArgumentException()
+    public void GetEmbedding_WithNullText_ThrowsArgumentException()
     {
         // Arrange
         var config = new EmbeddingConfig("fake-api-key");
@@ -25,11 +25,11 @@ public class EmbeddingServiceTests
 
         // Act & Assert
         Assert.ThrowsAsync<ArgumentException>(async () =>
-            await service.GetEmbeddingAsync(null!));
+            await service.GetEmbedding(null!));
     }
 
     [Test]
-    public void GetEmbeddingAsync_WithEmptyText_ThrowsArgumentException()
+    public void GetEmbedding_WithEmptyText_ThrowsArgumentException()
     {
         // Arrange
         var config = new EmbeddingConfig("fake-api-key");
@@ -37,11 +37,11 @@ public class EmbeddingServiceTests
 
         // Act & Assert
         Assert.ThrowsAsync<ArgumentException>(async () =>
-            await service.GetEmbeddingAsync(""));
+            await service.GetEmbedding(""));
     }
 
     [Test]
-    public void GetEmbeddingAsync_WithWhitespaceText_ThrowsArgumentException()
+    public void GetEmbedding_WithWhitespaceText_ThrowsArgumentException()
     {
         // Arrange
         var config = new EmbeddingConfig("fake-api-key");
@@ -49,32 +49,32 @@ public class EmbeddingServiceTests
 
         // Act & Assert
         Assert.ThrowsAsync<ArgumentException>(async () =>
-            await service.GetEmbeddingAsync("   "));
+            await service.GetEmbedding("   "));
     }
 
     [Test]
-    public async Task GetEmbeddingsAsync_WithEmptyList_ReturnsEmptyArray()
+    public async Task GetEmbeddings_WithEmptyList_ReturnsEmptyArray()
     {
         // Arrange
         var config = new EmbeddingConfig("fake-api-key");
         var service = new EmbeddingService(config, _mockLogger.Object);
 
         // Act
-        var result = await service.GetEmbeddingsAsync(Array.Empty<string>());
+        var result = await service.GetEmbeddings(Array.Empty<string>());
 
         // Assert
         Assert.That(result, Is.Empty);
     }
 
     [Test]
-    public async Task GetEmbeddingsAsync_WithAllEmptyStrings_ReturnsEmptyArray()
+    public async Task GetEmbeddings_WithAllEmptyStrings_ReturnsEmptyArray()
     {
         // Arrange
         var config = new EmbeddingConfig("fake-api-key");
         var service = new EmbeddingService(config, _mockLogger.Object);
 
         // Act
-        var result = await service.GetEmbeddingsAsync(new[] { "", "  ", null! });
+        var result = await service.GetEmbeddings(new[] { "", "  ", null! });
 
         // Assert
         Assert.That(result, Is.Empty);
@@ -150,10 +150,10 @@ public class EmbeddingServiceIntegrationTests
     }
 
     [Test]
-    public async Task GetEmbeddingAsync_WithValidText_ReturnsEmbedding()
+    public async Task GetEmbedding_WithValidText_ReturnsEmbedding()
     {
         // Act
-        var result = await _service.GetEmbeddingAsync("PlayStation 5 disc edition console");
+        var result = await _service.GetEmbedding("PlayStation 5 disc edition console");
 
         // Assert
         Assert.Multiple(() =>
@@ -165,7 +165,7 @@ public class EmbeddingServiceIntegrationTests
     }
 
     [Test]
-    public async Task GetEmbeddingsAsync_WithMultipleTexts_ReturnsCorrectCount()
+    public async Task GetEmbeddings_WithMultipleTexts_ReturnsCorrectCount()
     {
         // Arrange
         var texts = new[]
@@ -176,7 +176,7 @@ public class EmbeddingServiceIntegrationTests
         };
 
         // Act
-        var results = await _service.GetEmbeddingsAsync(texts);
+        var results = await _service.GetEmbeddings(texts);
 
         // Assert
         Assert.Multiple(() =>
@@ -187,7 +187,7 @@ public class EmbeddingServiceIntegrationTests
     }
 
     [Test]
-    public async Task GetEmbeddingsAsync_SimilarTexts_HaveHighCosineSimilarity()
+    public async Task GetEmbeddings_SimilarTexts_HaveHighCosineSimilarity()
     {
         // Arrange
         var texts = new[]
@@ -197,7 +197,7 @@ public class EmbeddingServiceIntegrationTests
         };
 
         // Act
-        var results = await _service.GetEmbeddingsAsync(texts);
+        var results = await _service.GetEmbeddings(texts);
         var similarity = CosineSimilarity(results[0], results[1]);
 
         // Assert - similar texts should have similarity > 0.8

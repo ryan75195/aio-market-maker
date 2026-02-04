@@ -7,8 +7,8 @@ public record EmbeddingConfig(string ApiKey, string Model = "text-embedding-3-sm
 
 public interface IEmbeddingService
 {
-    Task<float[]> GetEmbeddingAsync(string text, CancellationToken ct = default);
-    Task<float[][]> GetEmbeddingsAsync(IEnumerable<string> texts, CancellationToken ct = default);
+    Task<float[]> GetEmbedding(string text, CancellationToken ct = default);
+    Task<float[][]> GetEmbeddings(IEnumerable<string> texts, CancellationToken ct = default);
 }
 
 public class EmbeddingService : IEmbeddingService
@@ -24,7 +24,7 @@ public class EmbeddingService : IEmbeddingService
         _dimensions = config.Dimensions;
     }
 
-    public async Task<float[]> GetEmbeddingAsync(string text, CancellationToken ct = default)
+    public async Task<float[]> GetEmbedding(string text, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(text))
         {
@@ -40,7 +40,7 @@ public class EmbeddingService : IEmbeddingService
         return response.Value.ToFloats().ToArray();
     }
 
-    public async Task<float[][]> GetEmbeddingsAsync(IEnumerable<string> texts, CancellationToken ct = default)
+    public async Task<float[][]> GetEmbeddings(IEnumerable<string> texts, CancellationToken ct = default)
     {
         var textList = texts.Where(t => !string.IsNullOrWhiteSpace(t)).ToList();
 
