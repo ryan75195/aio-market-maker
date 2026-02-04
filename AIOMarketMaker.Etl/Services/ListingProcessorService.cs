@@ -48,6 +48,7 @@ public class ListingProcessorService : IListingProcessorService
         if (scrapeRunListing?.Status == "Complete")
         {
             _logger.LogInformation("Listing {ListingId} already processed, skipping", request.ListingId);
+            await _counterService.Increment(request.ScrapeRunId, request.ScrapeJobId, "skipped");
             return new ProcessListingResponse(true, "skipped", null);
         }
 
@@ -58,6 +59,7 @@ public class ListingProcessorService : IListingProcessorService
         if (listing == null)
         {
             _logger.LogWarning("Listing {ListingId} not found for job {JobId}", request.ListingId, request.ScrapeJobId);
+            await _counterService.Increment(request.ScrapeRunId, request.ScrapeJobId, "failed");
             return new ProcessListingResponse(false, "failed", "Listing not found");
         }
 
