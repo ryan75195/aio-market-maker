@@ -27,6 +27,7 @@ public class ScrapeTrigger_UnitTests
     private Mock<QueueServiceClient> _queueServiceMock;
     private Mock<QueueClient> _jobQueueClientMock;
     private IScrapeRunService _scrapeRunService;
+    private Func<TimeSpan, Task> _noDelay;
 
     [SetUp]
     public void SetUp()
@@ -36,6 +37,7 @@ public class ScrapeTrigger_UnitTests
         _dbContext = InMemoryDbContextFactory.Create();
         _queueServiceMock = new Mock<QueueServiceClient>();
         _jobQueueClientMock = new Mock<QueueClient>();
+        _noDelay = _ => Task.CompletedTask;
 
         _queueServiceMock
             .Setup(q => q.GetQueueClient("scrape-jobs"))
@@ -53,12 +55,35 @@ public class ScrapeTrigger_UnitTests
         _dbContext?.Dispose();
     }
 
+    private ScrapeTrigger CreateTrigger()
+    {
+        return new ScrapeTrigger(_loggerMock.Object, _scrapeRunService, _noDelay);
+    }
+
+    // Helper to mark run as complete after it's enqueued
+    private void SetupQueueToMarkRunComplete()
+    {
+        _jobQueueClientMock
+            .Setup(q => q.SendMessageAsync(It.IsAny<string>()))
+            .Returns(async (string msg) =>
+            {
+                var message = JsonSerializer.Deserialize<ScrapeJobMessage>(msg);
+                var run = await _dbContext.ScrapeRuns.FindAsync(message!.ScrapeRunId);
+                if (run != null)
+                {
+                    run.Status = "Completed";
+                    await _dbContext.SaveChangesAsync();
+                }
+                return Response.FromValue(
+                    QueuesModelFactory.SendReceipt("messageId", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, "popReceipt", DateTimeOffset.UtcNow.AddMinutes(1)),
+                    Mock.Of<Response>());
+            });
+    }
+
     [Test]
     public void Should_construct_with_all_dependencies()
     {
-        var trigger = new ScrapeTrigger(
-            _loggerMock.Object,
-            _scrapeRunService);
+        var trigger = CreateTrigger();
 
         Assert.That(trigger, Is.Not.Null);
     }
@@ -76,14 +101,23 @@ public class ScrapeTrigger_UnitTests
         var enqueuedMessages = new List<string>();
         _jobQueueClientMock
             .Setup(q => q.SendMessageAsync(It.IsAny<string>()))
-            .Callback<string>((msg) => enqueuedMessages.Add(msg))
-            .ReturnsAsync(Response.FromValue(
-                QueuesModelFactory.SendReceipt("messageId", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, "popReceipt", DateTimeOffset.UtcNow.AddMinutes(1)),
-                Mock.Of<Response>()));
+            .Returns(async (string msg) =>
+            {
+                enqueuedMessages.Add(msg);
+                // Mark run as completed so trigger can proceed to next job
+                var message = JsonSerializer.Deserialize<ScrapeJobMessage>(msg);
+                var run = await _dbContext.ScrapeRuns.FindAsync(message!.ScrapeRunId);
+                if (run != null)
+                {
+                    run.Status = "Completed";
+                    await _dbContext.SaveChangesAsync();
+                }
+                return Response.FromValue(
+                    QueuesModelFactory.SendReceipt("messageId", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, "popReceipt", DateTimeOffset.UtcNow.AddMinutes(1)),
+                    Mock.Of<Response>());
+            });
 
-        var trigger = new ScrapeTrigger(
-            _loggerMock.Object,
-            _scrapeRunService);
+        var trigger = CreateTrigger();
 
         // Act
         await trigger.RunNightly(null!);
@@ -97,7 +131,8 @@ public class ScrapeTrigger_UnitTests
         {
             Assert.That(scrapeRuns.Select(r => r.JobId), Is.EquivalentTo(new[] { 1, 2 }));
             Assert.That(scrapeRuns.All(r => r.TriggerType == "Nightly"), Is.True);
-            Assert.That(scrapeRuns.All(r => r.Status == "Queued"), Is.True);
+            // Status is now "Completed" because we mark it complete after enqueuing
+            Assert.That(scrapeRuns.All(r => r.Status == "Completed"), Is.True);
             Assert.That(scrapeRuns.All(r => r.CurrentPhase == "Queued"), Is.True);
         });
 
@@ -117,9 +152,7 @@ public class ScrapeTrigger_UnitTests
         _dbContext.ScrapeJobs.Add(job);
         await _dbContext.SaveChangesAsync();
 
-        var trigger = new ScrapeTrigger(
-            _loggerMock.Object,
-            _scrapeRunService);
+        var trigger = CreateTrigger();
 
         // Act
         await trigger.RunNightly(null!);
@@ -131,7 +164,7 @@ public class ScrapeTrigger_UnitTests
     }
 
     [Test]
-    public async Task RunManual_should_enqueue_job_messages_and_return_immediately()
+    public async Task RunManual_should_enqueue_job_messages_and_wait_for_completion()
     {
         // Arrange
         var job = new ScrapeJob { Id = 1, SearchTerm = "Test Product", IsEnabled = true };
@@ -141,12 +174,21 @@ public class ScrapeTrigger_UnitTests
         var enqueuedMessages = new List<string>();
         _jobQueueClientMock
             .Setup(q => q.SendMessageAsync(It.IsAny<string>()))
-            .Callback<string>((msg) => enqueuedMessages.Add(msg))
-            .ReturnsAsync(Mock.Of<Azure.Response<SendReceipt>>());
+            .Returns(async (string msg) =>
+            {
+                enqueuedMessages.Add(msg);
+                // Mark run as completed so trigger can proceed
+                var message = JsonSerializer.Deserialize<ScrapeJobMessage>(msg);
+                var run = await _dbContext.ScrapeRuns.FindAsync(message!.ScrapeRunId);
+                if (run != null)
+                {
+                    run.Status = "Completed";
+                    await _dbContext.SaveChangesAsync();
+                }
+                return Mock.Of<Azure.Response<SendReceipt>>();
+            });
 
-        var trigger = new ScrapeTrigger(
-            _loggerMock.Object,
-            _scrapeRunService);
+        var trigger = CreateTrigger();
 
         var request = MockHttpRequestData.CreateEmpty();
 
@@ -159,7 +201,7 @@ public class ScrapeTrigger_UnitTests
 
         var scrapeRun = await _dbContext.ScrapeRuns.FirstOrDefaultAsync();
         Assert.That(scrapeRun, Is.Not.Null);
-        Assert.That(scrapeRun!.Status, Is.EqualTo("Queued"));
+        Assert.That(scrapeRun!.Status, Is.EqualTo("Completed"));
         Assert.That(scrapeRun.CurrentPhase, Is.EqualTo("Queued"));
         Assert.That(scrapeRun.TriggerType, Is.EqualTo("Manual"));
 
@@ -180,13 +222,22 @@ public class ScrapeTrigger_UnitTests
 
         _jobQueueClientMock
             .Setup(q => q.SendMessageAsync(It.IsAny<string>()))
-            .ReturnsAsync(Response.FromValue(
-                QueuesModelFactory.SendReceipt("messageId", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, "popReceipt", DateTimeOffset.UtcNow.AddMinutes(1)),
-                Mock.Of<Response>()));
+            .Returns(async (string msg) =>
+            {
+                // Mark run as completed so trigger can proceed
+                var message = JsonSerializer.Deserialize<ScrapeJobMessage>(msg);
+                var run = await _dbContext.ScrapeRuns.FindAsync(message!.ScrapeRunId);
+                if (run != null)
+                {
+                    run.Status = "Completed";
+                    await _dbContext.SaveChangesAsync();
+                }
+                return Response.FromValue(
+                    QueuesModelFactory.SendReceipt("messageId", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, "popReceipt", DateTimeOffset.UtcNow.AddMinutes(1)),
+                    Mock.Of<Response>());
+            });
 
-        var trigger = new ScrapeTrigger(
-            _loggerMock.Object,
-            _scrapeRunService);
+        var trigger = CreateTrigger();
 
         var httpRequest = MockHttpRequestData.CreateEmpty();
 
@@ -209,14 +260,23 @@ public class ScrapeTrigger_UnitTests
         var enqueuedMessages = new List<string>();
         _jobQueueClientMock
             .Setup(q => q.SendMessageAsync(It.IsAny<string>()))
-            .Callback<string>((msg) => enqueuedMessages.Add(msg))
-            .ReturnsAsync(Response.FromValue(
-                QueuesModelFactory.SendReceipt("messageId", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, "popReceipt", DateTimeOffset.UtcNow.AddMinutes(1)),
-                Mock.Of<Response>()));
+            .Returns(async (string msg) =>
+            {
+                enqueuedMessages.Add(msg);
+                // Mark run as completed so trigger can proceed
+                var message = JsonSerializer.Deserialize<ScrapeJobMessage>(msg);
+                var run = await _dbContext.ScrapeRuns.FindAsync(message!.ScrapeRunId);
+                if (run != null)
+                {
+                    run.Status = "Completed";
+                    await _dbContext.SaveChangesAsync();
+                }
+                return Response.FromValue(
+                    QueuesModelFactory.SendReceipt("messageId", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, "popReceipt", DateTimeOffset.UtcNow.AddMinutes(1)),
+                    Mock.Of<Response>());
+            });
 
-        var trigger = new ScrapeTrigger(
-            _loggerMock.Object,
-            _scrapeRunService);
+        var trigger = CreateTrigger();
 
         var httpRequest = MockHttpRequestData.Create(new ManualScrapeRequest(JobId: 2));
 
@@ -244,9 +304,7 @@ public class ScrapeTrigger_UnitTests
         _dbContext.ScrapeJobs.Add(job);
         await _dbContext.SaveChangesAsync();
 
-        var trigger = new ScrapeTrigger(
-            _loggerMock.Object,
-            _scrapeRunService);
+        var trigger = CreateTrigger();
 
         var httpRequest = MockHttpRequestData.CreateEmpty();
 
@@ -271,14 +329,23 @@ public class ScrapeTrigger_UnitTests
         var enqueuedMessages = new List<string>();
         _jobQueueClientMock
             .Setup(q => q.SendMessageAsync(It.IsAny<string>()))
-            .Callback<string>((msg) => enqueuedMessages.Add(msg))
-            .ReturnsAsync(Response.FromValue(
-                QueuesModelFactory.SendReceipt("messageId", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, "popReceipt", DateTimeOffset.UtcNow.AddMinutes(1)),
-                Mock.Of<Response>()));
+            .Returns(async (string msg) =>
+            {
+                enqueuedMessages.Add(msg);
+                // Mark run as completed so trigger can proceed to next job
+                var message = JsonSerializer.Deserialize<ScrapeJobMessage>(msg);
+                var run = await _dbContext.ScrapeRuns.FindAsync(message!.ScrapeRunId);
+                if (run != null)
+                {
+                    run.Status = "Completed";
+                    await _dbContext.SaveChangesAsync();
+                }
+                return Response.FromValue(
+                    QueuesModelFactory.SendReceipt("messageId", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, "popReceipt", DateTimeOffset.UtcNow.AddMinutes(1)),
+                    Mock.Of<Response>());
+            });
 
-        var trigger = new ScrapeTrigger(
-            _loggerMock.Object,
-            _scrapeRunService);
+        var trigger = CreateTrigger();
 
         var httpRequest = MockHttpRequestData.CreateEmpty();
 

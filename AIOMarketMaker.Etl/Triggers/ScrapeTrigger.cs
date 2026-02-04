@@ -1,4 +1,5 @@
 using System.Net;
+using System.Runtime.CompilerServices;
 using System.Text.Json;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
@@ -6,20 +7,37 @@ using Microsoft.Extensions.Logging;
 using AIOMarketMaker.Etl.Models;
 using AIOMarketMaker.Etl.Services;
 
+[assembly: InternalsVisibleTo("AIOMarketMaker.Tests")]
+
 namespace AIOMarketMaker.Etl.Triggers;
 
 public class ScrapeTrigger
 {
     private record ResolveJobsResult(IEnumerable<ScrapeJobConfig> Jobs, HttpResponseData? ErrorResponse);
+
+    private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(10);
+    private static readonly TimeSpan MaxWaitTime = TimeSpan.FromHours(2);
+
     private readonly ILogger<ScrapeTrigger> _logger;
     private readonly IScrapeRunService _scrapeRunService;
+    private readonly Func<TimeSpan, Task> _delay;
 
     public ScrapeTrigger(
         ILogger<ScrapeTrigger> logger,
         IScrapeRunService scrapeRunService)
+        : this(logger, scrapeRunService, Task.Delay)
+    {
+    }
+
+    // Constructor for testing to inject a delay function
+    internal ScrapeTrigger(
+        ILogger<ScrapeTrigger> logger,
+        IScrapeRunService scrapeRunService,
+        Func<TimeSpan, Task> delay)
     {
         _logger = logger;
         _scrapeRunService = scrapeRunService;
+        _delay = delay;
     }
 
     [Function("NightlyScrape")]
@@ -34,8 +52,7 @@ public class ScrapeTrigger
             return;
         }
 
-        var runs = await _scrapeRunService.StartRuns(jobs, "Nightly");
-        _logger.LogInformation("Started {Count} scrape runs for nightly scrape", runs.Count());
+        await ProcessJobsSequentially(jobs, "Nightly");
     }
 
     [Function("ManualScrape")]
@@ -50,7 +67,7 @@ public class ScrapeTrigger
         if (resolved.ErrorResponse != null)
             return resolved.ErrorResponse;
 
-        var runs = await _scrapeRunService.StartRuns(resolved.Jobs, "Manual");
+        var runs = await ProcessJobsSequentially(resolved.Jobs, "Manual");
 
         return await BuildResponse(req, runs);
     }
@@ -112,5 +129,59 @@ public class ScrapeTrigger
         var response = req.CreateResponse(HttpStatusCode.OK);
         await response.WriteAsJsonAsync(body);
         return response;
+    }
+
+    private async Task<IEnumerable<StartedScrapeRun>> ProcessJobsSequentially(
+        IEnumerable<ScrapeJobConfig> jobs, string triggerType)
+    {
+        var completedRuns = new List<StartedScrapeRun>();
+        var jobList = jobs.ToList();
+        var total = jobList.Count;
+
+        for (var i = 0; i < total; i++)
+        {
+            var job = jobList[i];
+            _logger.LogInformation(
+                "Starting job {Current}/{Total}: {SearchTerm}",
+                i + 1, total, job.SearchTerm);
+
+            var run = await _scrapeRunService.StartRun(job, triggerType);
+            completedRuns.Add(run);
+
+            await WaitForCompletion(run.RunId, job.SearchTerm);
+
+            _logger.LogInformation(
+                "Completed job {Current}/{Total}: {SearchTerm}",
+                i + 1, total, job.SearchTerm);
+        }
+
+        _logger.LogInformation("All {Count} jobs completed", total);
+        return completedRuns;
+    }
+
+    private async Task WaitForCompletion(int runId, string searchTerm)
+    {
+        var startTime = DateTime.UtcNow;
+        var elapsed = TimeSpan.Zero;
+
+        while (elapsed < MaxWaitTime)
+        {
+            var isComplete = await _scrapeRunService.IsRunComplete(runId);
+            if (isComplete)
+            {
+                return;
+            }
+
+            _logger.LogDebug(
+                "Waiting for run {RunId} ({SearchTerm}) to complete. Elapsed: {Elapsed:mm\\:ss}",
+                runId, searchTerm, elapsed);
+
+            await _delay(PollInterval);
+            elapsed = DateTime.UtcNow - startTime;
+        }
+
+        _logger.LogWarning(
+            "Run {RunId} ({SearchTerm}) did not complete within {MaxWait} timeout",
+            runId, searchTerm, MaxWaitTime);
     }
 }
