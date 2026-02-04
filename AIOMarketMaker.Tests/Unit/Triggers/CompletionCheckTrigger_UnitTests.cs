@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Azure.Functions.Worker;
 using AIOMarketMaker.Core.Data;
 using AIOMarketMaker.Core.Data.Models;
+using AIOMarketMaker.Core.Services;
 using AIOMarketMaker.Etl.Triggers;
 using AIOMarketMaker.Tests.Utils;
 using Microsoft.EntityFrameworkCore;
@@ -16,12 +17,17 @@ public class CompletionCheckTrigger_UnitTests
 {
     private Mock<ILogger<CompletionCheckTrigger>> _loggerMock = null!;
     private EtlDbContext _dbContext = null!;
+    private Mock<IComparablesRefreshService> _comparablesRefreshMock = null!;
 
     [SetUp]
     public void SetUp()
     {
         _loggerMock = new Mock<ILogger<CompletionCheckTrigger>>();
         _dbContext = InMemoryDbContextFactory.Create();
+        _comparablesRefreshMock = new Mock<IComparablesRefreshService>();
+        _comparablesRefreshMock
+            .Setup(c => c.Refresh(It.IsAny<IEnumerable<Listing>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ComparablesRefreshResult(0, 0));
     }
 
     [TearDown]
@@ -36,7 +42,8 @@ public class CompletionCheckTrigger_UnitTests
         // Act
         var trigger = new CompletionCheckTrigger(
             _loggerMock.Object,
-            _dbContext);
+            _dbContext,
+            _comparablesRefreshMock.Object);
 
         // Assert
         Assert.That(trigger, Is.Not.Null);
@@ -61,7 +68,8 @@ public class CompletionCheckTrigger_UnitTests
 
         var trigger = new CompletionCheckTrigger(
             _loggerMock.Object,
-            _dbContext);
+            _dbContext,
+            _comparablesRefreshMock.Object);
 
         // Act
         await trigger.Run(null!);
@@ -75,6 +83,9 @@ public class CompletionCheckTrigger_UnitTests
             Assert.That(updatedRun.CompletedUtc, Is.Not.Null);
             Assert.That(updatedRun.CompletedUtc, Is.GreaterThan(DateTime.UtcNow.AddMinutes(-1)));
         });
+        _comparablesRefreshMock.Verify(
+            c => c.Refresh(It.IsAny<IEnumerable<Listing>>(), It.IsAny<CancellationToken>()),
+            Times.Once);
     }
 
     [Test]
@@ -96,7 +107,8 @@ public class CompletionCheckTrigger_UnitTests
 
         var trigger = new CompletionCheckTrigger(
             _loggerMock.Object,
-            _dbContext);
+            _dbContext,
+            _comparablesRefreshMock.Object);
 
         // Act
         await trigger.Run(null!);
@@ -130,7 +142,8 @@ public class CompletionCheckTrigger_UnitTests
 
         var trigger = new CompletionCheckTrigger(
             _loggerMock.Object,
-            _dbContext);
+            _dbContext,
+            _comparablesRefreshMock.Object);
 
         // Act
         await trigger.Run(null!);
@@ -164,7 +177,8 @@ public class CompletionCheckTrigger_UnitTests
 
         var trigger = new CompletionCheckTrigger(
             _loggerMock.Object,
-            _dbContext);
+            _dbContext,
+            _comparablesRefreshMock.Object);
 
         // Act
         await trigger.Run(null!);
@@ -200,7 +214,8 @@ public class CompletionCheckTrigger_UnitTests
 
         var trigger = new CompletionCheckTrigger(
             _loggerMock.Object,
-            _dbContext);
+            _dbContext,
+            _comparablesRefreshMock.Object);
 
         // Act
         await trigger.Run(null!);
@@ -229,7 +244,8 @@ public class CompletionCheckTrigger_UnitTests
 
         var trigger = new CompletionCheckTrigger(
             _loggerMock.Object,
-            _dbContext);
+            _dbContext,
+            _comparablesRefreshMock.Object);
 
         // Act
         await trigger.Run(null!);
@@ -268,7 +284,8 @@ public class CompletionCheckTrigger_UnitTests
 
         var trigger = new CompletionCheckTrigger(
             _loggerMock.Object,
-            _dbContext);
+            _dbContext,
+            _comparablesRefreshMock.Object);
 
         // Act
         await trigger.Run(null!);
@@ -326,7 +343,8 @@ public class CompletionCheckTrigger_UnitTests
 
         var trigger = new CompletionCheckTrigger(
             _loggerMock.Object,
-            _dbContext);
+            _dbContext,
+            _comparablesRefreshMock.Object);
 
         // Act
         await trigger.Run(null!);

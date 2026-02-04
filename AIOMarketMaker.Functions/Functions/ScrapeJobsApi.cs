@@ -12,6 +12,29 @@ using Pinecone;
 
 namespace AIOMarketMaker.Functions.Functions;
 
+public record OpportunityListing(
+    int Id,
+    string ListingId,
+    string? Title,
+    decimal? Price,
+    string? Currency,
+    decimal? ShippingCost,
+    string? Url,
+    string? Condition,
+    string? ListingStatus,
+    DateTime? EndDateUtc,
+    DateTime CreatedUtc,
+    string? SearchTerm,
+    string? Images,
+    decimal? AverageSoldPrice,
+    int SimilarSoldCount,
+    int? EstimatedDaysToSell,
+    decimal? PotentialProfit);
+
+public record ComparableProjection(int ListingId, int ComparableListingId, decimal? Price, DateTime CreatedUtc);
+
+public record PricingAggregate(decimal? AvgPrice, int Count, int? AvgDaysToSell);
+
 public class ScrapeJobsApi
 {
     private readonly EtlDbContext _dbContext;
@@ -403,37 +426,81 @@ public class ScrapeJobsApi
     }
 
     /// <summary>
-    /// GET /api/listings/active - List active listings (opportunities)
+    /// GET /api/listings/active - List active listings (opportunities) with enrichment data
     /// </summary>
     [Function("GetActiveListings")]
     public async Task<HttpResponseData> GetActiveListings(
         [HttpTrigger(AuthorizationLevel.Function, "get", Route = "listings/active")] HttpRequestData req)
     {
-        var listings = await _dbContext.Listings
-            .Include(l => l.ScrapeJob)
-            .Where(l => l.ListingStatus == "Active")
-            .OrderByDescending(l => l.CreatedUtc)
-            .Take(100)
-            .Select(l => new
-            {
-                l.Id,
-                l.ListingId,
-                l.Title,
-                l.Price,
-                l.Currency,
-                l.ShippingCost,
-                l.Url,
-                l.Condition,
-                l.ListingStatus,
-                l.EndDateUtc,
-                l.CreatedUtc,
-                SearchTerm = l.ScrapeJob != null ? l.ScrapeJob.SearchTerm : null,
-                FirstImage = l.Images
-            })
+        // Load only listing IDs that have comparables (DB-level filter)
+        var enrichedListingIds = await _dbContext.ListingPricingComparables
+            .Select(c => c.ListingId)
+            .Distinct()
             .ToListAsync();
 
+        var enrichedListings = await _dbContext.Listings
+            .Include(l => l.ScrapeJob)
+            .Where(l => l.ListingStatus == "Active" && enrichedListingIds.Contains(l.Id))
+            .ToListAsync();
+
+        var comparables = await _dbContext.ListingPricingComparables
+            .Where(c => enrichedListingIds.Contains(c.ListingId))
+            .Join(
+                _dbContext.Listings,
+                c => c.ComparableListingId,
+                comp => comp.Id,
+                (c, comp) => new ComparableProjection(c.ListingId, comp.Id, comp.Price, comp.CreatedUtc))
+            .ToListAsync();
+
+        var comparableListingIds = comparables.Select(c => c.ComparableListingId).Distinct().ToList();
+
+        var soldDates = await _dbContext.ListingStatusHistory
+            .Where(h => h.SoldDateUtc != null && comparableListingIds.Contains(h.ListingId))
+            .GroupBy(h => h.ListingId)
+            .Select(g => new { g.Key, SoldDateUtc = g.Max(h => h.SoldDateUtc) })
+            .ToDictionaryAsync(x => x.Key, x => x.SoldDateUtc);
+
+        var grouped = comparables
+            .GroupBy(c => c.ListingId)
+            .ToDictionary(
+                g => g.Key,
+                g =>
+                {
+                    var withPrice = g.Where(c => c.Price.HasValue).ToList();
+                    var avgPrice = withPrice.Count > 0 ? withPrice.Average(c => c.Price!.Value) : (decimal?)null;
+                    var daysToSell = g
+                        .Select(c => soldDates.TryGetValue(c.ComparableListingId, out var soldDate) && soldDate.HasValue
+                            ? (int?)(soldDate.Value - c.CreatedUtc).Days
+                            : null)
+                        .Where(d => d.HasValue)
+                        .ToList();
+                    var avgDays = daysToSell.Count > 0 ? (int?)Math.Round(daysToSell.Average(d => d!.Value)) : null;
+
+                    return new PricingAggregate(avgPrice, withPrice.Count, avgDays);
+                });
+
+        var enrichedResults = enrichedListings
+            .Select(l => ToOpportunityListing(l, grouped))
+            .OrderByDescending(o => o.PotentialProfit ?? decimal.MinValue)
+            .Take(100)
+            .ToList();
+
+        // Fill remaining slots with active listings that have no comparables
+        if (enrichedResults.Count < 100)
+        {
+            var enrichedIds = enrichedResults.Select(r => r.Id).ToHashSet();
+            var remaining = await _dbContext.Listings
+                .Include(l => l.ScrapeJob)
+                .Where(l => l.ListingStatus == "Active" && !enrichedIds.Contains(l.Id))
+                .OrderByDescending(l => l.CreatedUtc)
+                .Take(100 - enrichedResults.Count)
+                .ToListAsync();
+
+            enrichedResults.AddRange(remaining.Select(l => ToOpportunityListing(l, grouped)));
+        }
+
         var response = req.CreateResponse(HttpStatusCode.OK);
-        await response.WriteAsJsonAsync(listings);
+        await response.WriteAsJsonAsync(enrichedResults);
         return response;
     }
 
@@ -455,6 +522,33 @@ public class ScrapeJobsApi
             _logger.LogWarning(ex, "Failed to clear Pinecone index (non-fatal)");
             return false;
         }
+    }
+
+    private static OpportunityListing ToOpportunityListing(
+        Listing l, Dictionary<int, PricingAggregate> grouped)
+    {
+        grouped.TryGetValue(l.Id, out var agg);
+
+        return new OpportunityListing(
+            l.Id,
+            l.ListingId,
+            l.Title,
+            l.Price,
+            l.Currency,
+            l.ShippingCost,
+            l.Url,
+            l.Condition,
+            l.ListingStatus,
+            l.EndDateUtc,
+            l.CreatedUtc,
+            l.ScrapeJob?.SearchTerm,
+            l.Images,
+            agg?.AvgPrice,
+            agg?.Count ?? 0,
+            agg?.AvgDaysToSell,
+            agg?.AvgPrice != null && l.Price.HasValue
+                ? agg.AvgPrice.Value - l.Price.Value
+                : null);
     }
 
     /// <summary>
@@ -541,6 +635,8 @@ public class ScrapeJobsApi
 
         if (count > 0)
         {
+            // Delete comparables first (NoAction FK to Listings)
+            await _dbContext.Database.ExecuteSqlRawAsync("DELETE FROM ListingPricingComparables");
             await _dbContext.Database.ExecuteSqlRawAsync("DELETE FROM Listings");
             _logger.LogInformation("Cleared {Count} listings from database", count);
         }
@@ -582,7 +678,8 @@ public class ScrapeJobsApi
         var listingsCount = await _dbContext.Listings.CountAsync();
         var runsCount = await _dbContext.ScrapeRuns.CountAsync();
 
-        // Delete in correct order: Listings first, then ScrapeRuns (cascades to ScrapeRunListings)
+        // Delete in correct order: comparables first (NoAction FK), then Listings, then ScrapeRuns (cascades)
+        await _dbContext.Database.ExecuteSqlRawAsync("DELETE FROM ListingPricingComparables");
         if (listingsCount > 0)
             await _dbContext.Database.ExecuteSqlRawAsync("DELETE FROM Listings");
         if (runsCount > 0)

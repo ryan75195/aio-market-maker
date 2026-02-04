@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using Moq;
 using AIOMarketMaker.Core.Data;
 using AIOMarketMaker.Core.Data.Models;
+using AIOMarketMaker.Core.Services;
 using AIOMarketMaker.Etl.Services;
 using AIOMarketMaker.Tests.Utils;
 using Microsoft.EntityFrameworkCore;
@@ -15,12 +16,17 @@ public class ScrapeRunCounterService_UnitTests
 {
     private EtlDbContext _dbContext = null!;
     private Mock<ILogger<EfCoreScrapeRunCounterService>> _loggerMock = null!;
+    private Mock<IComparablesRefreshService> _comparablesRefreshMock = null!;
 
     [SetUp]
     public void Setup()
     {
         _dbContext = InMemoryDbContextFactory.Create();
         _loggerMock = new Mock<ILogger<EfCoreScrapeRunCounterService>>();
+        _comparablesRefreshMock = new Mock<IComparablesRefreshService>();
+        _comparablesRefreshMock
+            .Setup(c => c.Refresh(It.IsAny<IEnumerable<Listing>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ComparablesRefreshResult(0, 0));
     }
 
     [TearDown]
@@ -30,7 +36,7 @@ public class ScrapeRunCounterService_UnitTests
     }
 
     private EfCoreScrapeRunCounterService CreateService() =>
-        new(_dbContext, _loggerMock.Object);
+        new(_dbContext, _loggerMock.Object, _comparablesRefreshMock.Object);
 
     [Test]
     public async Task Should_increment_ListingsAddedActive_when_status_is_added_and_not_sold()
@@ -122,6 +128,10 @@ public class ScrapeRunCounterService_UnitTests
             Assert.That(run.CurrentPhase, Is.EqualTo("Completed"));
             Assert.That(run.CompletedUtc, Is.Not.Null);
         });
+
+        _comparablesRefreshMock.Verify(
+            c => c.Refresh(It.IsAny<IEnumerable<Listing>>(), It.IsAny<CancellationToken>()),
+            Times.Once);
     }
 
     [Test]
