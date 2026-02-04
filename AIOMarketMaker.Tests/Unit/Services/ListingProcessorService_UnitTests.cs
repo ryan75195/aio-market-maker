@@ -6,6 +6,7 @@ using Azure.Storage.Blobs.Models;
 using AIOMarketMaker.Core.Data;
 using AIOMarketMaker.Core.Data.Models;
 using AIOMarketMaker.Core.Parsers;
+using AIOMarketMaker.Core.Services;
 using AIOMarketMaker.Etl.Endpoints;
 using AIOMarketMaker.Etl.Services;
 using AIOMarketMaker.Tests.Utils;
@@ -22,6 +23,7 @@ public class ListingProcessorService_UnitTests
     private Mock<BlobServiceClient> _blobServiceMock = null!;
     private Mock<IListingParser> _listingParserMock = null!;
     private Mock<IScrapeRunCounterService> _counterServiceMock = null!;
+    private Mock<IListingIndexingService> _indexingServiceMock = null!;
     private Mock<ILogger<ListingProcessorService>> _loggerMock = null!;
 
     [SetUp]
@@ -31,6 +33,10 @@ public class ListingProcessorService_UnitTests
         _blobServiceMock = new Mock<BlobServiceClient>();
         _listingParserMock = new Mock<IListingParser>();
         _counterServiceMock = new Mock<IScrapeRunCounterService>();
+        _indexingServiceMock = new Mock<IListingIndexingService>();
+        _indexingServiceMock
+            .Setup(s => s.Index(It.IsAny<Listing>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new IndexingResult(IndexingAction.Embedded));
         _loggerMock = new Mock<ILogger<ListingProcessorService>>();
     }
 
@@ -42,7 +48,7 @@ public class ListingProcessorService_UnitTests
 
     private ListingProcessorService CreateService() =>
         new(_blobServiceMock.Object, _dbContext, _listingParserMock.Object,
-            _counterServiceMock.Object, _loggerMock.Object);
+            _counterServiceMock.Object, _indexingServiceMock.Object, _loggerMock.Object);
 
     private async Task SeedListingAndRun(string listingId = "ABC123")
     {
@@ -205,6 +211,60 @@ public class ListingProcessorService_UnitTests
             Assert.That(srl.Status, Is.EqualTo("Complete"));
             Assert.That(srl.CompletedUtc, Is.Not.Null);
         });
+    }
+
+    [Test]
+    public async Task Should_index_listing_when_description_complete()
+    {
+        await SeedListingAndRun();
+        SetupBlobWithContent("<html><div>Great product</div></html>");
+        _listingParserMock
+            .Setup(p => p.ParseDescription(It.IsAny<IDocument>()))
+            .Returns("Great product");
+
+        var request = new ProcessListingRequest(1, 0, "ABC123", 1, "1/ABC123/description.html");
+
+        await CreateService().Process(request);
+
+        _indexingServiceMock.Verify(
+            s => s.Index(
+                It.Is<Listing>(l => l.ListingId == "ABC123" && l.DescriptionStatus == "complete"),
+                true,
+                It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    [Test]
+    public async Task Should_not_index_when_description_missing()
+    {
+        await SeedListingAndRun();
+        SetupBlobNotFound();
+
+        var request = new ProcessListingRequest(1, 0, "ABC123", 1, "1/ABC123/description.html");
+
+        await CreateService().Process(request);
+
+        _indexingServiceMock.Verify(
+            s => s.Index(It.IsAny<Listing>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Test]
+    public async Task Should_not_index_when_description_parse_fails()
+    {
+        await SeedListingAndRun();
+        SetupBlobWithContent("<html>bad content</html>");
+        _listingParserMock
+            .Setup(p => p.ParseDescription(It.IsAny<IDocument>()))
+            .Throws(new InvalidOperationException("Parse error"));
+
+        var request = new ProcessListingRequest(1, 0, "ABC123", 1, "1/ABC123/description.html");
+
+        await CreateService().Process(request);
+
+        _indexingServiceMock.Verify(
+            s => s.Index(It.IsAny<Listing>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()),
+            Times.Never);
     }
 
     private void SetupBlobWithContent(string htmlContent)

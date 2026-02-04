@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using Azure.Storage.Blobs;
 using AIOMarketMaker.Core.Data;
 using AIOMarketMaker.Core.Parsers;
+using AIOMarketMaker.Core.Services;
 using AIOMarketMaker.Etl.Endpoints;
 using AIOMarketMaker.Etl.Services;
 using AIOMarketMaker.Tests.Utils;
@@ -45,6 +46,7 @@ public class ProcessListingEndpoint_UnitTests
             _dbContext,
             _listingParserMock.Object,
             counterService,
+            new NullListingIndexingService(),
             new Mock<ILogger<ListingProcessorService>>().Object);
         return new ProcessListingEndpoint(processorService, _loggerMock.Object);
     }

@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using AIOMarketMaker.Core.Data;
 using AIOMarketMaker.Core.Parsers;
+using AIOMarketMaker.Core.Services;
 using AIOMarketMaker.Etl.Endpoints;
 
 namespace AIOMarketMaker.Etl.Services;
@@ -19,6 +20,7 @@ public class ListingProcessorService : IListingProcessorService
     private readonly EtlDbContext _dbContext;
     private readonly IListingParser _listingParser;
     private readonly IScrapeRunCounterService _counterService;
+    private readonly IListingIndexingService _indexingService;
     private readonly ILogger<ListingProcessorService> _logger;
 
     public ListingProcessorService(
@@ -26,12 +28,14 @@ public class ListingProcessorService : IListingProcessorService
         EtlDbContext dbContext,
         IListingParser listingParser,
         IScrapeRunCounterService counterService,
+        IListingIndexingService indexingService,
         ILogger<ListingProcessorService> logger)
     {
         _blobService = blobService;
         _dbContext = dbContext;
         _listingParser = listingParser;
         _counterService = counterService;
+        _indexingService = indexingService;
         _logger = logger;
     }
 
@@ -90,6 +94,12 @@ public class ListingProcessorService : IListingProcessorService
 
         MarkScrapeRunListingComplete(scrapeRunListing);
         await _dbContext.SaveChangesAsync();
+
+        if (listing.DescriptionStatus == "complete")
+        {
+            await _indexingService.Index(listing, isNew: true);
+        }
+
         await _counterService.Increment(request.ScrapeRunId, request.ScrapeJobId, "added", listing.ListingStatus);
 
         _logger.LogInformation("Processed description for listing {ListingId}: {Status}",
