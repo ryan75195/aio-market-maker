@@ -150,9 +150,6 @@ var host = new HostBuilder()
         // Listing indexing service
         services.AddSingleton<IListingIndexingService, ListingIndexingService>();
 
-        // Comparables refresh service
-        services.AddScoped<IComparablesRefreshService, ComparablesRefreshService>();
-
         // Pricing analysis service
         services.AddSingleton<IPricingAnalysisService, PricingAnalysisService>();
     })

@@ -2,7 +2,6 @@ using Microsoft.Azure.Functions.Worker;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using AIOMarketMaker.Core.Data;
-using AIOMarketMaker.Core.Services;
 
 namespace AIOMarketMaker.Etl.Triggers;
 
@@ -15,16 +14,13 @@ public class CompletionCheckTrigger
 {
     private readonly ILogger<CompletionCheckTrigger> _logger;
     private readonly EtlDbContext _dbContext;
-    private readonly IComparablesRefreshService _comparablesRefreshService;
 
     public CompletionCheckTrigger(
         ILogger<CompletionCheckTrigger> logger,
-        EtlDbContext dbContext,
-        IComparablesRefreshService comparablesRefreshService)
+        EtlDbContext dbContext)
     {
         _logger = logger;
         _dbContext = dbContext;
-        _comparablesRefreshService = comparablesRefreshService;
     }
 
     /// <summary>
@@ -46,7 +42,7 @@ public class CompletionCheckTrigger
         var eligibleRuns = await _dbContext.ScrapeRuns
             .Where(r =>
                 (r.Status == "Running" || r.Status == "Indexing") &&
-                (r.CurrentPhase == "Indexing" || r.CurrentPhase == "Refreshing comparables") &&
+                r.CurrentPhase == "Indexing" &&
                 r.TotalListingsFound > 0 &&
                 r.ListingsProcessed >= (r.TotalListingsFound - r.ListingsFilteredPreQueue))
             .ToListAsync();
@@ -60,17 +56,6 @@ public class CompletionCheckTrigger
 
         foreach (var run in eligibleRuns)
         {
-            if (run.JobId.HasValue)
-            {
-                run.CurrentPhase = "Refreshing comparables";
-                await _dbContext.SaveChangesAsync();
-
-                var activeListings = await _dbContext.Listings
-                    .Where(l => l.ScrapeJobId == run.JobId.Value && l.ListingStatus == "Active")
-                    .ToListAsync();
-                await _comparablesRefreshService.Refresh(activeListings);
-            }
-
             run.Status = "Completed";
             run.CurrentPhase = "Completed";
             run.CompletedUtc = completedUtc;
