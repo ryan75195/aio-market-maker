@@ -121,3 +121,10 @@ public class ComparablesRefreshService : IComparablesRefreshService
         return new ComparablesRefreshResult(listings.Count, totalComparables);
     }
 }
+
+public class NullComparablesRefreshService : IComparablesRefreshService
+{
+    public Task<ComparablesRefreshResult> Refresh(
+        IEnumerable<Listing> activeListings, CancellationToken ct = default)
+        => Task.FromResult(new ComparablesRefreshResult(0, 0));
+}

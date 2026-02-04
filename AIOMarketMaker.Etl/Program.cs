@@ -161,6 +161,16 @@ var host = new HostBuilder()
             services.AddSingleton<IListingIndexingService, NullListingIndexingService>();
         }
 
+        // Comparables refresh service - requires Pinecone for similarity search
+        if (!string.IsNullOrEmpty(pineconeApiKey))
+        {
+            services.AddScoped<IComparablesRefreshService, ComparablesRefreshService>();
+        }
+        else
+        {
+            services.AddSingleton<IComparablesRefreshService, NullComparablesRefreshService>();
+        }
+
         // Pricing analysis service
         services.AddSingleton<IPricingAnalysisService, PricingAnalysisService>();
     })
