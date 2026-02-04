@@ -6,7 +6,7 @@ namespace AIOMarketMaker.Core.Services;
 
 public interface IListingIndexingService
 {
-    Task<IndexingResult> Index(Listing listing, bool isNew, CancellationToken ct = default);
+    Task<IndexingResult> Index(Listing listing, bool embedContent, CancellationToken ct = default);
 }
 
 public record IndexingResult(IndexingAction Action, string? Error = null);
@@ -34,7 +34,7 @@ public class ListingIndexingService : IListingIndexingService
         _logger = logger;
     }
 
-    public async Task<IndexingResult> Index(Listing listing, bool isNew, CancellationToken ct = default)
+    public async Task<IndexingResult> Index(Listing listing, bool embedContent, CancellationToken ct = default)
     {
         var text = BuildEmbeddingText(listing);
 
@@ -46,23 +46,35 @@ public class ListingIndexingService : IListingIndexingService
 
         var metadata = BuildMetadata(listing);
 
-        var embedding = await _embeddingService.GetEmbedding(text, ct);
-
-        await _pinecone.Upsert(new UpsertRequest
+        if (embedContent)
         {
-            Vectors = new[]
+            var embedding = await _embeddingService.GetEmbedding(text, ct);
+
+            await _pinecone.Upsert(new UpsertRequest
             {
-                new Vector
+                Vectors = new[]
                 {
-                    Id = listing.ListingId,
-                    Values = embedding,
-                    Metadata = metadata
+                    new Vector
+                    {
+                        Id = listing.ListingId,
+                        Values = embedding,
+                        Metadata = metadata
+                    }
                 }
-            }
+            }, ct);
+
+            _logger.LogInformation("Embedded and indexed listing {ListingId}", listing.ListingId);
+            return new IndexingResult(IndexingAction.Embedded);
+        }
+
+        await _pinecone.Update(new UpdateRequest
+        {
+            Id = listing.ListingId,
+            SetMetadata = metadata
         }, ct);
 
-        _logger.LogInformation("Indexed listing {ListingId} (isNew={IsNew})", listing.ListingId, isNew);
-        return new IndexingResult(isNew ? IndexingAction.Embedded : IndexingAction.MetadataUpdated);
+        _logger.LogInformation("Updated metadata for listing {ListingId}", listing.ListingId);
+        return new IndexingResult(IndexingAction.MetadataUpdated);
     }
 
     private static string BuildEmbeddingText(Listing listing)
@@ -111,6 +123,6 @@ public class ListingIndexingService : IListingIndexingService
 
 public class NullListingIndexingService : IListingIndexingService
 {
-    public Task<IndexingResult> Index(Listing listing, bool isNew, CancellationToken ct = default)
+    public Task<IndexingResult> Index(Listing listing, bool embedContent, CancellationToken ct = default)
         => Task.FromResult(new IndexingResult(IndexingAction.Skipped));
 }

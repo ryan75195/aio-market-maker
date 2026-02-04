@@ -99,7 +99,7 @@ public class ListingProcessorService : IListingProcessorService
 
         if (listing.DescriptionStatus == "complete")
         {
-            await _indexingService.Index(listing, isNew: true);
+            await _indexingService.Index(listing, embedContent: true);
         }
 
         await _counterService.Increment(request.ScrapeRunId, request.ScrapeJobId, "added", listing.ListingStatus);

@@ -232,7 +232,7 @@ public class ScrapeJobProcessor : IScrapeJobProcessor
 
         foreach (var listing in updatedListings)
         {
-            await _indexingService.Index(listing, isNew: false);
+            await _indexingService.Index(listing, embedContent: false);
         }
 
         _logger.LogInformation("Updated {Count} listings from summary data", summaries.Count);
