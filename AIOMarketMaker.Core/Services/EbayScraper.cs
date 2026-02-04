@@ -110,22 +110,12 @@ namespace AIOMarketMaker.Core.Services
 
             _logger.LogInformation("Fetching {Count} listing details...", itemIds.Length);
 
-            var results = new List<EbayProduct>();
             var urls = itemIds.Select(_url.BuildListingUrl).ToList();
 
             var resultMetadata = await _fetcher.RunJobAsync(urls);
             var baseListings = await Task.WhenAll(resultMetadata.Select(x => ParseProductListingAsync(x, x.PartitionKey)));
-            var descriptions = await FetchProductDescriptionsAsync(baseListings);
             var fullListings = baseListings.Select(listing =>
-            {
-                string description = string.Empty;
-                if (!string.IsNullOrEmpty(listing.descriptionSource)
-                    && descriptions.TryGetValue(listing.descriptionSource, out var desc))
-                {
-                    description = desc;
-                }
-
-                return new EbayProduct(
+                new EbayProduct(
                     ListingId: listing.id,
                     Title: listing.title,
                     Price: listing.price,
@@ -133,52 +123,15 @@ namespace AIOMarketMaker.Core.Services
                     ShippingCost: listing.shippingCost,
                     Condition: listing.Condition,
                     Images: listing.images,
-                    ItemSpecifics: listing.ItemSpecifics,
-                    Description: description,
+                    Description: null,
                     Url: listing.Url,
                     EndDateUtc: listing.SoldDateUtc,
                     ListingStatus: listing.listingStatus,
                     PurchaseFormat: listing.purchaseFormat,
-                    Location: listing.Location,
                     IsSold: listing.listingStatus == EbayListingStatus.Sold
-                );
-            });
+                ));
 
             return fullListings;
-        }
-
-        private async Task<Dictionary<string, string>> FetchProductDescriptionsAsync(
-            IEnumerable<ExtractedEbayListing> products)
-        {
-            var urls = products
-                .Select(x => x.descriptionSource)
-                .Where(u => !string.IsNullOrEmpty(u))   // ← drop any null/empty
-                .Distinct()
-                .ToList();
-
-            // Return empty dictionary if no description URLs to fetch
-            if (urls.Count == 0)
-            {
-                return new Dictionary<string, string>();
-            }
-
-            var metas = await _fetcher.RunJobAsync(urls);
-
-            var parsed = await Task.WhenAll(metas.Select(async meta =>
-            {
-                var html = await _jobRepository.GetFileContentsAsync(
-                    meta.PartitionKey, meta.Url, new CancellationToken());
-
-                var doc = await LoadDocumentAsync(html);
-                var text = _listingParser.ParseDescription(doc);
-
-                return (Url: meta.Url, Text: text);
-            }));
-
-            // only use non-null Urls as keys
-            return parsed
-              .Where(p => !string.IsNullOrEmpty(p.Url))
-              .ToDictionary(p => p.Url!, p => p.Text);
         }
 
 

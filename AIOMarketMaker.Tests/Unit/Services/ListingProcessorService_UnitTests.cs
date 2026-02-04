@@ -9,7 +9,6 @@ using AIOMarketMaker.Core.Parsers;
 using AIOMarketMaker.Etl.Endpoints;
 using AIOMarketMaker.Etl.Services;
 using AIOMarketMaker.Tests.Utils;
-using AIOMarketMaker.Models.Ebay;
 using AngleSharp.Dom;
 using Microsoft.EntityFrameworkCore;
 
@@ -45,37 +44,167 @@ public class ListingProcessorService_UnitTests
         new(_blobServiceMock.Object, _dbContext, _listingParserMock.Object,
             _counterServiceMock.Object, _loggerMock.Object);
 
-    [Test]
-    public async Task Should_add_new_listing_and_create_initial_history()
+    private async Task SeedListingAndRun(string listingId = "ABC123")
     {
         _dbContext.ScrapeRuns.Add(new ScrapeRun { Id = 1, Status = "Running" });
         _dbContext.ScrapeJobs.Add(new ScrapeJob { Id = 1, SearchTerm = "test" });
         _dbContext.ScrapeRunListings.Add(new ScrapeRunListing
         {
-            ScrapeRunId = 1, ScrapeJobId = 1, ListingId = "ABC123", Status = "Pending"
+            ScrapeRunId = 1, ScrapeJobId = 1, ListingId = listingId, Status = "Pending"
+        });
+        _dbContext.Listings.Add(new Listing
+        {
+            ListingId = listingId, ScrapeJobId = 1, Title = "Test Product",
+            Price = 99.99m, ListingStatus = "Active", DescriptionStatus = "pending"
         });
         await _dbContext.SaveChangesAsync();
+    }
 
-        SetupBlobWithContent("<html></html>");
-        SetupParserWithListing("ABC123", "Test Product", 99.99m, EbayListingStatus.Active);
+    [Test]
+    public async Task Should_set_description_when_blob_exists()
+    {
+        await SeedListingAndRun();
+        SetupBlobWithContent("<html><div class=\"x-item-description-child\">Great product</div></html>");
+        _listingParserMock
+            .Setup(p => p.ParseDescription(It.IsAny<IDocument>()))
+            .Returns("Great product");
 
-        var request = new ProcessListingRequest(1, 0, "ABC123", 1, "1/ABC123/listing.html");
+        var request = new ProcessListingRequest(1, 0, "ABC123", 1, "1/ABC123/description.html");
 
         var result = await CreateService().Process(request);
 
         Assert.Multiple(() =>
         {
             Assert.That(result.Success, Is.True);
-            Assert.That(result.Status, Is.EqualTo("added"));
+            Assert.That(result.Status, Is.EqualTo("complete"));
         });
 
-        var listing = await _dbContext.Listings.FirstOrDefaultAsync(l => l.ListingId == "ABC123");
-        Assert.That(listing, Is.Not.Null);
-        Assert.That(listing!.Title, Is.EqualTo("Test Product"));
+        var listing = await _dbContext.Listings.FirstAsync(l => l.ListingId == "ABC123");
+        Assert.Multiple(() =>
+        {
+            Assert.That(listing.Description, Is.EqualTo("Great product"));
+            Assert.That(listing.DescriptionStatus, Is.EqualTo("complete"));
+        });
+    }
 
-        var history = await _dbContext.ListingStatusHistory.ToListAsync();
-        Assert.That(history, Has.Count.EqualTo(1));
-        Assert.That(history[0].Source, Is.EqualTo("InitialScrape"));
+    [Test]
+    public async Task Should_set_description_status_missing_when_blob_not_found()
+    {
+        await SeedListingAndRun();
+        SetupBlobNotFound();
+
+        var request = new ProcessListingRequest(1, 0, "ABC123", 1, "1/ABC123/description.html");
+
+        var result = await CreateService().Process(request);
+
+        Assert.That(result.Success, Is.True);
+
+        var listing = await _dbContext.Listings.FirstAsync(l => l.ListingId == "ABC123");
+        Assert.That(listing.DescriptionStatus, Is.EqualTo("missing"));
+    }
+
+    [Test]
+    public async Task Should_set_description_status_missing_when_parse_returns_null()
+    {
+        await SeedListingAndRun();
+        SetupBlobWithContent("<html></html>");
+        _listingParserMock
+            .Setup(p => p.ParseDescription(It.IsAny<IDocument>()))
+            .Returns((string?)null);
+
+        var request = new ProcessListingRequest(1, 0, "ABC123", 1, "1/ABC123/description.html");
+
+        var result = await CreateService().Process(request);
+
+        Assert.That(result.Success, Is.True);
+
+        var listing = await _dbContext.Listings.FirstAsync(l => l.ListingId == "ABC123");
+        Assert.That(listing.DescriptionStatus, Is.EqualTo("missing"));
+    }
+
+    [Test]
+    public async Task Should_skip_already_processed_listing()
+    {
+        _dbContext.ScrapeRuns.Add(new ScrapeRun { Id = 1, Status = "Running" });
+        _dbContext.ScrapeJobs.Add(new ScrapeJob { Id = 1, SearchTerm = "test" });
+        _dbContext.ScrapeRunListings.Add(new ScrapeRunListing
+        {
+            ScrapeRunId = 1, ScrapeJobId = 1, ListingId = "ABC123", Status = "Complete"
+        });
+        await _dbContext.SaveChangesAsync();
+
+        var request = new ProcessListingRequest(1, 0, "ABC123", 1, "1/ABC123/description.html");
+
+        var result = await CreateService().Process(request);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.Success, Is.True);
+            Assert.That(result.Status, Is.EqualTo("skipped"));
+        });
+    }
+
+    [Test]
+    public async Task Should_fail_when_listing_not_found()
+    {
+        _dbContext.ScrapeRuns.Add(new ScrapeRun { Id = 1, Status = "Running" });
+        _dbContext.ScrapeJobs.Add(new ScrapeJob { Id = 1, SearchTerm = "test" });
+        _dbContext.ScrapeRunListings.Add(new ScrapeRunListing
+        {
+            ScrapeRunId = 1, ScrapeJobId = 1, ListingId = "MISSING1", Status = "Pending"
+        });
+        await _dbContext.SaveChangesAsync();
+
+        var request = new ProcessListingRequest(1, 0, "MISSING1", 1, "1/MISSING1/description.html");
+
+        var result = await CreateService().Process(request);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.Success, Is.False);
+            Assert.That(result.Status, Is.EqualTo("failed"));
+            Assert.That(result.ErrorMessage, Does.Contain("not found"));
+        });
+    }
+
+    [Test]
+    public async Task Should_set_description_status_failed_when_parse_throws()
+    {
+        await SeedListingAndRun();
+        SetupBlobWithContent("<html>bad content</html>");
+        _listingParserMock
+            .Setup(p => p.ParseDescription(It.IsAny<IDocument>()))
+            .Throws(new InvalidOperationException("Parse error"));
+
+        var request = new ProcessListingRequest(1, 0, "ABC123", 1, "1/ABC123/description.html");
+
+        var result = await CreateService().Process(request);
+
+        Assert.That(result.Success, Is.True);
+
+        var listing = await _dbContext.Listings.FirstAsync(l => l.ListingId == "ABC123");
+        Assert.That(listing.DescriptionStatus, Is.EqualTo("failed"));
+    }
+
+    [Test]
+    public async Task Should_mark_scrape_run_listing_complete()
+    {
+        await SeedListingAndRun();
+        SetupBlobWithContent("<html></html>");
+        _listingParserMock
+            .Setup(p => p.ParseDescription(It.IsAny<IDocument>()))
+            .Returns("desc");
+
+        var request = new ProcessListingRequest(1, 0, "ABC123", 1, "1/ABC123/description.html");
+
+        await CreateService().Process(request);
+
+        var srl = await _dbContext.ScrapeRunListings.FirstAsync(s => s.ListingId == "ABC123");
+        Assert.Multiple(() =>
+        {
+            Assert.That(srl.Status, Is.EqualTo("Complete"));
+            Assert.That(srl.CompletedUtc, Is.Not.Null);
+        });
     }
 
     private void SetupBlobWithContent(string htmlContent)
@@ -106,19 +235,21 @@ public class ListingProcessorService_UnitTests
             .Returns(mockBlobContainerClient.Object);
     }
 
-    private void SetupParserWithListing(string id, string title, decimal price,
-        EbayListingStatus status)
+    private void SetupBlobNotFound()
     {
-        var parsed = new ExtractedEbayListing(
-            id: id, title: title, price: price, currency: "GBP",
-            shippingCost: 5m, Condition: Condition.NEW,
-            images: new[] { "http://example.com/img.jpg" },
-            listingStatus: status, purchaseFormat: PurchaseFormat.BuyItNow,
-            ItemSpecifics: null, descriptionSource: null, SoldDateUtc: null,
-            Location: "London", Url: $"http://www.ebay.co.uk/itm/{id}");
+        var mockBlobContainerClient = new Mock<BlobContainerClient>();
+        var mockBlobClient = new Mock<BlobClient>();
 
-        _listingParserMock
-            .Setup(p => p.ParseProductListing(It.IsAny<IDocument>()))
-            .Returns(parsed);
+        mockBlobClient
+            .Setup(b => b.ExistsAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Azure.Response.FromValue(false, Mock.Of<Azure.Response>()));
+
+        mockBlobContainerClient
+            .Setup(c => c.GetBlobClient(It.IsAny<string>()))
+            .Returns(mockBlobClient.Object);
+
+        _blobServiceMock
+            .Setup(s => s.GetBlobContainerClient("html"))
+            .Returns(mockBlobContainerClient.Object);
     }
 }

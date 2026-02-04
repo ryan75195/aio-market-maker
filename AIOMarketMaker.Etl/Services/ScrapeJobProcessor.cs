@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using AngleSharp;
@@ -60,7 +61,7 @@ public class ScrapeJobProcessor : IScrapeJobProcessor
 
         try
         {
-            await RunScrape(scrapeRun, message.JobId, message.SearchTerm);
+            await ExecuteScrape(scrapeRun, message.JobId, message.SearchTerm);
 
             _logger.LogInformation("Scrape job completed: RunId={RunId}", message.ScrapeRunId);
         }
@@ -75,7 +76,7 @@ public class ScrapeJobProcessor : IScrapeJobProcessor
         }
     }
 
-    private async Task RunScrape(ScrapeRun scrapeRun, int jobId, string searchTerm)
+    private async Task ExecuteScrape(ScrapeRun scrapeRun, int jobId, string searchTerm)
     {
         const int maxPages = 100;
 
@@ -94,7 +95,7 @@ public class ScrapeJobProcessor : IScrapeJobProcessor
             await UpdateListingsFromSummary(scrapeRun, classified.ToUpdateFromSummary, classified.ExistingListings);
 
         if (classified.ToScrape.Count > 0)
-            await EnqueueListingsForScrape(scrapeRun, classified.ToScrape, jobId);
+            await CreateListingsAndEnqueueDescriptions(scrapeRun, classified.ToScrape, classified.ExistingListings, jobId);
         else
             await MarkCompleted(scrapeRun);
     }
@@ -226,8 +227,9 @@ public class ScrapeJobProcessor : IScrapeJobProcessor
         _logger.LogInformation("Updated {Count} listings from summary data", summaries.Count);
     }
 
-    private async Task EnqueueListingsForScrape(
-        ScrapeRun scrapeRun, List<IEbayProductSummary> summaries, int jobId)
+    private async Task CreateListingsAndEnqueueDescriptions(
+        ScrapeRun scrapeRun, List<IEbayProductSummary> summaries,
+        Dictionary<string, Listing> existingListings, int jobId)
     {
         await SetPhase(scrapeRun, "Indexing", status: "Indexing");
 
@@ -243,6 +245,80 @@ public class ScrapeJobProcessor : IScrapeJobProcessor
                 Status = "Pending",
                 CreatedUtc = DateTime.UtcNow
             });
+
+            var newStatus = summary.IsSold ? "Sold" : "Active";
+            var images = summary.Images != null ? JsonSerializer.Serialize(summary.Images) : null;
+            var concrete = summary as EbayProductSummary;
+
+            if (existingListings.TryGetValue(summary.ListingId, out var existing))
+            {
+                var oldStatus = existing.ListingStatus;
+                existing.Title = summary.Title;
+                existing.Price = summary.Price;
+                existing.Currency = summary.Currency;
+                existing.ShippingCost = summary.ShippingCost;
+                existing.Url = summary.Url;
+                existing.Condition = concrete?.Condition?.ToString();
+                existing.ListingStatus = newStatus;
+                existing.PurchaseFormat = concrete?.BuyingFormat?.ToString();
+                existing.Images = images;
+                existing.EndDateUtc = concrete?.EndDateUtc;
+                existing.DescriptionStatus = "pending";
+                existing.UpdatedUtc = DateTime.UtcNow;
+
+                if (oldStatus != newStatus)
+                {
+                    _dbContext.ListingStatusHistory.Add(new ListingStatusHistory
+                    {
+                        ListingId = existing.Id,
+                        ListingStatus = newStatus,
+                        Price = summary.Price,
+                        RecordedUtc = DateTime.UtcNow,
+                        Source = "StatusUpdate"
+                    });
+                }
+            }
+            else
+            {
+                var listing = new Listing
+                {
+                    ListingId = summary.ListingId,
+                    ScrapeJobId = jobId,
+                    Title = summary.Title,
+                    Price = summary.Price,
+                    Currency = summary.Currency,
+                    ShippingCost = summary.ShippingCost,
+                    Url = summary.Url,
+                    Condition = concrete?.Condition?.ToString(),
+                    ListingStatus = newStatus,
+                    PurchaseFormat = concrete?.BuyingFormat?.ToString(),
+                    Images = images,
+                    EndDateUtc = concrete?.EndDateUtc,
+                    DescriptionStatus = "pending",
+                    CreatedUtc = DateTime.UtcNow
+                };
+                _dbContext.Listings.Add(listing);
+            }
+        }
+        await _dbContext.SaveChangesAsync();
+
+        // Create initial status history for new listings (need IDs from SaveChanges)
+        foreach (var summary in summaries)
+        {
+            if (string.IsNullOrEmpty(summary.ListingId)) continue;
+            if (existingListings.ContainsKey(summary.ListingId)) continue;
+
+            var listing = await _dbContext.Listings
+                .FirstAsync(l => l.ListingId == summary.ListingId && l.ScrapeJobId == jobId);
+
+            _dbContext.ListingStatusHistory.Add(new ListingStatusHistory
+            {
+                ListingId = listing.Id,
+                ListingStatus = summary.IsSold ? "Sold" : "Active",
+                Price = summary.Price,
+                RecordedUtc = DateTime.UtcNow,
+                Source = "InitialScrape"
+            });
         }
         await _dbContext.SaveChangesAsync();
 
@@ -250,12 +326,11 @@ public class ScrapeJobProcessor : IScrapeJobProcessor
             .Where(s => !string.IsNullOrEmpty(s.ListingId))
             .Select(s => new ScrapeWorkItem(
                 s.ListingId!,
-                _urlBuilder.BuildListingUrl(s.ListingId!),
                 _urlBuilder.BuildDescriptionUrl(s.ListingId!)));
 
         await _webscraperClient.EnqueueScrapeWork(workItems, scrapeRun.Id, jobId);
 
-        _logger.LogInformation("Enqueued {Count} listings for processing. Search phase complete for job {JobId}.",
+        _logger.LogInformation("Created {Count} listings and enqueued descriptions for job {JobId}.",
             summaries.Count, jobId);
     }
 

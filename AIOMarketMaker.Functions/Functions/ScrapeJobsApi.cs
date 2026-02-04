@@ -417,7 +417,6 @@ public class ScrapeJobsApi
                 l.Url,
                 l.Condition,
                 l.ListingStatus,
-                l.Location,
                 l.EndDateUtc,
                 l.CreatedUtc,
                 SearchTerm = l.ScrapeJob != null ? l.ScrapeJob.SearchTerm : null,

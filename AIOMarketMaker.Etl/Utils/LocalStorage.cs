@@ -41,9 +41,7 @@ namespace AIOMarketMaker.Etl.Utils
                 p.ListingStatus,
                 p.PurchaseFormat,
                 Description = p.Description ?? "",
-                p.ItemSpecifics,
                 EndDateUtc = p.EndDateUtc?.ToString("o"),
-                p.Location,
                 Images = string.Join(",", p.Images)
             }).ToList();
 

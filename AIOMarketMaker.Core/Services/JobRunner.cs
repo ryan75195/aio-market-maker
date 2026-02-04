@@ -368,8 +368,6 @@ public class JobRunner : IJobRunner
         existing.Condition = product.Condition?.ToString();
         existing.PurchaseFormat = product.PurchaseFormat?.ToString();
         existing.Description = product.Description;
-        existing.ItemSpecifics = product.ItemSpecifics;
-        existing.Location = product.Location;
         if (product.Images != null)
         {
             existing.Images = JsonSerializer.Serialize(product.Images);
@@ -400,9 +398,7 @@ public class JobRunner : IJobRunner
             ListingStatus = ebayProduct.ListingStatus?.ToString(),
             PurchaseFormat = ebayProduct.PurchaseFormat?.ToString(),
             Description = ebayProduct.Description,
-            ItemSpecifics = ebayProduct.ItemSpecifics,
             Images = ebayProduct.Images != null ? JsonSerializer.Serialize(ebayProduct.Images) : null,
-            Location = ebayProduct.Location,
             EndDateUtc = ebayProduct.EndDateUtc,
             CreatedUtc = DateTime.UtcNow
         };

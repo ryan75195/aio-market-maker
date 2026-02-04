@@ -23,10 +23,7 @@ namespace AIOMarketMaker.Core.Parsers
         IEnumerable<string>? images,
         EbayListingStatus? listingStatus,
         PurchaseFormat? purchaseFormat,
-        string? ItemSpecifics,
-        string? descriptionSource,
         DateTime? SoldDateUtc, // Null means it's active
-        string? Location,
         string? Url
     );
 
@@ -48,12 +45,9 @@ namespace AIOMarketMaker.Core.Parsers
             var shippingCost = GetShippingPrice(document);
             var condition = GetProductCondition(document);
             var images = GetProductImages(document);
-            var itemSpecifics = GetItemSpecifics(document);
-            var description = GetItemDescriptionUrl(document);
             var listingStatus = GetListingStatus(document);
             var purchaseFormat = GetPurchaseFormat(document);
             var soldDate = GetEndDate(document);
-            var location = GetLocation(document);
             var url = id != null ? $"https://www.ebay.co.uk/itm/{id}" : null;
 
             return new ExtractedEbayListing(
@@ -64,12 +58,9 @@ namespace AIOMarketMaker.Core.Parsers
                 shippingCost: shippingCost,
                 Condition: condition,
                 images: images,
-                ItemSpecifics: itemSpecifics,
-                descriptionSource: description,
                 listingStatus: listingStatus,
                 purchaseFormat: purchaseFormat,
                 SoldDateUtc: soldDate,
-                Location: location,
                 Url: url
             );
         }
@@ -172,16 +163,6 @@ namespace AIOMarketMaker.Core.Parsers
             return text;
         }
 
-        internal string? GetItemDescriptionUrl(IDocument document)
-        {
-            var descriptionUrl = document.QuerySelector("#desc_ifr")?.GetAttribute("src");
-            return descriptionUrl;
-        }
-
-        internal string? GetItemSpecifics(IDocument document)
-        {
-            return document.QuerySelector(".ux-layout-section-evo.ux-layout-section--features")?.TextContent;
-        }
 
         internal IEnumerable<string> GetProductImages(IDocument document)
         {
@@ -359,20 +340,6 @@ namespace AIOMarketMaker.Core.Parsers
         {
             var text = document.QuerySelector(".d-statusmessage")?.TextContent;
             return StringParsing.ParseEndDate(text);
-        }
-
-        internal string? GetLocation(IDocument document)
-        {
-            var locationStr = document.QuerySelector(".ux-labels-values--shipping .ux-textspans--SECONDARY")?.TextContent;
-            if (locationStr == null)
-                return null;
-
-            if (locationStr.Contains(":"))
-            {
-                return locationStr.Split(":")[1].Trim();
-            }
-
-            return locationStr;
         }
 
         /// <summary>

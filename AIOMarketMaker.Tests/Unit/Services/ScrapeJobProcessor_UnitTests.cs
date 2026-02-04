@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Moq;
 using NUnit.Framework;
@@ -460,6 +461,117 @@ public class ScrapeJobProcessor_UnitTests
                     && items.First().ListingId == "DUAL1"),
                 1, 1, It.IsAny<CancellationToken>()),
             Times.Once);
+    }
+
+    [Test]
+    public async Task Should_create_listing_from_summary_for_new_listings()
+    {
+        CreateAndSeedScrapeRun();
+
+        var summary = CreateSummary("NEW1", price: 150m, isSold: false,
+            condition: Condition.NEW, shippingCost: 3m);
+
+        var callCount = 0;
+        _searchParserMock
+            .Setup(p => p.ParseSearchResults(It.IsAny<IDocument>()))
+            .Returns(() =>
+            {
+                callCount++;
+                return callCount == 2
+                    ? new[] { summary }
+                    : Enumerable.Empty<IEbayProductSummary>();
+            });
+
+        var message = new ScrapeJobMessage(1, 1, "Test", "Manual");
+
+        await CreateProcessor().Process(message);
+
+        var listing = await _dbContext.Listings.FirstOrDefaultAsync(l => l.ListingId == "NEW1");
+        Assert.That(listing, Is.Not.Null);
+        Assert.Multiple(() =>
+        {
+            Assert.That(listing!.Title, Is.EqualTo("Test item NEW1"));
+            Assert.That(listing.Price, Is.EqualTo(150m));
+            Assert.That(listing.Currency, Is.EqualTo("GBP"));
+            Assert.That(listing.ShippingCost, Is.EqualTo(3m));
+            Assert.That(listing.ListingStatus, Is.EqualTo("Active"));
+            Assert.That(listing.DescriptionStatus, Is.EqualTo("pending"));
+            Assert.That(listing.ScrapeJobId, Is.EqualTo(1));
+        });
+    }
+
+    [Test]
+    public async Task Should_create_initial_status_history_for_new_listing()
+    {
+        CreateAndSeedScrapeRun();
+
+        var summary = CreateSummary("NEWHIST1", price: 100m, isSold: false);
+
+        var callCount = 0;
+        _searchParserMock
+            .Setup(p => p.ParseSearchResults(It.IsAny<IDocument>()))
+            .Returns(() =>
+            {
+                callCount++;
+                return callCount == 2
+                    ? new[] { summary }
+                    : Enumerable.Empty<IEbayProductSummary>();
+            });
+
+        var message = new ScrapeJobMessage(1, 1, "Test", "Manual");
+
+        await CreateProcessor().Process(message);
+
+        var history = _dbContext.ListingStatusHistory.ToList();
+        Assert.That(history, Has.Count.EqualTo(1));
+        Assert.Multiple(() =>
+        {
+            Assert.That(history[0].Source, Is.EqualTo("InitialScrape"));
+            Assert.That(history[0].ListingStatus, Is.EqualTo("Active"));
+            Assert.That(history[0].Price, Is.EqualTo(100m));
+        });
+    }
+
+    [Test]
+    public async Task Should_create_status_history_when_active_listing_transitions_to_sold()
+    {
+        CreateAndSeedScrapeRun();
+
+        _dbContext.Listings.Add(new Listing
+        {
+            ListingId = "SOLD_TRANS1", ScrapeJobId = 1,
+            Title = "Was Active", ListingStatus = "Active",
+            Price = 100m, Condition = "USED", ShippingCost = 5m
+        });
+        await _dbContext.SaveChangesAsync();
+
+        var soldSummary = CreateSummary("SOLD_TRANS1", price: 100m, isSold: true);
+
+        var callCount = 0;
+        _searchParserMock
+            .Setup(p => p.ParseSearchResults(It.IsAny<IDocument>()))
+            .Returns(() =>
+            {
+                callCount++;
+                return callCount == 1
+                    ? new[] { soldSummary }
+                    : Enumerable.Empty<IEbayProductSummary>();
+            });
+
+        var message = new ScrapeJobMessage(1, 1, "Test", "Manual");
+
+        await CreateProcessor().Process(message);
+
+        var listing = await _dbContext.Listings.FirstAsync(l => l.ListingId == "SOLD_TRANS1");
+        Assert.That(listing.ListingStatus, Is.EqualTo("Sold"));
+
+        var history = _dbContext.ListingStatusHistory.ToList();
+        Assert.That(history, Has.Count.EqualTo(1));
+        Assert.Multiple(() =>
+        {
+            Assert.That(history[0].Source, Is.EqualTo("StatusUpdate"));
+            Assert.That(history[0].ListingStatus, Is.EqualTo("Sold"));
+        });
     }
 
     [Test]
