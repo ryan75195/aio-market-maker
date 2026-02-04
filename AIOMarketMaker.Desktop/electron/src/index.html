@@ -86,11 +86,10 @@
               <tr>
                 <th>Image</th>
                 <th>Title</th>
-                <th>Listed Price</th>
-                <th>Avg Sold Price</th>
-                <th>Potential Profit</th>
-                <th>Est. Time to Sell</th>
+                <th>Price</th>
                 <th>Condition</th>
+                <th>Search Term</th>
+                <th>Discovered</th>
                 <th>Actions</th>
               </tr>
             </thead>
@@ -102,31 +101,15 @@
                 </td>
                 <td class="title-cell" :title="listing.title">{{ truncate(listing.title, 50) }}</td>
                 <td class="price-cell">{{ formatPrice(listing.price, listing.currency) }}</td>
-                <td class="price-cell">
-                  <span v-if="listing.averageSoldPrice != null">
-                    {{ formatPrice(listing.averageSoldPrice, listing.currency) }}
-                    <small>({{ listing.similarSoldCount }} sold)</small>
-                  </span>
-                  <span v-else>-</span>
-                </td>
-                <td class="price-cell">
-                  <span v-if="listing.potentialProfit != null"
-                        :style="{ color: listing.potentialProfit >= 0 ? '#22c55e' : '#ef4444' }">
-                    {{ listing.potentialProfit >= 0 ? '+' : '' }}{{ formatPrice(listing.potentialProfit, listing.currency) }}
-                  </span>
-                  <span v-else>-</span>
-                </td>
-                <td>
-                  <span v-if="listing.estimatedDaysToSell != null">~{{ listing.estimatedDaysToSell }} days</span>
-                  <span v-else>-</span>
-                </td>
                 <td>{{ listing.condition || '-' }}</td>
+                <td>{{ listing.searchTerm || '-' }}</td>
+                <td>{{ formatDate(listing.createdUtc) }}</td>
                 <td>
                   <a v-if="listing.url" :href="listing.url" target="_blank" class="btn small">View</a>
                 </td>
               </tr>
               <tr v-if="opportunities.length === 0">
-                <td colspan="8" class="empty">No active listings found</td>
+                <td colspan="7" class="empty">No active listings found</td>
               </tr>
             </tbody>
           </table>
