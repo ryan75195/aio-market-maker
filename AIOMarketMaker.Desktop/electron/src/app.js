@@ -408,8 +408,8 @@ createApp({
     startAutoRefresh() {
       this.refreshInterval = setInterval(() => {
         if (this.currentView === 'history') {
-          // Check for any active status: Running, Indexing, Searching, Processing
-          const activeStatuses = ['Running', 'Indexing', 'Searching', 'Processing'];
+          // Check for any active status: Queued, Running, Indexing, Searching, Processing
+          const activeStatuses = ['Queued', 'Running', 'Indexing', 'Searching', 'Processing'];
           const hasActive = this.history.some(r => activeStatuses.includes(r.status));
           if (hasActive) {
             this.loadHistory();

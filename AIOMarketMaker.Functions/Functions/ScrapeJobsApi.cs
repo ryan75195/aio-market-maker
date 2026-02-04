@@ -685,8 +685,8 @@ public class ScrapeJobsApi
         if (runsCount > 0)
             await _dbContext.Database.ExecuteSqlRawAsync("DELETE FROM ScrapeRuns");
 
-        // Clear blob storage (HTML files)
-        int blobsDeleted = 0;
+        // Clear blob storage (HTML files) - delete and recreate container for speed
+        bool blobsCleared = false;
         if (_blobService != null)
         {
             try
@@ -694,13 +694,11 @@ public class ScrapeJobsApi
                 var containerClient = _blobService.GetBlobContainerClient("html");
                 if (await containerClient.ExistsAsync())
                 {
-                    await foreach (var blob in containerClient.GetBlobsAsync())
-                    {
-                        await containerClient.DeleteBlobIfExistsAsync(blob.Name);
-                        blobsDeleted++;
-                    }
+                    await containerClient.DeleteAsync();
+                    await containerClient.CreateIfNotExistsAsync();
+                    blobsCleared = true;
                 }
-                _logger.LogInformation("Cleared {BlobCount} blobs from html container", blobsDeleted);
+                _logger.LogInformation("Cleared html blob container");
             }
             catch (Exception ex)
             {
@@ -712,11 +710,11 @@ public class ScrapeJobsApi
         bool indexCleared = await ClearPineconeIndex();
 
         _logger.LogInformation(
-            "Cleared all data: {Listings} listings, {Runs} scrape runs, {Blobs} blobs, index cleared: {IndexCleared}",
-            listingsCount, runsCount, blobsDeleted, indexCleared);
+            "Cleared all data: {Listings} listings, {Runs} scrape runs, blobs cleared: {BlobsCleared}, index cleared: {IndexCleared}",
+            listingsCount, runsCount, blobsCleared, indexCleared);
 
         var response = req.CreateResponse(HttpStatusCode.OK);
-        await response.WriteAsJsonAsync(new { deletedListings = listingsCount, deletedRuns = runsCount, deletedBlobs = blobsDeleted, indexCleared });
+        await response.WriteAsJsonAsync(new { deletedListings = listingsCount, deletedRuns = runsCount, blobsCleared, indexCleared });
         return response;
     }
 

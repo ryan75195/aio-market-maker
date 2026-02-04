@@ -47,7 +47,7 @@ public class SqlScrapeRunCounterService : IScrapeRunCounterService
             SET Status = 'Completed', CurrentPhase = 'Completed', CompletedUtc = {1}
             WHERE Id = {0}
               AND (Status = 'Running' OR Status = 'Indexing')
-              AND CurrentPhase = 'Indexing'
+              AND CurrentPhase IN ('Indexing', 'Refreshing comparables')
               AND TotalListingsFound > 0
               AND ListingsProcessed >= (TotalListingsFound - ListingsFilteredPreQueue)";
 
@@ -85,7 +85,7 @@ public class EfCoreScrapeRunCounterService : IScrapeRunCounterService
 
         var listingsToProcess = scrapeRun.TotalListingsFound - scrapeRun.ListingsFilteredPreQueue;
         if ((scrapeRun.Status == "Running" || scrapeRun.Status == "Indexing") &&
-            scrapeRun.CurrentPhase == "Indexing" &&
+            (scrapeRun.CurrentPhase == "Indexing" || scrapeRun.CurrentPhase == "Refreshing comparables") &&
             scrapeRun.TotalListingsFound > 0 &&
             scrapeRun.ListingsProcessed >= listingsToProcess)
         {

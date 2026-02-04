@@ -42,7 +42,7 @@ public class CompletionCheckTrigger
         var eligibleRuns = await _dbContext.ScrapeRuns
             .Where(r =>
                 (r.Status == "Running" || r.Status == "Indexing") &&
-                r.CurrentPhase == "Indexing" &&
+                (r.CurrentPhase == "Indexing" || r.CurrentPhase == "Refreshing comparables") &&
                 r.TotalListingsFound > 0 &&
                 r.ListingsProcessed >= (r.TotalListingsFound - r.ListingsFilteredPreQueue))
             .ToListAsync();
