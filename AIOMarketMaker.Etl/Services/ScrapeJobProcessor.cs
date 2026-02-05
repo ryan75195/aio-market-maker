@@ -13,7 +13,8 @@ namespace AIOMarketMaker.Etl.Services;
 
 public interface IScrapeJobProcessor
 {
-    Task Process(ScrapeJobMessage message);
+    Task<ScrapeRun> CreateRun(ScrapeJobConfig job, string triggerType);
+    Task Execute(ScrapeRun run, ScrapeJobConfig job);
 }
 
 public record ClassifiedListings(
@@ -31,6 +32,7 @@ public class ScrapeJobProcessor : IScrapeJobProcessor
     private readonly EtlDbContext _dbContext;
     private readonly IWebscraperClient _webscraperClient;
     private readonly ISearchParser _searchParser;
+    private readonly IListingParser _listingParser;
     private readonly IEbayUrlBuilder _urlBuilder;
     private readonly IListingIndexingService _indexingService;
 
@@ -39,6 +41,7 @@ public class ScrapeJobProcessor : IScrapeJobProcessor
         EtlDbContext dbContext,
         IWebscraperClient webscraperClient,
         ISearchParser searchParser,
+        IListingParser listingParser,
         IEbayUrlBuilder urlBuilder,
         IListingIndexingService indexingService)
     {
@@ -46,36 +49,44 @@ public class ScrapeJobProcessor : IScrapeJobProcessor
         _dbContext = dbContext;
         _webscraperClient = webscraperClient;
         _searchParser = searchParser;
+        _listingParser = listingParser;
         _urlBuilder = urlBuilder;
         _indexingService = indexingService;
     }
 
-    public async Task Process(ScrapeJobMessage message)
+    public async Task<ScrapeRun> CreateRun(ScrapeJobConfig job, string triggerType)
     {
-        _logger.LogInformation("Processing scrape job: RunId={RunId}, JobId={JobId}, SearchTerm={SearchTerm}",
-            message.ScrapeRunId, message.JobId, message.SearchTerm);
-
-        var scrapeRun = await _dbContext.ScrapeRuns.FindAsync(message.ScrapeRunId);
-        if (scrapeRun == null)
+        var scrapeRun = new ScrapeRun
         {
-            _logger.LogError("ScrapeRun {RunId} not found", message.ScrapeRunId);
-            return;
-        }
+            JobId = job.Id,
+            Status = "Queued",
+            CurrentPhase = "Queued",
+            TriggerType = triggerType,
+            StartedUtc = DateTime.UtcNow,
+            InstanceId = Guid.NewGuid().ToString()
+        };
+        _dbContext.ScrapeRuns.Add(scrapeRun);
+        await _dbContext.SaveChangesAsync();
+        return scrapeRun;
+    }
+
+    public async Task Execute(ScrapeRun run, ScrapeJobConfig job)
+    {
+        _logger.LogInformation("Starting scrape: RunId={RunId}, JobId={JobId}, SearchTerm={SearchTerm}",
+            run.Id, job.Id, job.SearchTerm);
 
         try
         {
-            await ExecuteScrape(scrapeRun, message.JobId, message.SearchTerm);
-
-            _logger.LogInformation("Scrape job completed: RunId={RunId}", message.ScrapeRunId);
+            await ExecuteScrape(run, job.Id, job.SearchTerm);
+            _logger.LogInformation("Scrape completed: RunId={RunId}", run.Id);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Scrape job failed: RunId={RunId}", message.ScrapeRunId);
-            scrapeRun.Status = "Failed";
-            scrapeRun.ErrorMessage = ex.Message;
-            scrapeRun.CompletedUtc = DateTime.UtcNow;
+            _logger.LogError(ex, "Scrape failed: RunId={RunId}", run.Id);
+            run.Status = "Failed";
+            run.ErrorMessage = ex.Message;
+            run.CompletedUtc = DateTime.UtcNow;
             await _dbContext.SaveChangesAsync();
-            throw;
         }
     }
 
@@ -94,13 +105,11 @@ public class ScrapeJobProcessor : IScrapeJobProcessor
 
         if (classified.ToScrape.Count > 0)
         {
-            await CreateListingsAndEnqueueDescriptions(scrapeRun, classified.ToScrape, classified.ExistingListings, jobId);
+            await FetchAndProcessDescriptions(scrapeRun, classified.ToScrape, classified.ExistingListings, jobId);
         }
 
-        if (classified.ToScrape.Count == 0)
-        {
-            await MarkCompleted(scrapeRun);
-        }
+        // Always mark complete — no more "waiting for callbacks"
+        await MarkCompleted(scrapeRun);
     }
 
     private async Task<List<IEbayProductSummary>> SearchSoldListings(
@@ -163,13 +172,21 @@ public class ScrapeJobProcessor : IScrapeJobProcessor
         foreach (var (listingId, summary) in merged)
         {
             if (!existingListings.TryGetValue(listingId, out var existing))
+            {
                 toScrape.Add(summary);
+            }
             else if (TerminalStatuses.Contains(existing.ListingStatus ?? ""))
+            {
                 terminalCount++;
+            }
             else if (summary.IsSold)
+            {
                 toScrape.Add(summary);
+            }
             else
+            {
                 toUpdate.Add(summary);
+            }
         }
 
         _logger.LogInformation(
@@ -191,8 +208,8 @@ public class ScrapeJobProcessor : IScrapeJobProcessor
 
         foreach (var summary in summaries)
         {
-            if (string.IsNullOrEmpty(summary.ListingId)) continue;
-            if (!existingListings.TryGetValue(summary.ListingId, out var listing)) continue;
+            if (string.IsNullOrEmpty(summary.ListingId)) { continue; }
+            if (!existingListings.TryGetValue(summary.ListingId, out var listing)) { continue; }
 
             var priceChanged = listing.Price != summary.Price;
             var shippingChanged = listing.ShippingCost != summary.ShippingCost;
@@ -238,24 +255,67 @@ public class ScrapeJobProcessor : IScrapeJobProcessor
         _logger.LogInformation("Updated {Count} listings from summary data", summaries.Count);
     }
 
-    private async Task CreateListingsAndEnqueueDescriptions(
+    private async Task FetchAndProcessDescriptions(
         ScrapeRun scrapeRun, List<IEbayProductSummary> summaries,
         Dictionary<string, Listing> existingListings, int jobId)
     {
         await SetPhase(scrapeRun, "Indexing", status: "Indexing");
+        await SaveListingsFromSummaries(scrapeRun, summaries, existingListings, jobId);
 
+        // Fetch descriptions with HTTP concurrency limit
+        var concurrency = new SemaphoreSlim(15);
+        var processed = 0;
+
+        var tasks = summaries
+            .Where(s => !string.IsNullOrEmpty(s.ListingId))
+            .Select(async summary =>
+            {
+                await concurrency.WaitAsync();
+                string? html = null;
+                Exception? fetchError = null;
+                try
+                {
+                    var descriptionUrl = _urlBuilder.BuildDescriptionUrl(summary.ListingId!);
+                    html = await _webscraperClient.GetPageHtmlAsync(descriptionUrl);
+                }
+                catch (Exception ex)
+                {
+                    fetchError = ex;
+                }
+                finally
+                {
+                    concurrency.Release();
+                }
+
+                return new DescriptionFetchResult(summary, html, fetchError);
+            });
+
+        var results = await Task.WhenAll(tasks);
+
+        // Process DB writes sequentially (DbContext is not thread-safe)
+        foreach (var result in results)
+        {
+            await ProcessFetchedDescription(scrapeRun, result, jobId);
+            processed++;
+
+            if (processed % 10 == 0)
+            {
+                scrapeRun.ListingsProcessed = processed;
+                await _dbContext.SaveChangesAsync();
+            }
+        }
+
+        scrapeRun.ListingsProcessed = processed;
+        await _dbContext.SaveChangesAsync();
+    }
+
+    private async Task SaveListingsFromSummaries(
+        ScrapeRun scrapeRun, List<IEbayProductSummary> summaries,
+        Dictionary<string, Listing> existingListings, int jobId)
+    {
         foreach (var summary in summaries)
         {
-            if (string.IsNullOrEmpty(summary.ListingId)) continue;
-
-            _dbContext.ScrapeRunListings.Add(new ScrapeRunListing
-            {
-                ScrapeRunId = scrapeRun.Id,
-                ScrapeJobId = jobId,
-                ListingId = summary.ListingId,
-                Status = "Pending",
-                CreatedUtc = DateTime.UtcNow
-            });
+            if (string.IsNullOrEmpty(summary.ListingId)) { continue; }
 
             var newStatus = summary.IsSold ? "Sold" : "Active";
             var images = summary.Images != null ? JsonSerializer.Serialize(summary.Images) : null;
@@ -316,8 +376,8 @@ public class ScrapeJobProcessor : IScrapeJobProcessor
         // Create initial status history for new listings (need IDs from SaveChanges)
         foreach (var summary in summaries)
         {
-            if (string.IsNullOrEmpty(summary.ListingId)) continue;
-            if (existingListings.ContainsKey(summary.ListingId)) continue;
+            if (string.IsNullOrEmpty(summary.ListingId)) { continue; }
+            if (existingListings.ContainsKey(summary.ListingId)) { continue; }
 
             var listing = await _dbContext.Listings
                 .FirstAsync(l => l.ListingId == summary.ListingId && l.ScrapeJobId == jobId);
@@ -333,22 +393,100 @@ public class ScrapeJobProcessor : IScrapeJobProcessor
         }
         await _dbContext.SaveChangesAsync();
 
-        var workItems = summaries
-            .Where(s => !string.IsNullOrEmpty(s.ListingId))
-            .Select(s => new ScrapeWorkItem(
-                s.ListingId!,
-                _urlBuilder.BuildDescriptionUrl(s.ListingId!)));
+        _logger.LogInformation("Saved {Count} listings for job {JobId}", summaries.Count, jobId);
+    }
 
-        await _webscraperClient.EnqueueScrapeWork(workItems, scrapeRun.Id, jobId);
+    private async Task ProcessFetchedDescription(
+        ScrapeRun scrapeRun, DescriptionFetchResult result, int jobId)
+    {
+        var summary = result.Summary;
+        var listing = await _dbContext.Listings
+            .FirstOrDefaultAsync(l => l.ListingId == summary.ListingId && l.ScrapeJobId == jobId);
 
-        _logger.LogInformation("Created {Count} listings and enqueued descriptions for job {JobId}.",
-            summaries.Count, jobId);
+        if (listing == null)
+        {
+            _logger.LogWarning("Listing {ListingId} not found for description processing", summary.ListingId);
+            scrapeRun.ListingsFailed++;
+            return;
+        }
+
+        if (result.Error != null)
+        {
+            _logger.LogWarning(result.Error, "Failed to fetch description for {ListingId}", summary.ListingId);
+            listing.DescriptionStatus = "missing";
+            scrapeRun.ListingsFailed++;
+
+            _dbContext.ScrapeRunIssues.Add(new ScrapeRunIssue
+            {
+                ScrapeRunId = scrapeRun.Id,
+                ListingId = summary.ListingId!,
+                IssueType = "DescriptionFetchFailed",
+                ErrorMessage = result.Error.Message,
+                CreatedUtc = DateTime.UtcNow
+            });
+            await _dbContext.SaveChangesAsync();
+            return;
+        }
+
+        try
+        {
+            if (result.Html != null)
+            {
+                var document = await ParseHtml(result.Html);
+                var description = _listingParser.ParseDescription(document);
+
+                if (string.IsNullOrEmpty(description))
+                {
+                    listing.DescriptionStatus = "missing";
+                }
+                else
+                {
+                    listing.Description = description;
+                    listing.DescriptionStatus = "complete";
+                }
+            }
+            else
+            {
+                listing.DescriptionStatus = "missing";
+            }
+
+            await _dbContext.SaveChangesAsync();
+
+            if (listing.DescriptionStatus == "complete")
+            {
+                await _indexingService.Index(listing, embedContent: true);
+            }
+
+            if (summary.IsSold)
+            {
+                scrapeRun.ListingsAddedSold++;
+            }
+            else
+            {
+                scrapeRun.ListingsAddedActive++;
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to parse description for {ListingId}", summary.ListingId);
+            listing.DescriptionStatus = "failed";
+            scrapeRun.ListingsFailed++;
+            await _dbContext.SaveChangesAsync();
+        }
+    }
+
+    private static async Task<AngleSharp.Dom.IDocument> ParseHtml(string html)
+    {
+        var context = BrowsingContext.New(Configuration.Default);
+        return await context.OpenAsync(req => req.Content(html));
     }
 
     private async Task SetPhase(ScrapeRun scrapeRun, string phase, string? status = null)
     {
         if (status != null)
+        {
             scrapeRun.Status = status;
+        }
         scrapeRun.CurrentPhase = phase;
         await _dbContext.SaveChangesAsync();
     }
@@ -384,7 +522,9 @@ public class ScrapeJobProcessor : IScrapeJobProcessor
                 .ToList();
 
             if (pageResults.Count == 0)
+            {
                 break;
+            }
 
             results.AddRange(pageResults);
             page++;
@@ -392,4 +532,7 @@ public class ScrapeJobProcessor : IScrapeJobProcessor
 
         return results;
     }
+
+    private record DescriptionFetchResult(
+        IEbayProductSummary Summary, string? Html, Exception? Error);
 }
