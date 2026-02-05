@@ -54,7 +54,7 @@ public static class HistoryEndpoints
 
         var runIds = runs.Select(r => r.Id).ToList();
 
-        // Issue counts from ScrapeRunIssues only (ScrapeRunListings is being dropped)
+        // Issue counts from ScrapeRunIssues
         var issueCounts = await db.ScrapeRunIssues
             .Where(i => runIds.Contains(i.ScrapeRunId))
             .GroupBy(i => i.ScrapeRunId)
@@ -81,7 +81,7 @@ public static class HistoryEndpoints
             return Results.NotFound(new ErrorResponse($"Run {runId} not found"));
         }
 
-        // Query ScrapeRunIssues only (ScrapeRunListings is being dropped)
+        // Query ScrapeRunIssues
         var issues = await db.ScrapeRunIssues
             .Where(i => i.ScrapeRunId == runId)
             .Select(i => new HistoryIssueResponse(

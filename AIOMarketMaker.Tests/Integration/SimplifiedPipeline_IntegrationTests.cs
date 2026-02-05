@@ -90,8 +90,8 @@ public class SimplifiedPipeline_IntegrationTests
                 "/api/scrape/start",
                 new { jobId = testJobId });
 
-            Assert.That(triggerResponse.StatusCode, Is.EqualTo(HttpStatusCode.OK),
-                "Manual scrape trigger should succeed");
+            Assert.That(triggerResponse.StatusCode, Is.EqualTo(HttpStatusCode.Accepted),
+                "Manual scrape trigger should return 202 Accepted");
 
             // Get the ScrapeRun ID for this job
             var scrapeRunId = await GetLatestScrapeRunIdAsync(testJobId);
