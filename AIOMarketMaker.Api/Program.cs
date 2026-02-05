@@ -121,10 +121,13 @@ builder.Services.AddScoped<IComparablesEtlService, ComparablesEtlService>();
 
 var app = builder.Build();
 
-app.MapGet("/health", () => Results.Ok(new { status = "healthy" }));
+app.MapGet("/api/health", () => Results.Ok(new HealthResponse("healthy")));
+app.MapGet("/health", () => Results.Ok(new HealthResponse("healthy")));
 
 app.MapJobEndpoints();
 app.MapHistoryEndpoints();
 app.MapListingEndpoints();
 
 app.Run();
+
+public record HealthResponse(string Status);

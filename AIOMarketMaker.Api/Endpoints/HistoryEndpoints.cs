@@ -13,8 +13,18 @@ public record HistoryRunResponse(
     int IssueCount);
 
 public record HistoryIssueResponse(
-    string ListingId, string Status, int ParseAttempts,
+    string ListingId, string Status,
     string? IssueType, string? ErrorMessage, DateTime CreatedUtc);
+
+public record IssueCountEntry(int ScrapeRunId, int Count);
+
+public record HistoryRunProjection(
+    int Id, string? InstanceId, int? JobId, string? JobSearchTerm,
+    string? TriggerType, DateTime? StartedUtc, DateTime? CompletedUtc,
+    string? Status, int ListingsAddedActive, int ListingsAddedSold,
+    int ListingsUpdated, int ListingsSkipped, int ListingsFailed,
+    int ListingsFilteredPreQueue, int TotalListingsFound,
+    int ListingsProcessed, string? CurrentPhase, string? ErrorMessage);
 
 public static class HistoryEndpoints
 {
@@ -30,29 +40,16 @@ public static class HistoryEndpoints
         var runs = await db.ScrapeRuns
             .OrderByDescending(r => r.StartedUtc)
             .Take(50)
-            .Select(r => new
-            {
-                r.Id,
-                r.InstanceId,
-                r.JobId,
-                JobSearchTerm = r.JobId != null
+            .Select(r => new HistoryRunProjection(
+                r.Id, r.InstanceId, r.JobId,
+                r.JobId != null
                     ? db.ScrapeJobs.Where(j => j.Id == r.JobId).Select(j => j.SearchTerm).FirstOrDefault()
                     : null,
-                r.TriggerType,
-                r.StartedUtc,
-                r.CompletedUtc,
-                r.Status,
-                r.ListingsAddedActive,
-                r.ListingsAddedSold,
-                r.ListingsUpdated,
-                r.ListingsSkipped,
-                r.ListingsFailed,
-                r.ListingsFilteredPreQueue,
-                r.TotalListingsFound,
-                r.ListingsProcessed,
-                r.CurrentPhase,
-                r.ErrorMessage
-            })
+                r.TriggerType, r.StartedUtc, r.CompletedUtc,
+                r.Status, r.ListingsAddedActive, r.ListingsAddedSold,
+                r.ListingsUpdated, r.ListingsSkipped, r.ListingsFailed,
+                r.ListingsFilteredPreQueue, r.TotalListingsFound,
+                r.ListingsProcessed, r.CurrentPhase, r.ErrorMessage))
             .ToListAsync();
 
         var runIds = runs.Select(r => r.Id).ToList();
@@ -61,7 +58,7 @@ public static class HistoryEndpoints
         var issueCounts = await db.ScrapeRunIssues
             .Where(i => runIds.Contains(i.ScrapeRunId))
             .GroupBy(i => i.ScrapeRunId)
-            .Select(g => new { ScrapeRunId = g.Key, Count = g.Count() })
+            .Select(g => new IssueCountEntry(g.Key, g.Count()))
             .ToDictionaryAsync(x => x.ScrapeRunId, x => x.Count);
 
         var runsWithIssues = runs.Select(r => new HistoryRunResponse(
@@ -90,7 +87,6 @@ public static class HistoryEndpoints
             .Select(i => new HistoryIssueResponse(
                 i.ListingId,
                 "Failed",
-                0, // ParseAttempts not tracked in ScrapeRunIssues
                 i.IssueType,
                 i.ErrorMessage,
                 i.CreatedUtc))
