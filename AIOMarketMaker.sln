@@ -1,7 +1,7 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 18
-VisualStudioVersion = 18.2.11415.280 d18.0
+VisualStudioVersion = 18.2.11415.280
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AIOMarketMaker.Tests", "AIOMarketMaker.Tests\AIOMarketMaker.Tests.csproj", "{3CC92A69-F751-4147-A632-31EFDC56921D}"
 EndProject
@@ -48,6 +48,8 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "plans", "plans", "{E4F5A6B7
 		docs\plans\2026-02-01-restore-pipeline-features-design.md = docs\plans\2026-02-01-restore-pipeline-features-design.md
 		docs\plans\2026-02-01-restore-pipeline-features-implementation.md = docs\plans\2026-02-01-restore-pipeline-features-implementation.md
 	EndProjectSection
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AIOMarketMaker.Api", "AIOMarketMaker.Api\AIOMarketMaker.Api.csproj", "{F2511BBF-6BC1-4BCE-9127-FB9237FD43D4}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -143,6 +145,18 @@ Global
 		{A07B2392-5CBC-4E1D-8D65-50CF5F8C25FC}.Release|x64.Build.0 = Release|Any CPU
 		{A07B2392-5CBC-4E1D-8D65-50CF5F8C25FC}.Release|x86.ActiveCfg = Release|Any CPU
 		{A07B2392-5CBC-4E1D-8D65-50CF5F8C25FC}.Release|x86.Build.0 = Release|Any CPU
+		{F2511BBF-6BC1-4BCE-9127-FB9237FD43D4}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{F2511BBF-6BC1-4BCE-9127-FB9237FD43D4}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{F2511BBF-6BC1-4BCE-9127-FB9237FD43D4}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{F2511BBF-6BC1-4BCE-9127-FB9237FD43D4}.Debug|x64.Build.0 = Debug|Any CPU
+		{F2511BBF-6BC1-4BCE-9127-FB9237FD43D4}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{F2511BBF-6BC1-4BCE-9127-FB9237FD43D4}.Debug|x86.Build.0 = Debug|Any CPU
+		{F2511BBF-6BC1-4BCE-9127-FB9237FD43D4}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{F2511BBF-6BC1-4BCE-9127-FB9237FD43D4}.Release|Any CPU.Build.0 = Release|Any CPU
+		{F2511BBF-6BC1-4BCE-9127-FB9237FD43D4}.Release|x64.ActiveCfg = Release|Any CPU
+		{F2511BBF-6BC1-4BCE-9127-FB9237FD43D4}.Release|x64.Build.0 = Release|Any CPU
+		{F2511BBF-6BC1-4BCE-9127-FB9237FD43D4}.Release|x86.ActiveCfg = Release|Any CPU
+		{F2511BBF-6BC1-4BCE-9127-FB9237FD43D4}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
