@@ -100,21 +100,18 @@ public class ScrapeJobsApi_GetHistoryIssues_Tests
     }
 
     [Test]
-    public async Task Should_return_retrying_listings_when_ParseAttempts_greater_than_zero_and_status_not_terminal()
+    public async Task Should_return_issues_from_ScrapeRunIssues()
     {
         // Arrange
         var run = await SeedScrapeRun();
-        var retryingListing = new ScrapeRunListing
+        _dbContext.ScrapeRunIssues.Add(new ScrapeRunIssue
         {
             ScrapeRunId = run.Id,
-            ScrapeJobId = run.JobId!.Value,
             ListingId = "123456789",
-            Status = "Pending",
-            ParseAttempts = 2,
-            FailureDetails = "Missing: title, price",
+            IssueType = "DescriptionFetchFailed",
+            ErrorMessage = "Connection timeout",
             CreatedUtc = DateTime.UtcNow.AddMinutes(-3)
-        };
-        _dbContext.ScrapeRunListings.Add(retryingListing);
+        });
         await _dbContext.SaveChangesAsync();
 
         var request = CreateMockRequest();
@@ -133,105 +130,36 @@ public class ScrapeJobsApi_GetHistoryIssues_Tests
         Assert.Multiple(() =>
         {
             Assert.That(issues![0].ListingId, Is.EqualTo("123456789"));
-            Assert.That(issues[0].Status, Is.EqualTo("Retrying"));
-            Assert.That(issues[0].ParseAttempts, Is.EqualTo(2));
-            Assert.That(issues[0].IssueType, Is.Null);
-            Assert.That(issues[0].ErrorMessage, Is.EqualTo("Missing: title, price"));
-        });
-    }
-
-    [Test]
-    public async Task Should_return_failed_listings_from_ScrapeRunIssues()
-    {
-        // Arrange
-        var run = await SeedScrapeRun();
-        var failedListing = new ScrapeRunListing
-        {
-            ScrapeRunId = run.Id,
-            ScrapeJobId = run.JobId!.Value,
-            ListingId = "987654321",
-            Status = "Failed",
-            ParseAttempts = 3,
-            FailureDetails = "Missing: title, price, images",
-            CreatedUtc = DateTime.UtcNow.AddMinutes(-2)
-        };
-        _dbContext.ScrapeRunListings.Add(failedListing);
-
-        var issue = new ScrapeRunIssue
-        {
-            ScrapeRunId = run.Id,
-            ListingId = "987654321",
-            IssueType = "ParseFailure",
-            ErrorMessage = "Parse retries exhausted",
-            CreatedUtc = DateTime.UtcNow.AddMinutes(-1)
-        };
-        _dbContext.ScrapeRunIssues.Add(issue);
-        await _dbContext.SaveChangesAsync();
-
-        var request = CreateMockRequest();
-
-        // Act
-        var response = await _api.GetHistoryIssues(request, run.Id);
-
-        // Assert
-        Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK));
-
-        response.Body.Position = 0;
-        var json = await new StreamReader(response.Body).ReadToEndAsync();
-        var issues = JsonSerializer.Deserialize<List<HistoryIssueDto>>(json, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-
-        Assert.That(issues, Has.Count.EqualTo(1));
-        Assert.Multiple(() =>
-        {
-            Assert.That(issues![0].ListingId, Is.EqualTo("987654321"));
             Assert.That(issues[0].Status, Is.EqualTo("Failed"));
-            Assert.That(issues[0].ParseAttempts, Is.EqualTo(3));
-            Assert.That(issues[0].IssueType, Is.EqualTo("ParseFailure"));
-            Assert.That(issues[0].ErrorMessage, Is.EqualTo("Parse retries exhausted"));
+            Assert.That(issues[0].IssueType, Is.EqualTo("DescriptionFetchFailed"));
+            Assert.That(issues[0].ErrorMessage, Is.EqualTo("Connection timeout"));
         });
     }
 
     [Test]
-    public async Task Should_return_both_retrying_and_failed_listings_combined()
+    public async Task Should_return_multiple_issues_ordered_by_date()
     {
         // Arrange
         var run = await SeedScrapeRun();
 
-        // Retrying listing (ParseAttempts > 0, not terminal status)
-        var retryingListing = new ScrapeRunListing
-        {
-            ScrapeRunId = run.Id,
-            ScrapeJobId = run.JobId!.Value,
-            ListingId = "111111111",
-            Status = "Pending",
-            ParseAttempts = 1,
-            FailureDetails = "Missing: price",
-            CreatedUtc = DateTime.UtcNow.AddMinutes(-5)
-        };
-        _dbContext.ScrapeRunListings.Add(retryingListing);
-
-        // Failed listing with issue record
-        var failedListing = new ScrapeRunListing
-        {
-            ScrapeRunId = run.Id,
-            ScrapeJobId = run.JobId!.Value,
-            ListingId = "222222222",
-            Status = "Failed",
-            ParseAttempts = 3,
-            FailureDetails = "Missing: title, price",
-            CreatedUtc = DateTime.UtcNow.AddMinutes(-3)
-        };
-        _dbContext.ScrapeRunListings.Add(failedListing);
-
-        var issue = new ScrapeRunIssue
-        {
-            ScrapeRunId = run.Id,
-            ListingId = "222222222",
-            IssueType = "ParseFailure",
-            ErrorMessage = "Parse retries exhausted",
-            CreatedUtc = DateTime.UtcNow.AddMinutes(-2)
-        };
-        _dbContext.ScrapeRunIssues.Add(issue);
+        _dbContext.ScrapeRunIssues.AddRange(
+            new ScrapeRunIssue
+            {
+                ScrapeRunId = run.Id,
+                ListingId = "111111111",
+                IssueType = "DescriptionFetchFailed",
+                ErrorMessage = "Timeout",
+                CreatedUtc = DateTime.UtcNow.AddMinutes(-5)
+            },
+            new ScrapeRunIssue
+            {
+                ScrapeRunId = run.Id,
+                ListingId = "222222222",
+                IssueType = "ParseFailure",
+                ErrorMessage = "Parse retries exhausted",
+                CreatedUtc = DateTime.UtcNow.AddMinutes(-2)
+            }
+        );
         await _dbContext.SaveChangesAsync();
 
         var request = CreateMockRequest();
@@ -247,139 +175,18 @@ public class ScrapeJobsApi_GetHistoryIssues_Tests
         var issues = JsonSerializer.Deserialize<List<HistoryIssueDto>>(json, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
 
         Assert.That(issues, Has.Count.EqualTo(2));
-
-        var retrying = issues!.FirstOrDefault(i => i.ListingId == "111111111");
-        var failed = issues.FirstOrDefault(i => i.ListingId == "222222222");
-
         Assert.Multiple(() =>
         {
-            Assert.That(retrying, Is.Not.Null, "Should include retrying listing");
-            Assert.That(retrying!.Status, Is.EqualTo("Retrying"));
-            Assert.That(retrying.IssueType, Is.Null);
-
-            Assert.That(failed, Is.Not.Null, "Should include failed listing");
-            Assert.That(failed!.Status, Is.EqualTo("Failed"));
-            Assert.That(failed.IssueType, Is.EqualTo("ParseFailure"));
+            Assert.That(issues![0].ListingId, Is.EqualTo("111111111"));
+            Assert.That(issues[1].ListingId, Is.EqualTo("222222222"));
         });
     }
 
     [Test]
-    public async Task Should_not_include_listings_with_zero_ParseAttempts()
+    public async Task Should_return_empty_list_when_no_issues()
     {
         // Arrange
         var run = await SeedScrapeRun();
-        var normalListing = new ScrapeRunListing
-        {
-            ScrapeRunId = run.Id,
-            ScrapeJobId = run.JobId!.Value,
-            ListingId = "333333333",
-            Status = "Pending",
-            ParseAttempts = 0,  // No retries yet, should NOT appear
-            CreatedUtc = DateTime.UtcNow
-        };
-        _dbContext.ScrapeRunListings.Add(normalListing);
-        await _dbContext.SaveChangesAsync();
-
-        var request = CreateMockRequest();
-
-        // Act
-        var response = await _api.GetHistoryIssues(request, run.Id);
-
-        // Assert
-        Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK));
-
-        response.Body.Position = 0;
-        var json = await new StreamReader(response.Body).ReadToEndAsync();
-        var issues = JsonSerializer.Deserialize<List<HistoryIssueDto>>(json, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-
-        Assert.That(issues, Is.Empty, "Listings with ParseAttempts=0 should not be included");
-    }
-
-    [Test]
-    public async Task Should_not_include_completed_listings_in_retrying()
-    {
-        // Arrange
-        var run = await SeedScrapeRun();
-        var completedListing = new ScrapeRunListing
-        {
-            ScrapeRunId = run.Id,
-            ScrapeJobId = run.JobId!.Value,
-            ListingId = "444444444",
-            Status = "Complete",
-            ParseAttempts = 2,  // Had retries but completed successfully
-            CreatedUtc = DateTime.UtcNow
-        };
-        _dbContext.ScrapeRunListings.Add(completedListing);
-        await _dbContext.SaveChangesAsync();
-
-        var request = CreateMockRequest();
-
-        // Act
-        var response = await _api.GetHistoryIssues(request, run.Id);
-
-        // Assert
-        Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK));
-
-        response.Body.Position = 0;
-        var json = await new StreamReader(response.Body).ReadToEndAsync();
-        var issues = JsonSerializer.Deserialize<List<HistoryIssueDto>>(json, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-
-        Assert.That(issues, Is.Empty, "Completed listings should not appear as retrying");
-    }
-
-    [Test]
-    public async Task Should_not_include_failed_listings_in_retrying_section()
-    {
-        // Arrange - Failed listings should only appear if they have a ScrapeRunIssue record
-        var run = await SeedScrapeRun();
-        var failedListing = new ScrapeRunListing
-        {
-            ScrapeRunId = run.Id,
-            ScrapeJobId = run.JobId!.Value,
-            ListingId = "555555555",
-            Status = "Failed",
-            ParseAttempts = 3,
-            FailureDetails = "Missing: all fields",
-            CreatedUtc = DateTime.UtcNow
-        };
-        _dbContext.ScrapeRunListings.Add(failedListing);
-        // No ScrapeRunIssue record - this shouldn't appear as retrying
-        await _dbContext.SaveChangesAsync();
-
-        var request = CreateMockRequest();
-
-        // Act
-        var response = await _api.GetHistoryIssues(request, run.Id);
-
-        // Assert
-        Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK));
-
-        response.Body.Position = 0;
-        var json = await new StreamReader(response.Body).ReadToEndAsync();
-        var issues = JsonSerializer.Deserialize<List<HistoryIssueDto>>(json, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-
-        // The failed listing without a ScrapeRunIssue is expected since failures are tracked via issues table
-        // But it should not appear as "Retrying"
-        Assert.That(issues!.Any(i => i.Status == "Retrying"), Is.False,
-            "Failed listings should not appear with Retrying status");
-    }
-
-    [Test]
-    public async Task Should_return_empty_list_when_no_issues_or_retries()
-    {
-        // Arrange
-        var run = await SeedScrapeRun();
-        var normalListing = new ScrapeRunListing
-        {
-            ScrapeRunId = run.Id,
-            ScrapeJobId = run.JobId!.Value,
-            ListingId = "666666666",
-            Status = "Complete",
-            ParseAttempts = 0,
-            CreatedUtc = DateTime.UtcNow
-        };
-        _dbContext.ScrapeRunListings.Add(normalListing);
-        await _dbContext.SaveChangesAsync();
 
         var request = CreateMockRequest();
 
@@ -394,38 +201,6 @@ public class ScrapeJobsApi_GetHistoryIssues_Tests
         var issues = JsonSerializer.Deserialize<List<HistoryIssueDto>>(json, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
 
         Assert.That(issues, Is.Empty);
-    }
-
-    [Test]
-    public async Task Should_use_FailureDetails_as_ErrorMessage_for_retrying_listings()
-    {
-        // Arrange - Retrying listings use FailureDetails for the error message
-        var run = await SeedScrapeRun();
-        var retryingListing = new ScrapeRunListing
-        {
-            ScrapeRunId = run.Id,
-            ScrapeJobId = run.JobId!.Value,
-            ListingId = "777777777",
-            Status = "Pending",
-            ParseAttempts = 1,
-            FailureDetails = "Missing: description, images",
-            ErrorMessage = null,  // ErrorMessage might be null
-            CreatedUtc = DateTime.UtcNow
-        };
-        _dbContext.ScrapeRunListings.Add(retryingListing);
-        await _dbContext.SaveChangesAsync();
-
-        var request = CreateMockRequest();
-
-        // Act
-        var response = await _api.GetHistoryIssues(request, run.Id);
-
-        // Assert
-        response.Body.Position = 0;
-        var json = await new StreamReader(response.Body).ReadToEndAsync();
-        var issues = JsonSerializer.Deserialize<List<HistoryIssueDto>>(json, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-
-        Assert.That(issues![0].ErrorMessage, Is.EqualTo("Missing: description, images"));
     }
 }
 

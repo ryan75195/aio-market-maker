@@ -310,30 +310,14 @@ public class ScrapeJobsApi
             })
             .ToListAsync();
 
-        // Get issue counts for the retrieved runs
+        // Get issue counts from ScrapeRunIssues table
         var runIds = runs.Select(r => r.Id).ToList();
 
-        // Count failed issues from ScrapeRunIssues table
-        var failedIssueCounts = await _dbContext.ScrapeRunIssues
+        var issueCounts = await _dbContext.ScrapeRunIssues
             .Where(i => runIds.Contains(i.ScrapeRunId))
             .GroupBy(i => i.ScrapeRunId)
             .Select(g => new { ScrapeRunId = g.Key, Count = g.Count() })
             .ToDictionaryAsync(x => x.ScrapeRunId, x => x.Count);
-
-        // Count retrying listings (ParseAttempts > 0, Status not Complete/Failed)
-        var retryingCounts = await _dbContext.ScrapeRunListings
-            .Where(l => runIds.Contains(l.ScrapeRunId)
-                && l.ParseAttempts > 0
-                && l.Status != "Complete"
-                && l.Status != "Failed")
-            .GroupBy(l => l.ScrapeRunId)
-            .Select(g => new { ScrapeRunId = g.Key, Count = g.Count() })
-            .ToDictionaryAsync(x => x.ScrapeRunId, x => x.Count);
-
-        // Combine both counts
-        var issueCounts = runIds.ToDictionary(
-            id => id,
-            id => failedIssueCounts.GetValueOrDefault(id, 0) + retryingCounts.GetValueOrDefault(id, 0));
 
         // Add issue counts to the response
         var runsWithIssues = runs.Select(r => new
@@ -366,7 +350,6 @@ public class ScrapeJobsApi
 
     /// <summary>
     /// GET /api/history/{runId}/issues - Get issues for a specific scrape run
-    /// Returns both retrying listings (ParseAttempts > 0, not terminal) and failed listings (Status = "Failed")
     /// </summary>
     [Function("GetHistoryIssues")]
     public async Task<HttpResponseData> GetHistoryIssues(
@@ -381,45 +364,22 @@ public class ScrapeJobsApi
             return notFound;
         }
 
-        // Query 1: Retrying listings (ParseAttempts > 0, Status NOT in terminal states)
-        var retryingListings = await _dbContext.ScrapeRunListings
-            .Where(l => l.ScrapeRunId == runId
-                && l.ParseAttempts > 0
-                && l.Status != "Complete"
-                && l.Status != "Failed")
-            .Select(l => new HistoryIssueResponse
+        var issues = await _dbContext.ScrapeRunIssues
+            .Where(i => i.ScrapeRunId == runId)
+            .Select(i => new HistoryIssueResponse
             {
-                ListingId = l.ListingId,
-                Status = "Retrying",
-                ParseAttempts = l.ParseAttempts,
-                IssueType = null,
-                ErrorMessage = l.FailureDetails,
-                CreatedUtc = l.CreatedUtc
-            })
-            .ToListAsync();
-
-        // Query 2: Failed listings (from ScrapeRunListings where Status = "Failed")
-        var failedListings = await _dbContext.ScrapeRunListings
-            .Where(l => l.ScrapeRunId == runId && l.Status == "Failed")
-            .Select(l => new HistoryIssueResponse
-            {
-                ListingId = l.ListingId,
+                ListingId = i.ListingId,
                 Status = "Failed",
-                ParseAttempts = l.ParseAttempts,
-                IssueType = l.FailureReason,
-                ErrorMessage = l.FailureDetails ?? l.FailureReason,
-                CreatedUtc = l.CreatedUtc
+                ParseAttempts = 0,
+                IssueType = i.IssueType,
+                ErrorMessage = i.ErrorMessage,
+                CreatedUtc = i.CreatedUtc
             })
-            .ToListAsync();
-
-        // Combine both sets and order by CreatedUtc
-        var allIssues = retryingListings
-            .Concat(failedListings)
             .OrderBy(i => i.CreatedUtc)
-            .ToList();
+            .ToListAsync();
 
         var response = req.CreateResponse(HttpStatusCode.OK);
-        await response.WriteAsJsonAsync(allIssues);
+        await response.WriteAsJsonAsync(issues);
         return response;
     }
 

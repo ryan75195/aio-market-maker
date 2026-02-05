@@ -87,56 +87,37 @@ public class ScrapeJobsApi_GetHistory_IssueCount_Tests
     }
 
     [Test]
-    public async Task Should_include_retrying_listings_in_IssueCount()
+    public async Task Should_include_issues_in_IssueCount()
     {
-        // Arrange - Create a run with 1 failed issue and 2 retrying listings
+        // Arrange - Create a run with 3 issues
         var run = await SeedScrapeRun();
 
-        // Add 2 retrying listings (ParseAttempts > 0, Status not Complete/Failed)
-        _dbContext.ScrapeRunListings.AddRange(
-            new ScrapeRunListing
+        _dbContext.ScrapeRunIssues.AddRange(
+            new ScrapeRunIssue
             {
                 ScrapeRunId = run.Id,
-                ScrapeJobId = run.JobId!.Value,
                 ListingId = "111111111",
-                Status = "Pending",
-                ParseAttempts = 1,
-                FailureDetails = "Missing: price",
+                IssueType = "DescriptionFetchFailed",
+                ErrorMessage = "Timeout",
                 CreatedUtc = DateTime.UtcNow
             },
-            new ScrapeRunListing
+            new ScrapeRunIssue
             {
                 ScrapeRunId = run.Id,
-                ScrapeJobId = run.JobId!.Value,
                 ListingId = "222222222",
-                Status = "Pending",
-                ParseAttempts = 2,
-                FailureDetails = "Missing: title",
+                IssueType = "DescriptionFetchFailed",
+                ErrorMessage = "Connection refused",
+                CreatedUtc = DateTime.UtcNow
+            },
+            new ScrapeRunIssue
+            {
+                ScrapeRunId = run.Id,
+                ListingId = "333333333",
+                IssueType = "ParseFailure",
+                ErrorMessage = "Parse retries exhausted",
                 CreatedUtc = DateTime.UtcNow
             }
         );
-
-        // Add 1 failed issue
-        var failedListing = new ScrapeRunListing
-        {
-            ScrapeRunId = run.Id,
-            ScrapeJobId = run.JobId!.Value,
-            ListingId = "333333333",
-            Status = "Failed",
-            ParseAttempts = 3,
-            CreatedUtc = DateTime.UtcNow
-        };
-        _dbContext.ScrapeRunListings.Add(failedListing);
-
-        var issue = new ScrapeRunIssue
-        {
-            ScrapeRunId = run.Id,
-            ListingId = "333333333",
-            IssueType = "ParseFailure",
-            ErrorMessage = "Parse retries exhausted",
-            CreatedUtc = DateTime.UtcNow
-        };
-        _dbContext.ScrapeRunIssues.Add(issue);
         await _dbContext.SaveChangesAsync();
 
         var request = CreateMockRequest();
@@ -153,26 +134,14 @@ public class ScrapeJobsApi_GetHistory_IssueCount_Tests
 
         var resultRun = runs!.FirstOrDefault(r => r.Id == run.Id);
         Assert.That(resultRun, Is.Not.Null);
-        // IssueCount should be 3: 2 retrying + 1 failed
-        Assert.That(resultRun!.IssueCount, Is.EqualTo(3), "IssueCount should include both retrying listings (2) and failed issues (1)");
+        Assert.That(resultRun!.IssueCount, Is.EqualTo(3), "IssueCount should count all ScrapeRunIssues");
     }
 
     [Test]
-    public async Task Should_return_zero_IssueCount_when_no_retrying_or_failed_listings()
+    public async Task Should_return_zero_IssueCount_when_no_issues()
     {
-        // Arrange - Create a run with only completed listings (no retries)
+        // Arrange - Create a run with no issues
         var run = await SeedScrapeRun();
-
-        _dbContext.ScrapeRunListings.Add(new ScrapeRunListing
-        {
-            ScrapeRunId = run.Id,
-            ScrapeJobId = run.JobId!.Value,
-            ListingId = "444444444",
-            Status = "Complete",
-            ParseAttempts = 0,
-            CreatedUtc = DateTime.UtcNow
-        });
-        await _dbContext.SaveChangesAsync();
 
         var request = CreateMockRequest();
 
@@ -189,155 +158,30 @@ public class ScrapeJobsApi_GetHistory_IssueCount_Tests
     }
 
     [Test]
-    public async Task Should_only_count_retrying_listings_with_ParseAttempts_greater_than_zero()
-    {
-        // Arrange - Listings with ParseAttempts = 0 should not be counted as retrying
-        var run = await SeedScrapeRun();
-
-        // ParseAttempts = 0 (never retried, still pending)
-        _dbContext.ScrapeRunListings.Add(new ScrapeRunListing
-        {
-            ScrapeRunId = run.Id,
-            ScrapeJobId = run.JobId!.Value,
-            ListingId = "555555555",
-            Status = "Pending",
-            ParseAttempts = 0,
-            CreatedUtc = DateTime.UtcNow
-        });
-
-        // ParseAttempts = 1 (retrying)
-        _dbContext.ScrapeRunListings.Add(new ScrapeRunListing
-        {
-            ScrapeRunId = run.Id,
-            ScrapeJobId = run.JobId!.Value,
-            ListingId = "666666666",
-            Status = "Pending",
-            ParseAttempts = 1,
-            FailureDetails = "Missing: price",
-            CreatedUtc = DateTime.UtcNow
-        });
-        await _dbContext.SaveChangesAsync();
-
-        var request = CreateMockRequest();
-
-        // Act
-        var response = await _api.GetHistory(request);
-
-        // Assert
-        response.Body.Position = 0;
-        var json = await new StreamReader(response.Body).ReadToEndAsync();
-        var runs = JsonSerializer.Deserialize<List<HistoryRunDto>>(json, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-
-        var resultRun = runs!.FirstOrDefault(r => r.Id == run.Id);
-        Assert.That(resultRun!.IssueCount, Is.EqualTo(1), "Only listings with ParseAttempts > 0 should be counted as retrying");
-    }
-
-    [Test]
-    public async Task Should_not_count_completed_listings_as_retrying()
-    {
-        // Arrange - Listings with Status = "Complete" should not be counted even with ParseAttempts > 0
-        var run = await SeedScrapeRun();
-
-        _dbContext.ScrapeRunListings.Add(new ScrapeRunListing
-        {
-            ScrapeRunId = run.Id,
-            ScrapeJobId = run.JobId!.Value,
-            ListingId = "777777777",
-            Status = "Complete",
-            ParseAttempts = 2,  // Had retries but succeeded
-            CreatedUtc = DateTime.UtcNow
-        });
-        await _dbContext.SaveChangesAsync();
-
-        var request = CreateMockRequest();
-
-        // Act
-        var response = await _api.GetHistory(request);
-
-        // Assert
-        response.Body.Position = 0;
-        var json = await new StreamReader(response.Body).ReadToEndAsync();
-        var runs = JsonSerializer.Deserialize<List<HistoryRunDto>>(json, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-
-        var resultRun = runs!.FirstOrDefault(r => r.Id == run.Id);
-        Assert.That(resultRun!.IssueCount, Is.EqualTo(0), "Completed listings should not be counted as issues");
-    }
-
-    [Test]
-    public async Task Should_not_count_failed_listings_as_retrying()
-    {
-        // Arrange - Listings with Status = "Failed" should not be double-counted
-        // They are only counted via ScrapeRunIssues
-        var run = await SeedScrapeRun();
-
-        var failedListing = new ScrapeRunListing
-        {
-            ScrapeRunId = run.Id,
-            ScrapeJobId = run.JobId!.Value,
-            ListingId = "888888888",
-            Status = "Failed",
-            ParseAttempts = 3,
-            CreatedUtc = DateTime.UtcNow
-        };
-        _dbContext.ScrapeRunListings.Add(failedListing);
-
-        var issue = new ScrapeRunIssue
-        {
-            ScrapeRunId = run.Id,
-            ListingId = "888888888",
-            IssueType = "ParseFailure",
-            ErrorMessage = "Parse retries exhausted",
-            CreatedUtc = DateTime.UtcNow
-        };
-        _dbContext.ScrapeRunIssues.Add(issue);
-        await _dbContext.SaveChangesAsync();
-
-        var request = CreateMockRequest();
-
-        // Act
-        var response = await _api.GetHistory(request);
-
-        // Assert
-        response.Body.Position = 0;
-        var json = await new StreamReader(response.Body).ReadToEndAsync();
-        var runs = JsonSerializer.Deserialize<List<HistoryRunDto>>(json, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-
-        var resultRun = runs!.FirstOrDefault(r => r.Id == run.Id);
-        Assert.That(resultRun!.IssueCount, Is.EqualTo(1), "Failed listing should only be counted once (via ScrapeRunIssues)");
-    }
-
-    [Test]
     public async Task Should_correctly_calculate_IssueCount_for_multiple_runs()
     {
         // Arrange - Create two runs with different issue counts
         var run1 = await SeedScrapeRun();
 
-        // Run 1: 1 retrying + 1 failed = 2 issues
-        _dbContext.ScrapeRunListings.Add(new ScrapeRunListing
-        {
-            ScrapeRunId = run1.Id,
-            ScrapeJobId = run1.JobId!.Value,
-            ListingId = "aaa111",
-            Status = "Pending",
-            ParseAttempts = 1,
-            CreatedUtc = DateTime.UtcNow
-        });
-        _dbContext.ScrapeRunListings.Add(new ScrapeRunListing
-        {
-            ScrapeRunId = run1.Id,
-            ScrapeJobId = run1.JobId!.Value,
-            ListingId = "aaa222",
-            Status = "Failed",
-            ParseAttempts = 3,
-            CreatedUtc = DateTime.UtcNow
-        });
-        _dbContext.ScrapeRunIssues.Add(new ScrapeRunIssue
-        {
-            ScrapeRunId = run1.Id,
-            ListingId = "aaa222",
-            IssueType = "ParseFailure",
-            CreatedUtc = DateTime.UtcNow
-        });
+        // Run 1: 2 issues
+        _dbContext.ScrapeRunIssues.AddRange(
+            new ScrapeRunIssue
+            {
+                ScrapeRunId = run1.Id,
+                ListingId = "aaa111",
+                IssueType = "DescriptionFetchFailed",
+                ErrorMessage = "Timeout",
+                CreatedUtc = DateTime.UtcNow
+            },
+            new ScrapeRunIssue
+            {
+                ScrapeRunId = run1.Id,
+                ListingId = "aaa222",
+                IssueType = "ParseFailure",
+                ErrorMessage = "Parse retries exhausted",
+                CreatedUtc = DateTime.UtcNow
+            }
+        );
         await _dbContext.SaveChangesAsync();
 
         // Create a second job and run
@@ -357,33 +201,27 @@ public class ScrapeJobsApi_GetHistory_IssueCount_Tests
         _dbContext.ScrapeRuns.Add(run2);
         await _dbContext.SaveChangesAsync();
 
-        // Run 2: 3 retrying = 3 issues
-        _dbContext.ScrapeRunListings.AddRange(
-            new ScrapeRunListing
+        // Run 2: 3 issues
+        _dbContext.ScrapeRunIssues.AddRange(
+            new ScrapeRunIssue
             {
                 ScrapeRunId = run2.Id,
-                ScrapeJobId = job2.Id,
                 ListingId = "bbb111",
-                Status = "Pending",
-                ParseAttempts = 1,
+                IssueType = "DescriptionFetchFailed",
                 CreatedUtc = DateTime.UtcNow
             },
-            new ScrapeRunListing
+            new ScrapeRunIssue
             {
                 ScrapeRunId = run2.Id,
-                ScrapeJobId = job2.Id,
                 ListingId = "bbb222",
-                Status = "Pending",
-                ParseAttempts = 2,
+                IssueType = "DescriptionFetchFailed",
                 CreatedUtc = DateTime.UtcNow
             },
-            new ScrapeRunListing
+            new ScrapeRunIssue
             {
                 ScrapeRunId = run2.Id,
-                ScrapeJobId = job2.Id,
                 ListingId = "bbb333",
-                Status = "Pending",
-                ParseAttempts = 1,
+                IssueType = "ParseFailure",
                 CreatedUtc = DateTime.UtcNow
             }
         );
@@ -404,8 +242,8 @@ public class ScrapeJobsApi_GetHistory_IssueCount_Tests
 
         Assert.Multiple(() =>
         {
-            Assert.That(resultRun1!.IssueCount, Is.EqualTo(2), "Run 1 should have 2 issues (1 retrying + 1 failed)");
-            Assert.That(resultRun2!.IssueCount, Is.EqualTo(3), "Run 2 should have 3 issues (3 retrying)");
+            Assert.That(resultRun1!.IssueCount, Is.EqualTo(2), "Run 1 should have 2 issues");
+            Assert.That(resultRun2!.IssueCount, Is.EqualTo(3), "Run 2 should have 3 issues");
         });
     }
 }

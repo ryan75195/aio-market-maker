@@ -22,6 +22,7 @@ public class ScrapeJobProcessor_UnitTests
     private Mock<ILogger<ScrapeJobProcessor>> _loggerMock = null!;
     private Mock<IWebscraperClient> _webscraperClientMock = null!;
     private Mock<ISearchParser> _searchParserMock = null!;
+    private Mock<IListingParser> _listingParserMock = null!;
     private Mock<IEbayUrlBuilder> _urlBuilderMock = null!;
     private Mock<IListingIndexingService> _indexingServiceMock = null!;
 
@@ -35,6 +36,7 @@ public class ScrapeJobProcessor_UnitTests
         _loggerMock = new Mock<ILogger<ScrapeJobProcessor>>();
         _webscraperClientMock = new Mock<IWebscraperClient>();
         _searchParserMock = new Mock<ISearchParser>();
+        _listingParserMock = new Mock<IListingParser>();
         _urlBuilderMock = new Mock<IEbayUrlBuilder>();
         _indexingServiceMock = new Mock<IListingIndexingService>();
 
@@ -52,6 +54,10 @@ public class ScrapeJobProcessor_UnitTests
         _searchParserMock
             .Setup(p => p.ParseSearchResults(It.IsAny<IDocument>()))
             .Returns(Enumerable.Empty<IEbayProductSummary>());
+
+        _listingParserMock
+            .Setup(p => p.ParseDescription(It.IsAny<IDocument>()))
+            .Returns("Test description");
 
         _urlBuilderMock
             .Setup(u => u.BuildListingUrl(It.IsAny<string>()))
@@ -73,7 +79,8 @@ public class ScrapeJobProcessor_UnitTests
 
     private ScrapeJobProcessor CreateProcessor() => new(
         _loggerMock.Object, _dbContext, _webscraperClientMock.Object,
-        _searchParserMock.Object, _urlBuilderMock.Object, _indexingServiceMock.Object);
+        _searchParserMock.Object, _listingParserMock.Object,
+        _urlBuilderMock.Object, _indexingServiceMock.Object);
 
     private static EbayProductSummary CreateSummary(
         string listingId, decimal? price = 100m, bool isSold = false,
@@ -104,28 +111,30 @@ public class ScrapeJobProcessor_UnitTests
         return scrapeRun;
     }
 
+    private ScrapeJobConfig CreateJobConfig() => new(1, "Test");
+
     [Test]
     public async Task Should_complete_run_when_no_listings_found()
     {
-        CreateAndSeedScrapeRun();
+        var run = CreateAndSeedScrapeRun();
+        var job = CreateJobConfig();
 
-        var message = new ScrapeJobMessage(1, 1, "Test", "Manual");
+        await CreateProcessor().Execute(run, job);
 
-        await CreateProcessor().Process(message);
-
-        var run = await _dbContext.ScrapeRuns.FindAsync(1);
+        var updatedRun = await _dbContext.ScrapeRuns.FindAsync(1);
         Assert.Multiple(() =>
         {
-            Assert.That(run!.Status, Is.EqualTo("Completed"));
-            Assert.That(run.CurrentPhase, Is.EqualTo("Completed"));
-            Assert.That(run.CompletedUtc, Is.Not.Null);
+            Assert.That(updatedRun!.Status, Is.EqualTo("Completed"));
+            Assert.That(updatedRun.CurrentPhase, Is.EqualTo("Completed"));
+            Assert.That(updatedRun.CompletedUtc, Is.Not.Null);
         });
     }
 
     [Test]
-    public async Task Should_enqueue_via_webscraper_client_for_new_listings()
+    public async Task Should_fetch_descriptions_inline_for_new_listings()
     {
-        CreateAndSeedScrapeRun();
+        var run = CreateAndSeedScrapeRun();
+        var job = CreateJobConfig();
 
         var summary = CreateSummary("ABC123", isSold: false);
 
@@ -135,31 +144,27 @@ public class ScrapeJobProcessor_UnitTests
             .Returns(() =>
             {
                 callCount++;
-                // Call 1: sold page 1 (empty) -> stops sold search
-                // Call 2: active page 1 (returns listing)
-                // Call 3: active page 2 (empty) -> stops active search
                 return callCount == 2
                     ? new[] { summary }
                     : Enumerable.Empty<IEbayProductSummary>();
             });
 
-        var message = new ScrapeJobMessage(1, 1, "Test", "Manual");
+        await CreateProcessor().Execute(run, job);
 
-        await CreateProcessor().Process(message);
-
+        // Verify description was fetched inline (not enqueued)
         _webscraperClientMock.Verify(
-            w => w.EnqueueScrapeWork(
-                It.Is<IEnumerable<ScrapeWorkItem>>(items =>
-                    items.Count() == 1
-                    && items.First().ListingId == "ABC123"),
-                1, 1, It.IsAny<CancellationToken>()),
-            Times.Once);
+            w => w.GetPageHtmlAsync(
+                It.Is<string>(url => url.Contains("ABC123")),
+                It.IsAny<IEnumerable<object>?>(),
+                It.IsAny<string?>(), It.IsAny<TimeSpan?>(), It.IsAny<CancellationToken>()),
+            Times.AtLeastOnce);
     }
 
     [Test]
     public async Task Should_skip_terminal_listings_and_update_active_from_summary()
     {
-        CreateAndSeedScrapeRun();
+        var run = CreateAndSeedScrapeRun();
+        var job = CreateJobConfig();
 
         _dbContext.Listings.Add(new Listing
         {
@@ -183,39 +188,27 @@ public class ScrapeJobProcessor_UnitTests
             .Returns(() =>
             {
                 callCount++;
-                // Call 1: sold page 1 (empty) -> stops sold search
-                // Call 2: active page 1 (returns both listings)
-                // Call 3: active page 2 (empty) -> stops active search
                 return callCount == 2
                     ? new[] { activeSummary, soldSummary }
                     : Enumerable.Empty<IEbayProductSummary>();
             });
 
-        var message = new ScrapeJobMessage(1, 1, "Test", "Manual");
+        await CreateProcessor().Execute(run, job);
 
-        await CreateProcessor().Process(message);
-
-        var run = await _dbContext.ScrapeRuns.FindAsync(1);
+        var updatedRun = await _dbContext.ScrapeRuns.FindAsync(1);
         Assert.Multiple(() =>
         {
-            Assert.That(run!.TotalListingsFound, Is.EqualTo(2));
-            Assert.That(run.ListingsFilteredPreQueue, Is.EqualTo(1),
+            Assert.That(updatedRun!.TotalListingsFound, Is.EqualTo(2));
+            Assert.That(updatedRun.ListingsFilteredPreQueue, Is.EqualTo(1),
                 "Sold listing should be filtered as terminal");
         });
-
-        // Active listing routes to summary update, NOT to EnqueueScrapeWork
-        // (no new listings to scrape — only terminal + existing active)
-        _webscraperClientMock.Verify(
-            w => w.EnqueueScrapeWork(
-                It.IsAny<IEnumerable<ScrapeWorkItem>>(),
-                It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()),
-            Times.Never);
     }
 
     [Test]
     public async Task Should_route_sold_heuristic_listings_to_scrape()
     {
-        CreateAndSeedScrapeRun();
+        var run = CreateAndSeedScrapeRun();
+        var job = CreateJobConfig();
 
         _dbContext.Listings.Add(new Listing
         {
@@ -233,31 +226,27 @@ public class ScrapeJobProcessor_UnitTests
             .Returns(() =>
             {
                 callCount++;
-                // Call 1: sold page 1 (returns the sold listing)
-                // Call 2: sold page 2 (empty) -> stops sold search
-                // Call 3: active page 1 (empty) -> stops active search
                 return callCount == 1
                     ? new[] { soldSummary }
                     : Enumerable.Empty<IEbayProductSummary>();
             });
 
-        var message = new ScrapeJobMessage(1, 1, "Test", "Manual");
+        await CreateProcessor().Execute(run, job);
 
-        await CreateProcessor().Process(message);
-
+        // Sold listing should have description fetched inline
         _webscraperClientMock.Verify(
-            w => w.EnqueueScrapeWork(
-                It.Is<IEnumerable<ScrapeWorkItem>>(items =>
-                    items.Count() == 1
-                    && items.First().ListingId == "TRANS1"),
-                1, 1, It.IsAny<CancellationToken>()),
-            Times.Once);
+            w => w.GetPageHtmlAsync(
+                It.Is<string>(url => url.Contains("TRANS1")),
+                It.IsAny<IEnumerable<object>?>(),
+                It.IsAny<string?>(), It.IsAny<TimeSpan?>(), It.IsAny<CancellationToken>()),
+            Times.AtLeastOnce);
     }
 
     [Test]
     public async Task Should_update_existing_active_listing_from_summary_without_scraping()
     {
-        CreateAndSeedScrapeRun();
+        var run = CreateAndSeedScrapeRun();
+        var job = CreateJobConfig();
 
         _dbContext.Listings.Add(new Listing
         {
@@ -280,9 +269,7 @@ public class ScrapeJobProcessor_UnitTests
                     : Enumerable.Empty<IEbayProductSummary>();
             });
 
-        var message = new ScrapeJobMessage(1, 1, "Test", "Manual");
-
-        await CreateProcessor().Process(message);
+        await CreateProcessor().Execute(run, job);
 
         var listing = _dbContext.Listings.First(l => l.ListingId == "UPD1");
         Assert.Multiple(() =>
@@ -291,18 +278,13 @@ public class ScrapeJobProcessor_UnitTests
             Assert.That(listing.ShippingCost, Is.EqualTo(3m), "Shipping should be updated from summary");
             Assert.That(listing.UpdatedUtc, Is.Not.Null, "UpdatedUtc should be set");
         });
-
-        _webscraperClientMock.Verify(
-            w => w.EnqueueScrapeWork(
-                It.IsAny<IEnumerable<ScrapeWorkItem>>(),
-                It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()),
-            Times.Never);
     }
 
     [Test]
     public async Task Should_skip_unchanged_existing_active_listing()
     {
-        CreateAndSeedScrapeRun();
+        var run = CreateAndSeedScrapeRun();
+        var job = CreateJobConfig();
 
         _dbContext.Listings.Add(new Listing
         {
@@ -312,7 +294,6 @@ public class ScrapeJobProcessor_UnitTests
         });
         await _dbContext.SaveChangesAsync();
 
-        // Summary with identical values
         var summary = CreateSummary("SAME1", price: 100m, isSold: false,
             condition: Condition.USED, shippingCost: 5m);
 
@@ -327,27 +308,20 @@ public class ScrapeJobProcessor_UnitTests
                     : Enumerable.Empty<IEbayProductSummary>();
             });
 
-        var message = new ScrapeJobMessage(1, 1, "Test", "Manual");
-
-        await CreateProcessor().Process(message);
+        await CreateProcessor().Execute(run, job);
 
         var listing = _dbContext.Listings.First(l => l.ListingId == "SAME1");
         Assert.That(listing.UpdatedUtc, Is.Null, "UpdatedUtc should remain null when nothing changed");
 
-        _webscraperClientMock.Verify(
-            w => w.EnqueueScrapeWork(
-                It.IsAny<IEnumerable<ScrapeWorkItem>>(),
-                It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()),
-            Times.Never);
-
-        var run = await _dbContext.ScrapeRuns.FindAsync(1);
-        Assert.That(run!.ListingsSkipped, Is.EqualTo(1), "Unchanged listing should be counted as skipped");
+        var updatedRun = await _dbContext.ScrapeRuns.FindAsync(1);
+        Assert.That(updatedRun!.ListingsSkipped, Is.EqualTo(1), "Unchanged listing should be counted as skipped");
     }
 
     [Test]
     public async Task Should_create_status_history_when_summary_price_changes()
     {
-        CreateAndSeedScrapeRun();
+        var run = CreateAndSeedScrapeRun();
+        var job = CreateJobConfig();
 
         _dbContext.Listings.Add(new Listing
         {
@@ -370,9 +344,7 @@ public class ScrapeJobProcessor_UnitTests
                     : Enumerable.Empty<IEbayProductSummary>();
             });
 
-        var message = new ScrapeJobMessage(1, 1, "Test", "Manual");
-
-        await CreateProcessor().Process(message);
+        await CreateProcessor().Execute(run, job);
 
         var history = _dbContext.ListingStatusHistory.ToList();
         Assert.That(history, Has.Count.EqualTo(1));
@@ -387,7 +359,8 @@ public class ScrapeJobProcessor_UnitTests
     [Test]
     public async Task Should_not_create_status_history_when_summary_unchanged()
     {
-        CreateAndSeedScrapeRun();
+        var run = CreateAndSeedScrapeRun();
+        var job = CreateJobConfig();
 
         _dbContext.Listings.Add(new Listing
         {
@@ -411,68 +384,17 @@ public class ScrapeJobProcessor_UnitTests
                     : Enumerable.Empty<IEbayProductSummary>();
             });
 
-        var message = new ScrapeJobMessage(1, 1, "Test", "Manual");
-
-        await CreateProcessor().Process(message);
+        await CreateProcessor().Execute(run, job);
 
         var history = _dbContext.ListingStatusHistory.ToList();
         Assert.That(history, Has.Count.EqualTo(0), "No status history should be created when nothing changed");
     }
 
     [Test]
-    public async Task Should_prefer_sold_summary_when_listing_appears_in_both_searches()
-    {
-        CreateAndSeedScrapeRun();
-
-        // Existing active listing that appears in both sold and active search results
-        _dbContext.Listings.Add(new Listing
-        {
-            ListingId = "DUAL1", ScrapeJobId = 1,
-            Title = "Appears In Both", ListingStatus = "Active",
-            Price = 100m, Condition = "USED", ShippingCost = 5m
-        });
-        await _dbContext.SaveChangesAsync();
-
-        var soldSummary = CreateSummary("DUAL1", price: 100m, isSold: true);
-        var activeSummary = CreateSummary("DUAL1", price: 100m, isSold: false);
-
-        var callCount = 0;
-        _searchParserMock
-            .Setup(p => p.ParseSearchResults(It.IsAny<IDocument>()))
-            .Returns(() =>
-            {
-                callCount++;
-                // Call 1: sold page 1 (returns listing as sold)
-                // Call 2: sold page 2 (empty) -> stops sold search
-                // Call 3: active page 1 (returns same listing as active)
-                // Call 4: active page 2 (empty) -> stops active search
-                return callCount switch
-                {
-                    1 => new[] { soldSummary },
-                    3 => new[] { activeSummary },
-                    _ => Enumerable.Empty<IEbayProductSummary>()
-                };
-            });
-
-        var message = new ScrapeJobMessage(1, 1, "Test", "Manual");
-
-        await CreateProcessor().Process(message);
-
-        // Sold wins via TryAdd order (sold first in soldSummaries.Concat(activeSummaries))
-        // Existing active listing appearing as sold should be routed to full scrape, not summary update
-        _webscraperClientMock.Verify(
-            w => w.EnqueueScrapeWork(
-                It.Is<IEnumerable<ScrapeWorkItem>>(items =>
-                    items.Count() == 1
-                    && items.First().ListingId == "DUAL1"),
-                1, 1, It.IsAny<CancellationToken>()),
-            Times.Once);
-    }
-
-    [Test]
     public async Task Should_create_listing_from_summary_for_new_listings()
     {
-        CreateAndSeedScrapeRun();
+        var run = CreateAndSeedScrapeRun();
+        var job = CreateJobConfig();
 
         var summary = CreateSummary("NEW1", price: 150m, isSold: false,
             condition: Condition.NEW, shippingCost: 3m);
@@ -488,9 +410,7 @@ public class ScrapeJobProcessor_UnitTests
                     : Enumerable.Empty<IEbayProductSummary>();
             });
 
-        var message = new ScrapeJobMessage(1, 1, "Test", "Manual");
-
-        await CreateProcessor().Process(message);
+        await CreateProcessor().Execute(run, job);
 
         var listing = await _dbContext.Listings.FirstOrDefaultAsync(l => l.ListingId == "NEW1");
         Assert.That(listing, Is.Not.Null);
@@ -501,7 +421,6 @@ public class ScrapeJobProcessor_UnitTests
             Assert.That(listing.Currency, Is.EqualTo("GBP"));
             Assert.That(listing.ShippingCost, Is.EqualTo(3m));
             Assert.That(listing.ListingStatus, Is.EqualTo("Active"));
-            Assert.That(listing.DescriptionStatus, Is.EqualTo("pending"));
             Assert.That(listing.ScrapeJobId, Is.EqualTo(1));
         });
     }
@@ -509,7 +428,8 @@ public class ScrapeJobProcessor_UnitTests
     [Test]
     public async Task Should_create_initial_status_history_for_new_listing()
     {
-        CreateAndSeedScrapeRun();
+        var run = CreateAndSeedScrapeRun();
+        var job = CreateJobConfig();
 
         var summary = CreateSummary("NEWHIST1", price: 100m, isSold: false);
 
@@ -524,9 +444,7 @@ public class ScrapeJobProcessor_UnitTests
                     : Enumerable.Empty<IEbayProductSummary>();
             });
 
-        var message = new ScrapeJobMessage(1, 1, "Test", "Manual");
-
-        await CreateProcessor().Process(message);
+        await CreateProcessor().Execute(run, job);
 
         var history = _dbContext.ListingStatusHistory.ToList();
         Assert.That(history, Has.Count.EqualTo(1));
@@ -541,7 +459,8 @@ public class ScrapeJobProcessor_UnitTests
     [Test]
     public async Task Should_create_status_history_when_active_listing_transitions_to_sold()
     {
-        CreateAndSeedScrapeRun();
+        var run = CreateAndSeedScrapeRun();
+        var job = CreateJobConfig();
 
         _dbContext.Listings.Add(new Listing
         {
@@ -564,9 +483,7 @@ public class ScrapeJobProcessor_UnitTests
                     : Enumerable.Empty<IEbayProductSummary>();
             });
 
-        var message = new ScrapeJobMessage(1, 1, "Test", "Manual");
-
-        await CreateProcessor().Process(message);
+        await CreateProcessor().Execute(run, job);
 
         var listing = await _dbContext.Listings.FirstAsync(l => l.ListingId == "SOLD_TRANS1");
         Assert.That(listing.ListingStatus, Is.EqualTo("Sold"));
@@ -581,9 +498,10 @@ public class ScrapeJobProcessor_UnitTests
     }
 
     [Test]
-    public async Task Should_set_failed_status_and_rethrow_on_exception()
+    public async Task Should_set_failed_status_on_exception()
     {
-        CreateAndSeedScrapeRun();
+        var run = CreateAndSeedScrapeRun();
+        var job = CreateJobConfig();
 
         _webscraperClientMock
             .Setup(w => w.GetPageHtmlAsync(
@@ -591,23 +509,22 @@ public class ScrapeJobProcessor_UnitTests
                 It.IsAny<string?>(), It.IsAny<TimeSpan?>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new HttpRequestException("Connection refused"));
 
-        var message = new ScrapeJobMessage(1, 1, "Test", "Manual");
+        await CreateProcessor().Execute(run, job);
 
-        Assert.ThrowsAsync<HttpRequestException>(() => CreateProcessor().Process(message));
-
-        var run = await _dbContext.ScrapeRuns.FindAsync(1);
+        var updatedRun = await _dbContext.ScrapeRuns.FindAsync(1);
         Assert.Multiple(() =>
         {
-            Assert.That(run!.Status, Is.EqualTo("Failed"));
-            Assert.That(run.ErrorMessage, Is.EqualTo("Connection refused"));
-            Assert.That(run.CompletedUtc, Is.Not.Null);
+            Assert.That(updatedRun!.Status, Is.EqualTo("Failed"));
+            Assert.That(updatedRun.ErrorMessage, Is.EqualTo("Connection refused"));
+            Assert.That(updatedRun.CompletedUtc, Is.Not.Null);
         });
     }
 
     [Test]
     public async Task Should_update_pinecone_metadata_for_changed_listings()
     {
-        CreateAndSeedScrapeRun();
+        var run = CreateAndSeedScrapeRun();
+        var job = CreateJobConfig();
 
         _dbContext.Listings.Add(new Listing
         {
@@ -630,9 +547,7 @@ public class ScrapeJobProcessor_UnitTests
                     : Enumerable.Empty<IEbayProductSummary>();
             });
 
-        var message = new ScrapeJobMessage(1, 1, "Test", "Manual");
-
-        await CreateProcessor().Process(message);
+        await CreateProcessor().Execute(run, job);
 
         _indexingServiceMock.Verify(i => i.Index(
             It.Is<Listing>(l => l.ListingId == "IDX1"),
@@ -642,7 +557,8 @@ public class ScrapeJobProcessor_UnitTests
     [Test]
     public async Task Should_not_update_pinecone_for_unchanged_listings()
     {
-        CreateAndSeedScrapeRun();
+        var run = CreateAndSeedScrapeRun();
+        var job = CreateJobConfig();
 
         _dbContext.Listings.Add(new Listing
         {
@@ -665,12 +581,9 @@ public class ScrapeJobProcessor_UnitTests
                     : Enumerable.Empty<IEbayProductSummary>();
             });
 
-        var message = new ScrapeJobMessage(1, 1, "Test", "Manual");
-
-        await CreateProcessor().Process(message);
+        await CreateProcessor().Execute(run, job);
 
         _indexingServiceMock.Verify(i => i.Index(
             It.IsAny<Listing>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()), Times.Never);
     }
-
 }

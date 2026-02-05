@@ -1,24 +1,15 @@
-﻿// FILE: WebscraperClient.cs
 using System.Net.Http.Json;
 using System.Text.Json.Serialization;
 using System.Text.Json;
 using ScraperWorker.Services;
-using Microsoft.Extensions.Logging;       // JobEntity, JobItemEntity
+using Microsoft.Extensions.Logging;
 
 namespace AIOMarketMaker.Core.Services
 {
-    public record ScrapeWorkItem(string ListingId, string DescriptionUrl);
-
     public record ScraperApiConfig(string BaseUrl, string ApiKey);
 
     public interface IWebscraperClient
     {
-        Task EnqueueScrapeWork(
-            IEnumerable<ScrapeWorkItem> items,
-            int scrapeRunId,
-            int scrapeJobId,
-            CancellationToken ct = default);
-
         Task<StartResponse> NewJobAsync(
            IEnumerable<string> urls,
            IEnumerable<object>? proxies = null,
@@ -49,20 +40,17 @@ namespace AIOMarketMaker.Core.Services
         private readonly HttpClient _http;
         private readonly ILogger<WebscraperClient> _logger;
         private readonly IJobRepository _jobRepository;
-        private readonly IQueueService? _queueService;
         private readonly string _apiKey;
 
         public WebscraperClient(
             HttpClient http,
             ScraperApiConfig config,
             IJobRepository jobRepository,
-            ILogger<WebscraperClient> logger,
-            IQueueService? queueService = null)
+            ILogger<WebscraperClient> logger)
         {
             _http = http ?? throw new ArgumentNullException(nameof(http));
             _jobRepository = jobRepository ?? throw new ArgumentNullException(nameof(jobRepository));
             _logger = logger;
-            _queueService = queueService;
             _apiKey = config?.ApiKey ?? "";
         }
 
@@ -242,34 +230,5 @@ namespace AIOMarketMaker.Core.Services
             return wrapper ?? new List<JobItemEntity>();
         }
 
-        public async Task EnqueueScrapeWork(
-            IEnumerable<ScrapeWorkItem> items,
-            int scrapeRunId,
-            int scrapeJobId,
-            CancellationToken ct = default)
-        {
-            if (_queueService == null)
-                throw new InvalidOperationException("QueueService not configured. Cannot enqueue scrape work.");
-
-            var messages = new List<ScrapeQueueMessage>();
-            foreach (var item in items)
-            {
-                messages.Add(new ScrapeQueueMessage
-                {
-                    JobId = Guid.NewGuid().ToString("N"),
-                    Url = item.DescriptionUrl,
-                    GroupId = item.ListingId,
-                    FileKey = "description",
-                    ScrapeRunId = scrapeRunId,
-                    ScrapeJobId = scrapeJobId,
-                    EnqueuedAt = DateTimeOffset.UtcNow
-                });
-            }
-
-            await _queueService.EnqueueBatchAsync(messages, ct);
-
-            _logger.LogInformation("Enqueued {Count} description scrape messages for {ItemCount} listings",
-                messages.Count, messages.Count);
-        }
     }
 }

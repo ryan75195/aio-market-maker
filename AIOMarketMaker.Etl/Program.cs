@@ -12,7 +12,6 @@ using AIOMarketMaker.Etl.Services;
 using ScraperWorker.Services;
 using Azure.Data.Tables;
 using Azure.Storage.Blobs;
-using Azure.Storage.Queues;
 using Serilog;
 using Serilog.Formatting.Compact;
 
@@ -80,21 +79,7 @@ var host = new HostBuilder()
         services.AddSingleton(_ => new BlobServiceClient(blobConnectionString));
         services.AddSingleton(_ => new TableServiceClient(tableConnectionString));
 
-        // Azure Queue client for direct queue writes
-        // Use QueueMessageEncoding.None to send plain JSON (Azure Functions expects this)
-        var queueConnectionString = configuration.GetValue<string>("queueStorageConnectionString")
-            ?? configuration.GetValue<string>("AzureWebJobsStorage")
-            ?? "UseDevelopmentStorage=true";
-        var queueClientOptions = new QueueClientOptions
-        {
-            MessageEncoding = QueueMessageEncoding.None
-        };
-        services.AddSingleton(_ => new QueueServiceClient(queueConnectionString, queueClientOptions));
-        services.AddSingleton<IQueueService, AzureStorageQueueService>();
-        services.AddScoped<IScrapeRunService, ScrapeRunService>();
         services.AddScoped<IScrapeJobProcessor, ScrapeJobProcessor>();
-        services.AddScoped<IListingProcessorService, ListingProcessorService>();
-        services.AddScoped<IScrapeRunCounterService, SqlScrapeRunCounterService>();
 
         services.AddSingleton<IJobRepository>(sp =>
             new AzureJobRepository(
