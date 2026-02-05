@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using AIOMarketMaker.Api.Endpoints;
 using AIOMarketMaker.Core.Data;
 using AIOMarketMaker.Core.Data.Migrations;
 using AIOMarketMaker.Core.Services;
@@ -121,5 +122,9 @@ builder.Services.AddScoped<IComparablesEtlService, ComparablesEtlService>();
 var app = builder.Build();
 
 app.MapGet("/health", () => Results.Ok(new { status = "healthy" }));
+
+app.MapJobEndpoints();
+app.MapHistoryEndpoints();
+app.MapListingEndpoints();
 
 app.Run();
