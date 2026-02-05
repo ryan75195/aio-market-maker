@@ -140,7 +140,7 @@ public class ScrapeJobProcessor : IScrapeJobProcessor
         var merged = new Dictionary<string, IEbayProductSummary>();
         foreach (var summary in soldSummaries.Concat(activeSummaries))
         {
-            if (string.IsNullOrEmpty(summary.ListingId)) continue;
+            if (string.IsNullOrEmpty(summary.ListingId)) { continue; }
             merged.TryAdd(summary.ListingId, summary);
         }
 
