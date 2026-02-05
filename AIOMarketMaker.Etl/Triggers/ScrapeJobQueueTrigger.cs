@@ -1,6 +1,8 @@
 using System.Text.Json;
 using Microsoft.Azure.Functions.Worker;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using AIOMarketMaker.Core.Data;
 using AIOMarketMaker.Etl.Models;
 using AIOMarketMaker.Etl.Services;
 
@@ -10,13 +12,16 @@ public class ScrapeJobQueueTrigger
 {
     private readonly ILogger<ScrapeJobQueueTrigger> _logger;
     private readonly IScrapeJobProcessor _processor;
+    private readonly EtlDbContext _db;
 
     public ScrapeJobQueueTrigger(
         ILogger<ScrapeJobQueueTrigger> logger,
-        IScrapeJobProcessor processor)
+        IScrapeJobProcessor processor,
+        EtlDbContext db)
     {
         _logger = logger;
         _processor = processor;
+        _db = db;
     }
 
     [Function("ProcessScrapeJob")]
@@ -40,6 +45,14 @@ public class ScrapeJobQueueTrigger
             return;
         }
 
-        await _processor.Process(message);
+        var run = await _db.ScrapeRuns.FindAsync(message.ScrapeRunId);
+        if (run == null)
+        {
+            _logger.LogError("ScrapeRun {RunId} not found for queue message", message.ScrapeRunId);
+            return;
+        }
+
+        var job = new ScrapeJobConfig(message.JobId, message.SearchTerm);
+        await _processor.Execute(run, job);
     }
 }

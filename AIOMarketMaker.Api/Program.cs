@@ -7,6 +7,8 @@ using AIOMarketMaker.Core.Parsers;
 using ScraperWorker.Services;
 using Azure.Data.Tables;
 using Azure.Storage.Blobs;
+using AIOMarketMaker.Api.Services;
+using AIOMarketMaker.Etl.Services;
 using Serilog;
 using Serilog.Formatting.Compact;
 
@@ -117,7 +119,8 @@ builder.Services.AddSingleton<IListingComparisonService, ListingComparisonServic
 // ComparablesEtlService
 builder.Services.AddScoped<IComparablesEtlService, ComparablesEtlService>();
 
-// ScrapeJobProcessor will be registered after rewrite in task 18
+builder.Services.AddScoped<IScrapeJobProcessor, ScrapeJobProcessor>();
+builder.Services.AddHostedService<NightlyScrapeService>();
 
 var app = builder.Build();
 
@@ -127,6 +130,7 @@ app.MapGet("/health", () => Results.Ok(new HealthResponse("healthy")));
 app.MapJobEndpoints();
 app.MapHistoryEndpoints();
 app.MapListingEndpoints();
+app.MapScrapeEndpoints();
 
 app.Run();
 
