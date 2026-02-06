@@ -107,7 +107,8 @@ public class EtlDbContext : DbContext
 
             entity.Property(e => e.ListingId).IsRequired().HasMaxLength(50);
             entity.Property(e => e.IssueType).IsRequired().HasMaxLength(50);
-            entity.Property(e => e.ErrorMessage).HasMaxLength(500);
+            entity.Property(e => e.ErrorMessage).HasMaxLength(2000);
+            entity.Property(e => e.Phase).HasMaxLength(50);
             entity.Property(e => e.CreatedUtc).HasDefaultValueSql(dateDefaultSql);
 
             entity.HasIndex(e => e.ScrapeRunId);

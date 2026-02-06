@@ -398,6 +398,47 @@ public class ScrapeJobProcessor_InlineTests
     }
 
     [Test]
+    public async Task Should_update_progress_incrementally_as_descriptions_complete()
+    {
+        var run = CreateAndSeedScrapeRun();
+        var job = CreateJobConfig();
+
+        // Create 15 summaries — enough to trigger progress saves at 10
+        var summaries = Enumerable.Range(1, 15)
+            .Select(i => CreateSummary($"INC{i:D3}"))
+            .ToArray();
+        SetupActiveSearchResults(summaries);
+
+        // Make one listing slow — if progress only updates after ALL complete,
+        // ListingsProcessed will jump from 0 to 15.
+        // If it updates incrementally, we should see intermediate saves.
+        var slowTcs = new TaskCompletionSource<string>();
+        _webscraperClientMock
+            .Setup(w => w.GetPageHtmlAsync(
+                It.Is<string>(url => url.Contains("INC015")),
+                It.IsAny<IEnumerable<object>?>(),
+                It.IsAny<string?>(), It.IsAny<TimeSpan?>(), It.IsAny<CancellationToken>()))
+            .Returns(slowTcs.Task);
+
+        // Start Execute — it will block waiting for the slow listing
+        var executeTask = CreateProcessor().Execute(run, job);
+
+        // Wait for fast listings to be fetched
+        await Task.Delay(500);
+
+        // Record progress while slow fetch is pending
+        var midProgress = run.ListingsProcessed;
+
+        // Complete the slow fetch
+        slowTcs.SetResult("<html>slow description</html>");
+        await executeTask;
+
+        // The key assertion: progress should have been > 0 before the slow fetch completed
+        Assert.That(midProgress, Is.GreaterThan(0),
+            "Progress should update incrementally as descriptions complete, not wait for all fetches");
+    }
+
+    [Test]
     public async Task Should_track_active_listings_added()
     {
         var run = CreateAndSeedScrapeRun();
@@ -674,5 +715,105 @@ public class ScrapeJobProcessor_InlineTests
         // Run should still complete
         var refreshedRun = await _dbContext.ScrapeRuns.FindAsync(run.Id);
         Assert.That(refreshedRun!.Status, Is.EqualTo("Completed"));
+    }
+
+    // ---------------------------------------------------------------
+    // 10. Diagnostic failure tracking
+    // ---------------------------------------------------------------
+
+    [Test]
+    public async Task Should_record_http_status_and_phase_on_fetch_failure()
+    {
+        var run = CreateAndSeedScrapeRun();
+        var job = CreateJobConfig();
+
+        var httpEx = new HttpRequestException("Internal Server Error", null, System.Net.HttpStatusCode.InternalServerError);
+        _webscraperClientMock
+            .Setup(w => w.GetPageHtmlAsync(
+                It.Is<string>(url => url.Contains("eBayISAPI")),
+                It.IsAny<IEnumerable<object>?>(),
+                It.IsAny<string?>(), It.IsAny<TimeSpan?>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(httpEx);
+
+        SetupActiveSearchResults(CreateSummary("DIAG1"));
+
+        await CreateProcessor().Execute(run, job);
+
+        var issue = await _dbContext.ScrapeRunIssues.FirstOrDefaultAsync(i => i.ScrapeRunId == run.Id);
+        Assert.That(issue, Is.Not.Null, "Should record a ScrapeRunIssue");
+        Assert.Multiple(() =>
+        {
+            Assert.That(issue!.IssueType, Is.EqualTo("DescriptionFetchFailed"));
+            Assert.That(issue.Phase, Is.EqualTo("DescriptionFetch"));
+            Assert.That(issue.HttpStatusCode, Is.EqualTo(500));
+            Assert.That(issue.StackTrace, Is.Not.Null.And.Contains("HttpRequestException"));
+        });
+    }
+
+    [Test]
+    public async Task Should_record_phase_and_stack_trace_on_indexing_failure()
+    {
+        var run = CreateAndSeedScrapeRun();
+        var job = CreateJobConfig();
+
+        _webscraperClientMock
+            .Setup(w => w.GetPageHtmlAsync(
+                It.Is<string>(url => url.Contains("eBayISAPI")),
+                It.IsAny<IEnumerable<object>?>(),
+                It.IsAny<string?>(), It.IsAny<TimeSpan?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync("<html><body>A real description</body></html>");
+
+        _listingParserMock
+            .Setup(p => p.ParseDescription(It.IsAny<IDocument>()))
+            .Returns("A real description");
+
+        _indexingServiceMock
+            .Setup(i => i.Index(It.IsAny<Listing>(), true, It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new HttpRequestException("OpenAI rate limit exceeded"));
+
+        SetupActiveSearchResults(CreateSummary("IDXFAIL1"));
+
+        await CreateProcessor().Execute(run, job);
+
+        var issue = await _dbContext.ScrapeRunIssues.FirstOrDefaultAsync(i => i.ScrapeRunId == run.Id);
+        Assert.That(issue, Is.Not.Null, "Should record a ScrapeRunIssue");
+        Assert.Multiple(() =>
+        {
+            Assert.That(issue!.IssueType, Is.EqualTo("IndexingFailed"));
+            Assert.That(issue.Phase, Is.EqualTo("Indexing"));
+            Assert.That(issue.StackTrace, Is.Not.Null.And.Contains("HttpRequestException"));
+            Assert.That(issue.ErrorMessage, Does.Contain("OpenAI rate limit exceeded"));
+        });
+    }
+
+    [Test]
+    public async Task Should_record_parse_failure_with_phase_and_stack_trace()
+    {
+        var run = CreateAndSeedScrapeRun();
+        var job = CreateJobConfig();
+
+        _webscraperClientMock
+            .Setup(w => w.GetPageHtmlAsync(
+                It.Is<string>(url => url.Contains("eBayISAPI")),
+                It.IsAny<IEnumerable<object>?>(),
+                It.IsAny<string?>(), It.IsAny<TimeSpan?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync("<html><body>content</body></html>");
+
+        _listingParserMock
+            .Setup(p => p.ParseDescription(It.IsAny<IDocument>()))
+            .Throws(new InvalidOperationException("Unexpected DOM structure"));
+
+        SetupActiveSearchResults(CreateSummary("PARSEFAIL1"));
+
+        await CreateProcessor().Execute(run, job);
+
+        var issue = await _dbContext.ScrapeRunIssues.FirstOrDefaultAsync(i => i.ScrapeRunId == run.Id);
+        Assert.That(issue, Is.Not.Null, "Should record a ScrapeRunIssue");
+        Assert.Multiple(() =>
+        {
+            Assert.That(issue!.IssueType, Is.EqualTo("ParseFailed"));
+            Assert.That(issue.Phase, Is.EqualTo("Parse"));
+            Assert.That(issue.StackTrace, Is.Not.Null.And.Contains("InvalidOperationException"));
+        });
     }
 }
