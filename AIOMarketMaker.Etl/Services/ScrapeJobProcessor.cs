@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Threading.Channels;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using AngleSharp;
@@ -92,6 +93,17 @@ public class ScrapeJobProcessor : IScrapeJobProcessor
 
     private async Task ExecuteScrape(ScrapeRun scrapeRun, int jobId, string searchTerm)
     {
+        // Reset progress counters — ensures clean state on recovery restarts
+        scrapeRun.ListingsProcessed = 0;
+        scrapeRun.ListingsAddedActive = 0;
+        scrapeRun.ListingsAddedSold = 0;
+        scrapeRun.ListingsUpdated = 0;
+        scrapeRun.ListingsSkipped = 0;
+        scrapeRun.ListingsFailed = 0;
+        scrapeRun.TotalListingsFound = 0;
+        scrapeRun.ListingsFilteredPreQueue = 0;
+        await _dbContext.SaveChangesAsync();
+
         const int maxPages = 100;
 
         var soldSummaries = await SearchSoldListings(scrapeRun, searchTerm, maxPages);
@@ -262,50 +274,48 @@ public class ScrapeJobProcessor : IScrapeJobProcessor
         await SetPhase(scrapeRun, "Indexing", status: "Indexing");
         await SaveListingsFromSummaries(scrapeRun, summaries, existingListings, jobId);
 
-        // Fetch descriptions with HTTP concurrency limit
+        // Channel lets us process results as they arrive (DbContext is not thread-safe)
+        var channel = Channel.CreateUnbounded<DescriptionFetchResult>();
         var concurrency = new SemaphoreSlim(15);
-        var processed = 0;
-
-        var tasks = summaries
-            .Where(s => !string.IsNullOrEmpty(s.ListingId))
-            .Select(async summary =>
-            {
-                await concurrency.WaitAsync();
-                string? html = null;
-                Exception? fetchError = null;
-                try
+        // Producer: fetch descriptions concurrently, write results to channel
+        var producerTask = Task.Run(async () =>
+        {
+            var fetchTasks = summaries
+                .Where(s => !string.IsNullOrEmpty(s.ListingId))
+                .Select(async summary =>
                 {
-                    var descriptionUrl = _urlBuilder.BuildDescriptionUrl(summary.ListingId!);
-                    html = await _webscraperClient.GetPageHtmlAsync(descriptionUrl);
-                }
-                catch (Exception ex)
-                {
-                    fetchError = ex;
-                }
-                finally
-                {
-                    concurrency.Release();
-                }
+                    await concurrency.WaitAsync();
+                    string? html = null;
+                    Exception? fetchError = null;
+                    try
+                    {
+                        var descriptionUrl = _urlBuilder.BuildDescriptionUrl(summary.ListingId!);
+                        html = await _webscraperClient.GetPageHtmlAsync(descriptionUrl);
+                    }
+                    catch (Exception ex)
+                    {
+                        fetchError = ex;
+                    }
+                    finally
+                    {
+                        concurrency.Release();
+                    }
 
-                return new DescriptionFetchResult(summary, html, fetchError);
-            });
+                    await channel.Writer.WriteAsync(new DescriptionFetchResult(summary, html, fetchError));
+                });
 
-        var results = await Task.WhenAll(tasks);
+            await Task.WhenAll(fetchTasks);
+            channel.Writer.Complete();
+        });
 
-        // Process DB writes sequentially (DbContext is not thread-safe)
-        foreach (var result in results)
+        // Consumer: process results sequentially as they arrive
+        await foreach (var result in channel.Reader.ReadAllAsync())
         {
             await ProcessFetchedDescription(scrapeRun, result, jobId);
-            processed++;
-
-            if (processed % 10 == 0)
-            {
-                scrapeRun.ListingsProcessed = processed;
-                await _dbContext.SaveChangesAsync();
-            }
+            scrapeRun.ListingsProcessed++;
         }
 
-        scrapeRun.ListingsProcessed = processed;
+        await producerTask;
         await _dbContext.SaveChangesAsync();
     }
 
@@ -407,6 +417,9 @@ public class ScrapeJobProcessor : IScrapeJobProcessor
         {
             _logger.LogWarning("Listing {ListingId} not found for description processing", summary.ListingId);
             scrapeRun.ListingsFailed++;
+            RecordIssue(scrapeRun, summary.ListingId!, "ListingNotFound", "DescriptionFetch",
+                "Listing not found in database during description processing");
+            await _dbContext.SaveChangesAsync();
             return;
         }
 
@@ -415,55 +428,19 @@ public class ScrapeJobProcessor : IScrapeJobProcessor
             _logger.LogWarning(result.Error, "Failed to fetch description for {ListingId}", summary.ListingId);
             listing.DescriptionStatus = "missing";
             scrapeRun.ListingsFailed++;
-
-            _dbContext.ScrapeRunIssues.Add(new ScrapeRunIssue
-            {
-                ScrapeRunId = scrapeRun.Id,
-                ListingId = summary.ListingId!,
-                IssueType = "DescriptionFetchFailed",
-                ErrorMessage = result.Error.Message,
-                CreatedUtc = DateTime.UtcNow
-            });
+            RecordIssue(scrapeRun, summary.ListingId!, "DescriptionFetchFailed", "DescriptionFetch", result.Error);
             await _dbContext.SaveChangesAsync();
             return;
         }
 
+        // Phase 1: Parse description
+        string? description = null;
         try
         {
             if (result.Html != null)
             {
                 var document = await ParseHtml(result.Html);
-                var description = _listingParser.ParseDescription(document);
-
-                if (string.IsNullOrEmpty(description))
-                {
-                    listing.DescriptionStatus = "missing";
-                }
-                else
-                {
-                    listing.Description = description;
-                    listing.DescriptionStatus = "complete";
-                }
-            }
-            else
-            {
-                listing.DescriptionStatus = "missing";
-            }
-
-            await _dbContext.SaveChangesAsync();
-
-            if (listing.DescriptionStatus == "complete")
-            {
-                await _indexingService.Index(listing, embedContent: true);
-            }
-
-            if (summary.IsSold)
-            {
-                scrapeRun.ListingsAddedSold++;
-            }
-            else
-            {
-                scrapeRun.ListingsAddedActive++;
+                description = _listingParser.ParseDescription(document);
             }
         }
         catch (Exception ex)
@@ -471,8 +448,82 @@ public class ScrapeJobProcessor : IScrapeJobProcessor
             _logger.LogWarning(ex, "Failed to parse description for {ListingId}", summary.ListingId);
             listing.DescriptionStatus = "failed";
             scrapeRun.ListingsFailed++;
+            RecordIssue(scrapeRun, summary.ListingId!, "ParseFailed", "Parse", ex);
             await _dbContext.SaveChangesAsync();
+            return;
         }
+
+        if (string.IsNullOrEmpty(description))
+        {
+            listing.DescriptionStatus = "missing";
+        }
+        else
+        {
+            listing.Description = description;
+            listing.DescriptionStatus = "complete";
+        }
+
+        await _dbContext.SaveChangesAsync();
+
+        // Phase 2: Embed and index
+        if (listing.DescriptionStatus == "complete")
+        {
+            try
+            {
+                await _indexingService.Index(listing, embedContent: true);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to index listing {ListingId}", summary.ListingId);
+                scrapeRun.ListingsFailed++;
+                RecordIssue(scrapeRun, summary.ListingId!, "IndexingFailed", "Indexing", ex);
+                await _dbContext.SaveChangesAsync();
+                return;
+            }
+        }
+
+        if (summary.IsSold)
+        {
+            scrapeRun.ListingsAddedSold++;
+        }
+        else
+        {
+            scrapeRun.ListingsAddedActive++;
+        }
+    }
+
+    private void RecordIssue(ScrapeRun scrapeRun, string listingId,
+        string issueType, string phase, Exception ex)
+    {
+        int? httpStatus = (ex as HttpRequestException)?.StatusCode is { } code
+            ? (int)code
+            : null;
+
+        _dbContext.ScrapeRunIssues.Add(new ScrapeRunIssue
+        {
+            ScrapeRunId = scrapeRun.Id,
+            ListingId = listingId,
+            IssueType = issueType,
+            Phase = phase,
+            ErrorMessage = ex.Message,
+            StackTrace = ex.ToString(),
+            HttpStatusCode = httpStatus,
+            CreatedUtc = DateTime.UtcNow
+        });
+    }
+
+    private void RecordIssue(ScrapeRun scrapeRun, string listingId,
+        string issueType, string phase, string errorMessage)
+    {
+        _dbContext.ScrapeRunIssues.Add(new ScrapeRunIssue
+        {
+            ScrapeRunId = scrapeRun.Id,
+            ListingId = listingId,
+            IssueType = issueType,
+            Phase = phase,
+            ErrorMessage = errorMessage,
+            CreatedUtc = DateTime.UtcNow
+        });
     }
 
     private static async Task<AngleSharp.Dom.IDocument> ParseHtml(string html)
