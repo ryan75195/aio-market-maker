@@ -141,25 +141,10 @@
           <div class="operations-grid">
             <div class="card">
               <h3>Start Scrape</h3>
-              <p>Manually trigger the scrape orchestration for all enabled jobs.</p>
+              <p>Scrape all enabled jobs. Runs inline with description fetching.</p>
               <button class="btn primary" @click="startScrape" :disabled="loading">
                 {{ loading ? 'Starting...' : 'Start Scrape' }}
               </button>
-            </div>
-
-            <div class="card">
-              <h3>Orchestration Status</h3>
-              <div v-if="lastInstanceId">
-                <p>Last Instance: <code>{{ lastInstanceId }}</code></p>
-                <button class="btn danger small" @click="terminateOrchestration">Terminate</button>
-              </div>
-              <p v-else class="muted">No recent orchestration</p>
-            </div>
-
-            <div class="card">
-              <h3>Maintenance</h3>
-              <p>Purge completed and failed orchestrations from the last 7 days.</p>
-              <button class="btn danger" @click="purgeOrchestrations">Purge All</button>
             </div>
 
             <div class="card">
@@ -179,6 +164,33 @@
           <div class="view-header">
             <h1>Run History</h1>
             <button class="btn" @click="loadHistory">Refresh</button>
+          </div>
+
+          <div v-if="runStats" class="stats-banner">
+            <div class="stat">
+              <span class="stat-value">{{ runStats.activeCount - runStats.queuedCount }}</span>
+              <span class="stat-label">Running</span>
+            </div>
+            <div class="stat" v-if="runStats.queuedCount > 0">
+              <span class="stat-value">{{ runStats.queuedCount }}</span>
+              <span class="stat-label">Queued</span>
+            </div>
+            <div class="stat">
+              <span class="stat-value">{{ formatDuration(runStats.runtimeMs) }}</span>
+              <span class="stat-label">Runtime</span>
+            </div>
+            <div class="stat">
+              <span class="stat-value">{{ runStats.rate.toFixed(1) }}/s</span>
+              <span class="stat-label">Listings/sec</span>
+            </div>
+            <div class="stat">
+              <span class="stat-value">{{ formatDuration(runStats.etaSec * 1000) }}</span>
+              <span class="stat-label">ETA</span>
+            </div>
+            <div class="stat">
+              <span class="stat-value">{{ runStats.totalProcessed }}/{{ runStats.totalToProcess }}</span>
+              <span class="stat-label">Progress</span>
+            </div>
           </div>
 
           <table class="data-table history-table">
@@ -297,7 +309,7 @@
                 <div class="form-group">
                   <label>ETL API URL</label>
                   <input v-model="settings.etlApi.baseUrl" placeholder="http://localhost:7072/api">
-                  <span class="hint">URL for the ETL Functions (scrape orchestration)</span>
+                  <span class="hint">URL for the API (same as MarketMaker API)</span>
                 </div>
                 <div class="form-group">
                   <label>Scraper API URL</label>

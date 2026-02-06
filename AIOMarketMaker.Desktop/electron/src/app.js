@@ -20,8 +20,10 @@ createApp({
         filterInstructions: '',
         isEnabled: true
       },
-      lastInstanceId: localStorage.getItem('lastInstanceId') || null,
+      // lastInstanceId removed - orchestrations replaced by inline processing
       refreshInterval: null,
+      now: Date.now(),
+      nowInterval: null,
       settings: {
         marketMakerApi: { baseUrl: '', functionKey: '' },
         etlApi: { baseUrl: '' },
@@ -55,6 +57,56 @@ createApp({
       const url = this.config.marketMakerApi.baseUrl;
       if (url.includes('localhost') || url.includes('127.0.0.1')) return 'Local';
       return 'Production';
+    },
+
+    activeRuns() {
+      const statuses = ['Queued', 'Running', 'Indexing', 'Searching', 'Processing'];
+      return this.history.filter(r => statuses.includes(r.status));
+    },
+
+    runStats() {
+      const active = this.activeRuns;
+      if (active.length === 0) { return null; }
+
+      const earliest = Math.min(...active.map(r => new Date(r.startedUtc).getTime()));
+      const runtimeMs = this.now - earliest;
+
+      // Include completed runs from same batch for stable rate calculation
+      const batchRuns = this.history.filter(r => new Date(r.startedUtc).getTime() >= earliest);
+
+      // Split into runs with data vs queued (no listing data yet)
+      const startedRuns = batchRuns.filter(r => r.status !== 'Queued');
+      const queuedRuns = batchRuns.filter(r => r.status === 'Queued');
+
+      // Extrapolate queued runs using average from started runs
+      const avgToProcess = startedRuns.length > 0
+        ? startedRuns.reduce((s, r) => s + this.listingsToProcess(r), 0) / startedRuns.length
+        : 0;
+
+      const batchProcessed = startedRuns.reduce((s, r) => s + (r.listingsProcessed || 0), 0);
+      const batchToProcess = startedRuns.reduce((s, r) => s + this.listingsToProcess(r), 0)
+        + Math.round(avgToProcess * queuedRuns.length);
+
+      // Remaining: active non-queued remaining + extrapolated queued
+      const activeStarted = active.filter(r => r.status !== 'Queued');
+      const activeQueued = active.filter(r => r.status === 'Queued');
+      const activeRemaining = activeStarted.reduce((s, r) => s + this.listingsToProcess(r) - (r.listingsProcessed || 0), 0)
+        + Math.round(avgToProcess * activeQueued.length);
+
+      const runtimeSec = runtimeMs / 1000;
+      const rate = runtimeSec > 0 ? batchProcessed / runtimeSec : 0;
+      const etaSec = rate > 0 ? activeRemaining / rate : 0;
+
+      return {
+        activeCount: active.length,
+        queuedCount: activeQueued.length,
+        runtimeMs,
+        totalProcessed: batchProcessed,
+        totalToProcess: batchToProcess,
+        remaining: activeRemaining,
+        rate,
+        etaSec,
+      };
     }
   },
 
@@ -274,23 +326,13 @@ createApp({
     async startScrape() {
       this.loading = true;
       try {
-        const scraping = this.settings.scraping || {};
-        const body = {
-          // Send 0 when toggle is off (unlimited), otherwise send the value
-          maxSoldListings: scraping.limitSoldEnabled ? (scraping.maxSoldListings || 100) : 0,
-          maxActiveListings: scraping.limitActiveEnabled ? (scraping.maxActiveListings || 100) : 0,
-          lookbackDays: scraping.limitLookbackEnabled ? (scraping.defaultLookbackDays || 180) : 0
-        };
-
-        const data = await this.etlApiCall('/scrape/start', {
+        const data = await this.apiCall('/scrape/start', {
           method: 'POST',
-          body: JSON.stringify(body),
-          timeout: 120000 // 2 minutes - scrape involves fetching from eBay
+          timeout: 120000
         });
         const result = this.toCamelCase(data);
-        this.lastInstanceId = result.instanceId;
-        localStorage.setItem('lastInstanceId', result.instanceId);
-        this.showToast(`Scrape started (Run #${result.runId})`, 'success');
+        const runCount = result.runs?.length || 0;
+        this.showToast(`Scrape started (${runCount} job${runCount !== 1 ? 's' : ''})`, 'success');
 
         // Switch to history view to see progress
         this.currentView = 'history';
@@ -299,32 +341,6 @@ createApp({
         this.showToast(`Failed to start scrape: ${err.message}`, 'error');
       } finally {
         this.loading = false;
-      }
-    },
-
-    async terminateOrchestration() {
-      if (!this.lastInstanceId) return;
-      if (!confirm('Terminate this orchestration?')) return;
-
-      try {
-        await this.etlApiCall(`/orchestration/${this.lastInstanceId}`, { method: 'DELETE' });
-        this.showToast('Orchestration terminated', 'success');
-        this.lastInstanceId = null;
-        localStorage.removeItem('lastInstanceId');
-      } catch (err) {
-        this.showToast(`Failed to terminate: ${err.message}`, 'error');
-      }
-    },
-
-    async purgeOrchestrations() {
-      if (!confirm('Purge all orchestrations from the last 7 days?')) return;
-
-      try {
-        const data = await this.etlApiCall('/orchestration/purge', { method: 'POST' });
-        const result = this.toCamelCase(data);
-        this.showToast(`Purged ${result.purged} orchestrations`, 'success');
-      } catch (err) {
-        this.showToast(`Failed to purge: ${err.message}`, 'error');
       }
     },
 
@@ -405,7 +421,18 @@ createApp({
       return Math.round((run.listingsProcessed / toProcess) * 100);
     },
 
+    formatDuration(ms) {
+      const totalSec = Math.floor(ms / 1000);
+      const h = Math.floor(totalSec / 3600);
+      const m = Math.floor((totalSec % 3600) / 60);
+      const s = totalSec % 60;
+      if (h > 0) { return `${h}h ${m}m ${s}s`; }
+      if (m > 0) { return `${m}m ${s}s`; }
+      return `${s}s`;
+    },
+
     startAutoRefresh() {
+      this.nowInterval = setInterval(() => { this.now = Date.now(); }, 1000);
       this.refreshInterval = setInterval(() => {
         if (this.currentView === 'history') {
           // Check for any active status: Queued, Running, Indexing, Searching, Processing
@@ -423,6 +450,10 @@ createApp({
     },
 
     stopAutoRefresh() {
+      if (this.nowInterval) {
+        clearInterval(this.nowInterval);
+        this.nowInterval = null;
+      }
       if (this.refreshInterval) {
         clearInterval(this.refreshInterval);
         this.refreshInterval = null;

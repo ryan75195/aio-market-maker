@@ -679,3 +679,34 @@ body {
 .toggle-input .hint {
   margin-left: auto;
 }
+
+/* Stats banner */
+.stats-banner {
+  display: flex;
+  gap: 24px;
+  padding: 16px 20px;
+  margin-bottom: 16px;
+  background: #252526;
+  border-radius: 8px;
+  border: 1px solid #3c3c3c;
+}
+
+.stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 80px;
+}
+
+.stat-value {
+  font-size: 20px;
+  font-weight: 600;
+  color: #4a9eff;
+}
+
+.stat-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  color: #808080;
+  margin-top: 2px;
+}
