@@ -38,7 +38,11 @@ public static class HistoryEndpoints
     private static async Task<IResult> GetHistory(EtlDbContext db)
     {
         var runs = await db.ScrapeRuns
-            .OrderByDescending(r => r.StartedUtc)
+            .OrderBy(r =>
+                r.Status == "Searching" || r.Status == "Indexing" || r.Status == "Running" || r.Status == "Processing" ? 0 :
+                r.Status == "Queued" ? 1 :
+                2)
+            .ThenByDescending(r => r.StartedUtc)
             .Take(50)
             .Select(r => new HistoryRunProjection(
                 r.Id, r.InstanceId, r.JobId,

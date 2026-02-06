@@ -59,20 +59,42 @@ public class NightlyScrapeService : BackgroundService
 
         _logger.LogInformation("Found {Count} enabled jobs for nightly scrape", jobs.Count);
 
+        // Create all runs sequentially in one scope so they appear in UI immediately
+        var runIds = new List<int>();
         foreach (var job in jobs)
         {
             if (ct.IsCancellationRequested) { break; }
 
+            var run = await processor.CreateRun(job, "Nightly");
+            runIds.Add(run.Id);
+        }
+
+        // Execute in parallel (max 3 concurrent) with per-job DI scopes
+        var parallelism = new SemaphoreSlim(3);
+        var tasks = jobs.Select((job, i) => Task.Run(async () =>
+        {
+            await parallelism.WaitAsync(ct);
             try
             {
-                var run = await processor.CreateRun(job, "Nightly");
-                await processor.Execute(run, job);
+                using var jobScope = _scopeFactory.CreateScope();
+                var jobProcessor = jobScope.ServiceProvider.GetRequiredService<IScrapeJobProcessor>();
+                var jobDb = jobScope.ServiceProvider.GetRequiredService<EtlDbContext>();
+
+                var run = await jobDb.ScrapeRuns.FindAsync(runIds[i]);
+                if (run == null) { return; }
+
+                await jobProcessor.Execute(run, job);
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Nightly scrape failed for job {JobId}", job.Id);
             }
-        }
+            finally
+            {
+                parallelism.Release();
+            }
+        }));
+        await Task.WhenAll(tasks);
 
         _logger.LogInformation("Nightly scrape completed");
     }

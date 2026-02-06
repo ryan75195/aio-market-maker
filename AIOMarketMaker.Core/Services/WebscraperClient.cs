@@ -117,7 +117,7 @@ namespace AIOMarketMaker.Core.Services
         }
 
         /// <summary>
-        /// Kicks off a job and waits for it to finish, then returns the HTML of the first page.
+        /// Fetches HTML for a single URL via the ScraperWorker's dedicated /process endpoint.
         /// </summary>
         public async Task<string> GetPageHtmlAsync(
             string url,
@@ -127,56 +127,28 @@ namespace AIOMarketMaker.Core.Services
             CancellationToken ct = default)
         {
             var startTime = DateTime.UtcNow;
-            var job = await NewJobAsync(new[] { url }, proxies, correlationId, ct: ct);
 
-            // Poll until complete (every 2s, but only log every 60s)
-            var jobStatus = JobStatusType.Pending;
-            var lastLogTime = startTime;
-            while (jobStatus != JobStatusType.Success && jobStatus != JobStatusType.Failure)
+            var request = new HttpRequestMessage(HttpMethod.Post, AppendApiKey("process"))
             {
-                ct.ThrowIfCancellationRequested();
-                await Task.Delay(2000, ct);
+                Content = JsonContent.Create(new { url })
+            };
 
-                var currentStatus = await GetStatusAsync(job.JobId, ct);
-                if (currentStatus != null)
-                {
-                    jobStatus = currentStatus.Status;
-
-                    // Log every 60 seconds if still running
-                    if ((DateTime.UtcNow - lastLogTime).TotalSeconds >= 60)
-                    {
-                        var elapsed = (DateTime.UtcNow - startTime).TotalSeconds;
-                        _logger.LogInformation("    Still waiting... ({Elapsed:F0}s elapsed)", elapsed);
-                        lastLogTime = DateTime.UtcNow;
-                    }
-                }
+            if (!string.IsNullOrEmpty(correlationId))
+            {
+                request.Headers.Add("X-Correlation-Id", correlationId);
             }
 
-            var totalTime = (DateTime.UtcNow - startTime).TotalSeconds;
+            var resp = await _http.SendAsync(request, ct);
+            resp.EnsureSuccessStatusCode();
 
-            if (jobStatus == JobStatusType.Failure)
-            {
-                _logger.LogError("    Failed after {Elapsed:F0}s", totalTime);
-                throw new InvalidOperationException($"Scrape job {job.JobId} failed");
-            }
+            var html = await resp.Content.ReadAsStringAsync(ct);
+            var elapsed = (DateTime.UtcNow - startTime).TotalSeconds;
 
-            _logger.LogInformation("    Done ({Elapsed:F0}s)", totalTime);
-
-            // Get results and fetch HTML from blob storage
-            var results = await GetResultsAsync(job.JobId, ct);
-            var firstResult = results.FirstOrDefault();
-
-            if (firstResult == null || string.IsNullOrEmpty(firstResult.Url))
-            {
-                throw new InvalidOperationException($"No results returned for job {job.JobId}");
-            }
-
-            // Fetch HTML from blob storage using the job repository
-            var html = await _jobRepository.GetFileContentsAsync(job.JobId, firstResult.Url, ct);
+            _logger.LogInformation("    Done ({Elapsed:F0}s, {Bytes} bytes)", elapsed, html.Length);
 
             if (string.IsNullOrEmpty(html))
             {
-                throw new InvalidOperationException($"No HTML content in blob for job {job.JobId}");
+                throw new InvalidOperationException($"Empty HTML response for {url}");
             }
 
             return html;

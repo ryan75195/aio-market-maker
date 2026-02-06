@@ -120,6 +120,7 @@ builder.Services.AddSingleton<IListingComparisonService, ListingComparisonServic
 builder.Services.AddScoped<IComparablesEtlService, ComparablesEtlService>();
 
 builder.Services.AddScoped<IScrapeJobProcessor, ScrapeJobProcessor>();
+builder.Services.AddHostedService<StartupRecoveryService>();
 builder.Services.AddHostedService<NightlyScrapeService>();
 
 var app = builder.Build();

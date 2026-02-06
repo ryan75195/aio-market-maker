@@ -39,27 +39,34 @@ public static class ScrapeEndpoints
             runIds.Add(run.Id);
         }
 
-        // Process in background with its own DI scope (request scope gets disposed after response)
+        // Process in background with parallel execution (max 3 concurrent)
         _ = Task.Run(async () =>
         {
-            using var scope = scopeFactory.CreateScope();
-            var bgProcessor = scope.ServiceProvider.GetRequiredService<IScrapeJobProcessor>();
-            var bgDb = scope.ServiceProvider.GetRequiredService<EtlDbContext>();
-
-            for (var i = 0; i < jobs.Count; i++)
+            var parallelism = new SemaphoreSlim(3);
+            var tasks = jobs.Select((job, i) => Task.Run(async () =>
             {
-                var run = await bgDb.ScrapeRuns.FindAsync(runIds[i]);
-                if (run == null) { continue; }
-
+                await parallelism.WaitAsync();
                 try
                 {
-                    await bgProcessor.Execute(run, jobs[i]);
+                    using var jobScope = scopeFactory.CreateScope();
+                    var jobProcessor = jobScope.ServiceProvider.GetRequiredService<IScrapeJobProcessor>();
+                    var jobDb = jobScope.ServiceProvider.GetRequiredService<EtlDbContext>();
+
+                    var run = await jobDb.ScrapeRuns.FindAsync(runIds[i]);
+                    if (run == null) { return; }
+
+                    await jobProcessor.Execute(run, job);
                 }
                 catch (Exception ex)
                 {
                     logger.LogError(ex, "Background scrape failed for run {RunId}", runIds[i]);
                 }
-            }
+                finally
+                {
+                    parallelism.Release();
+                }
+            }));
+            await Task.WhenAll(tasks);
         });
 
         var runInfos = runIds.Zip(jobs, (id, job) => new ScrapeRunInfo(id, job.Id, "Queued"));

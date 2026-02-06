@@ -38,9 +38,13 @@ public static class HostHelper
                 var dbPath = configuration.GetValue<string>("DatabasePath") ?? "etl.db";
                 var sqliteConnectionString = $"Data Source={dbPath}";
 
-                // Run migrations on startup
-                var migrationRunner = new MigrationRunner(sqliteConnectionString, null);
-                migrationRunner.ApplyMigrations();
+                // Run SQLite migrations on startup, unless running the SQL Server migrate command
+                var isSqlServerMigrate = args.Length > 0 && args[0].Equals("migrate", StringComparison.OrdinalIgnoreCase);
+                if (!isSqlServerMigrate)
+                {
+                    var migrationRunner = new MigrationRunner(sqliteConnectionString, null);
+                    migrationRunner.ApplyMigrations();
+                }
 
                 // Register DbContext
                 services.AddDbContext<EtlDbContext>(options =>
