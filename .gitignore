@@ -378,6 +378,13 @@ output.txt
 output_*.txt
 search-test-results.txt
 
+# Experiment data outputs
+experiments/**/*.csv
+experiments/**/*.json
+experiments/**/*.npz
+experiments/**/*.pt
+experiments/**/*.log
+
 # Azure Functions deployment artifacts
 temp-publish/
 app-logs/
