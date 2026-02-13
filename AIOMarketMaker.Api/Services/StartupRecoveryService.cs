@@ -9,13 +9,16 @@ public class StartupRecoveryService : IHostedService
 {
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<StartupRecoveryService> _logger;
+    private readonly ScrapingConfig _scrapingConfig;
 
     public StartupRecoveryService(
         IServiceScopeFactory scopeFactory,
-        ILogger<StartupRecoveryService> logger)
+        ILogger<StartupRecoveryService> logger,
+        ScrapingConfig scrapingConfig)
     {
         _scopeFactory = scopeFactory;
         _logger = logger;
+        _scrapingConfig = scrapingConfig;
     }
 
     public async Task StartAsync(CancellationToken ct)
@@ -66,7 +69,7 @@ public class StartupRecoveryService : IHostedService
 
     private async Task ExecuteRuns(List<OrphanedRun> toResume)
     {
-        var parallelism = new SemaphoreSlim(3);
+        var parallelism = new SemaphoreSlim(_scrapingConfig.MaxConcurrentRuns);
         var tasks = toResume.Select(item => Task.Run(async () =>
         {
             await parallelism.WaitAsync();

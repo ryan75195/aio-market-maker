@@ -9,13 +9,16 @@ public class NightlyScrapeService : BackgroundService
 {
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<NightlyScrapeService> _logger;
+    private readonly ScrapingConfig _scrapingConfig;
 
     public NightlyScrapeService(
         IServiceScopeFactory scopeFactory,
-        ILogger<NightlyScrapeService> logger)
+        ILogger<NightlyScrapeService> logger,
+        ScrapingConfig scrapingConfig)
     {
         _scopeFactory = scopeFactory;
         _logger = logger;
+        _scrapingConfig = scrapingConfig;
     }
 
     protected override async Task ExecuteAsync(CancellationToken ct)
@@ -69,8 +72,8 @@ public class NightlyScrapeService : BackgroundService
             runIds.Add(run.Id);
         }
 
-        // Execute in parallel (max 3 concurrent) with per-job DI scopes
-        var parallelism = new SemaphoreSlim(3);
+        // Execute in parallel with per-job DI scopes
+        var parallelism = new SemaphoreSlim(_scrapingConfig.MaxConcurrentRuns);
         var tasks = jobs.Select((job, i) => Task.Run(async () =>
         {
             await parallelism.WaitAsync(ct);

@@ -1,5 +1,7 @@
 namespace AIOMarketMaker.Etl.Models;
 
+public record ScrapingConfig(int MaxConcurrentRuns = 3, int MaxConcurrentDbWrites = 2);
+
 public record ManualScrapeRequest(int? JobId);
 
 public record ErrorResponse(string Error);

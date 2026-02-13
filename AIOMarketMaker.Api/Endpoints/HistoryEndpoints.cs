@@ -88,13 +88,13 @@ public static class HistoryEndpoints
         // Query ScrapeRunIssues
         var issues = await db.ScrapeRunIssues
             .Where(i => i.ScrapeRunId == runId)
+            .OrderBy(i => i.CreatedUtc)
             .Select(i => new HistoryIssueResponse(
                 i.ListingId,
                 "Failed",
                 i.IssueType,
                 i.ErrorMessage,
                 i.CreatedUtc))
-            .OrderBy(i => i.CreatedUtc)
             .ToListAsync();
 
         return Results.Ok(issues);

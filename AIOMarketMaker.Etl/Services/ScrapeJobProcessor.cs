@@ -36,6 +36,7 @@ public class ScrapeJobProcessor : IScrapeJobProcessor
     private readonly IListingParser _listingParser;
     private readonly IEbayUrlBuilder _urlBuilder;
     private readonly IListingIndexingService _indexingService;
+    private readonly DbWriteGate _dbWriteGate;
 
     public ScrapeJobProcessor(
         ILogger<ScrapeJobProcessor> logger,
@@ -44,7 +45,8 @@ public class ScrapeJobProcessor : IScrapeJobProcessor
         ISearchParser searchParser,
         IListingParser listingParser,
         IEbayUrlBuilder urlBuilder,
-        IListingIndexingService indexingService)
+        IListingIndexingService indexingService,
+        DbWriteGate dbWriteGate)
     {
         _logger = logger;
         _dbContext = dbContext;
@@ -53,6 +55,7 @@ public class ScrapeJobProcessor : IScrapeJobProcessor
         _listingParser = listingParser;
         _urlBuilder = urlBuilder;
         _indexingService = indexingService;
+        _dbWriteGate = dbWriteGate;
     }
 
     public async Task<ScrapeRun> CreateRun(ScrapeJobConfig job, string triggerType)
@@ -172,20 +175,25 @@ public class ScrapeJobProcessor : IScrapeJobProcessor
 
         _logger.LogInformation("Found {Count} listings that transitioned from Active to Sold", transitionCount);
 
-        // Load existing listings
+        // Load existing listings globally (IX_Listings_ListingId is unique across all jobs)
         var existingListings = await _dbContext.Listings
-            .Where(l => l.ScrapeJobId == jobId && allListingIds.Contains(l.ListingId))
+            .Where(l => allListingIds.Contains(l.ListingId))
             .ToDictionaryAsync(l => l.ListingId);
 
         var toScrape = new List<IEbayProductSummary>();
         var toUpdate = new List<IEbayProductSummary>();
         var terminalCount = 0;
+        var crossJobCount = 0;
 
         foreach (var (listingId, summary) in merged)
         {
             if (!existingListings.TryGetValue(listingId, out var existing))
             {
                 toScrape.Add(summary);
+            }
+            else if (existing.ScrapeJobId != jobId)
+            {
+                crossJobCount++;
             }
             else if (TerminalStatuses.Contains(existing.ListingStatus ?? ""))
             {
@@ -201,14 +209,19 @@ public class ScrapeJobProcessor : IScrapeJobProcessor
             }
         }
 
+        if (crossJobCount > 0)
+        {
+            _logger.LogInformation("Skipped {Count} listings already scraped by other jobs", crossJobCount);
+        }
+
         _logger.LogInformation(
             "Classified {Total} listings: {ScrapeCount} to scrape, {UpdateCount} to update from summary, {TerminalCount} terminal",
             merged.Count, toScrape.Count, toUpdate.Count, terminalCount);
 
         scrapeRun.TotalListingsFound = merged.Count;
-        scrapeRun.ListingsFilteredPreQueue = terminalCount;
+        scrapeRun.ListingsFilteredPreQueue = terminalCount + crossJobCount;
 
-        return new ClassifiedListings(toScrape, toUpdate, existingListings, merged.Count, terminalCount);
+        return new ClassifiedListings(toScrape, toUpdate, existingListings, merged.Count, terminalCount + crossJobCount);
     }
 
     private async Task UpdateListingsFromSummary(
@@ -272,7 +285,17 @@ public class ScrapeJobProcessor : IScrapeJobProcessor
         Dictionary<string, Listing> existingListings, int jobId)
     {
         await SetPhase(scrapeRun, "Indexing", status: "Indexing");
-        await SaveListingsFromSummaries(scrapeRun, summaries, existingListings, jobId);
+
+        // Gate bulk inserts so only a few runs write to DB at once (prevents LocalDB contention)
+        await _dbWriteGate.WaitAsync();
+        try
+        {
+            await SaveListingsFromSummaries(scrapeRun, summaries, existingListings, jobId);
+        }
+        finally
+        {
+            _dbWriteGate.Release();
+        }
 
         // Channel lets us process results as they arrive (DbContext is not thread-safe)
         var channel = Channel.CreateUnbounded<DescriptionFetchResult>();
@@ -323,6 +346,8 @@ public class ScrapeJobProcessor : IScrapeJobProcessor
         ScrapeRun scrapeRun, List<IEbayProductSummary> summaries,
         Dictionary<string, Listing> existingListings, int jobId)
     {
+        var newListings = new List<(Listing Listing, IEbayProductSummary Summary)>();
+
         foreach (var summary in summaries)
         {
             if (string.IsNullOrEmpty(summary.ListingId)) { continue; }
@@ -379,19 +404,14 @@ public class ScrapeJobProcessor : IScrapeJobProcessor
                     CreatedUtc = DateTime.UtcNow
                 };
                 _dbContext.Listings.Add(listing);
+                newListings.Add((listing, summary));
             }
         }
         await _dbContext.SaveChangesAsync();
 
-        // Create initial status history for new listings (need IDs from SaveChanges)
-        foreach (var summary in summaries)
+        // EF Core sets listing.Id after SaveChangesAsync — no need to query them back
+        foreach (var (listing, summary) in newListings)
         {
-            if (string.IsNullOrEmpty(summary.ListingId)) { continue; }
-            if (existingListings.ContainsKey(summary.ListingId)) { continue; }
-
-            var listing = await _dbContext.Listings
-                .FirstAsync(l => l.ListingId == summary.ListingId && l.ScrapeJobId == jobId);
-
             _dbContext.ListingStatusHistory.Add(new ListingStatusHistory
             {
                 ListingId = listing.Id,
