@@ -111,11 +111,26 @@ builder.Services.AddSingleton<IListingIndexingService, ListingIndexingService>()
 // Pricing analysis service
 builder.Services.AddSingleton<IPricingAnalysisService, PricingAnalysisService>();
 
-// ListingComparisonService (LLM classification)
+// Variant classifier (Python model service)
+var classifierBaseUrl = configuration.GetValue<string>("VariantClassifier:BaseUrl") ?? "http://localhost:8010";
+builder.Services.AddHttpClient<IVariantClassifierClient, VariantClassifierClient>(client =>
+{
+    client.BaseAddress = new Uri(classifierBaseUrl);
+    client.Timeout = TimeSpan.FromSeconds(60);
+});
+
+// GPT comparison (fallback for low-confidence pairs)
 var chatModel = configuration.GetValue<string>("OpenAi:ChatModel") ?? "gpt-5-nano";
 var comparisonConfig = new ListingComparisonConfig(openAiKey, chatModel);
 builder.Services.AddSingleton(comparisonConfig);
-builder.Services.AddSingleton<IListingComparisonService, ListingComparisonService>();
+builder.Services.AddSingleton<ListingComparisonService>();
+
+// Model-first with GPT fallback
+builder.Services.AddSingleton<IListingComparisonService>(sp =>
+    new ModelFirstComparisonService(
+        sp.GetRequiredService<IVariantClassifierClient>(),
+        sp.GetRequiredService<ListingComparisonService>(),
+        sp.GetRequiredService<ILogger<ModelFirstComparisonService>>()));
 
 // ComparablesEtlService
 builder.Services.AddScoped<IComparablesEtlService, ComparablesEtlService>();
