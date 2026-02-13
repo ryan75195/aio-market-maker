@@ -20,6 +20,7 @@ public static class ScrapeEndpoints
         IScrapeJobProcessor processor,
         EtlDbContext db,
         IServiceScopeFactory scopeFactory,
+        ScrapingConfig scrapingConfig,
         ILogger<Program> logger)
     {
         var jobs = await db.ScrapeJobs.Where(j => j.IsEnabled)
@@ -39,10 +40,10 @@ public static class ScrapeEndpoints
             runIds.Add(run.Id);
         }
 
-        // Process in background with parallel execution (max 3 concurrent)
+        // Process in background with parallel execution
         _ = Task.Run(async () =>
         {
-            var parallelism = new SemaphoreSlim(3);
+            var parallelism = new SemaphoreSlim(scrapingConfig.MaxConcurrentRuns);
             var tasks = jobs.Select((job, i) => Task.Run(async () =>
             {
                 await parallelism.WaitAsync();

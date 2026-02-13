@@ -80,7 +80,8 @@ public class ScrapeJobProcessor_UnitTests
     private ScrapeJobProcessor CreateProcessor() => new(
         _loggerMock.Object, _dbContext, _webscraperClientMock.Object,
         _searchParserMock.Object, _listingParserMock.Object,
-        _urlBuilderMock.Object, _indexingServiceMock.Object);
+        _urlBuilderMock.Object, _indexingServiceMock.Object,
+        new DbWriteGate(100));
 
     private static EbayProductSummary CreateSummary(
         string listingId, decimal? price = 100m, bool isSold = false,

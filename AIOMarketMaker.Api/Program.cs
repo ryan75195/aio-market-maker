@@ -8,6 +8,7 @@ using ScraperWorker.Services;
 using Azure.Data.Tables;
 using Azure.Storage.Blobs;
 using AIOMarketMaker.Api.Services;
+using AIOMarketMaker.Etl.Models;
 using AIOMarketMaker.Etl.Services;
 using Serilog;
 using Serilog.Formatting.Compact;
@@ -118,6 +119,13 @@ builder.Services.AddSingleton<IListingComparisonService, ListingComparisonServic
 
 // ComparablesEtlService
 builder.Services.AddScoped<IComparablesEtlService, ComparablesEtlService>();
+
+// Scraping concurrency config
+var scrapingConfig = new ScrapingConfig(
+    MaxConcurrentRuns: configuration.GetValue<int>("Scraping:MaxConcurrentRuns", 3),
+    MaxConcurrentDbWrites: configuration.GetValue<int>("Scraping:MaxConcurrentDbWrites", 2));
+builder.Services.AddSingleton(scrapingConfig);
+builder.Services.AddSingleton(new DbWriteGate(scrapingConfig.MaxConcurrentDbWrites));
 
 builder.Services.AddScoped<IScrapeJobProcessor, ScrapeJobProcessor>();
 builder.Services.AddHostedService<StartupRecoveryService>();
