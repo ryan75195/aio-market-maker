@@ -44,24 +44,24 @@ def parse_args():
     parser.add_argument(
         "--data",
         type=str,
-        default="labeled_pairs_v5.csv",
+        default="labeled_pairs_v6_merged.csv",
         help="Path to labeled pairs CSV",
     )
     parser.add_argument(
         "--model-name",
         type=str,
-        default="google-bert/bert-base-uncased",
+        default="FacebookAI/roberta-large",
         help="HuggingFace model name",
     )
     parser.add_argument(
         "--output-dir",
         type=str,
-        default="E:/Dev/ml-training/variant-classifier/model_v5",
+        default="E:/Dev/ml-training/variant-classifier/model_v6",
         help="Directory to save model and tokenizer",
     )
-    parser.add_argument("--epochs", type=int, default=5, help="Number of training epochs")
-    parser.add_argument("--batch-size", type=int, default=32, help="Batch size")
-    parser.add_argument("--lr", type=float, default=2e-5, help="Learning rate")
+    parser.add_argument("--epochs", type=int, default=3, help="Number of training epochs")
+    parser.add_argument("--batch-size", type=int, default=16, help="Batch size")
+    parser.add_argument("--lr", type=float, default=1e-5, help="Learning rate")
     parser.add_argument("--max-length", type=int, default=256, help="Max token length")
     parser.add_argument("--seed", type=int, default=42, help="Random seed")
     parser.add_argument(
@@ -299,12 +299,14 @@ def main():
         per_device_eval_batch_size=args.batch_size * 2,
         learning_rate=args.lr,
         lr_scheduler_type="cosine",
-        warmup_steps=200,
+        warmup_steps=500,
         weight_decay=0.01,
-        fp16=torch.cuda.is_available(),
-        bf16=False,
-        eval_strategy="epoch",
-        save_strategy="epoch",
+        fp16=False,
+        bf16=torch.cuda.is_available(),
+        eval_strategy="steps",
+        eval_steps=500,
+        save_strategy="steps",
+        save_steps=500,
         save_total_limit=3,
         load_best_model_at_end=True,
         metric_for_best_model="eval_f1_macro",
@@ -435,14 +437,15 @@ def main():
         },
         "baseline_comparison": {
             "mlp_v4_f1": 0.698,
-            "cross_encoder_v5_f1": round(test_metrics.get("test_f1_macro", 0), 4),
-            "improvement": round(
-                test_metrics.get("test_f1_macro", 0) - 0.698, 4
+            "bert_base_v5_f1": 0.871,
+            "this_model_f1": round(test_metrics.get("test_f1_macro", 0), 4),
+            "improvement_over_bert_base": round(
+                test_metrics.get("test_f1_macro", 0) - 0.871, 4
             ),
         },
     }
 
-    results_path = os.path.join(args.output_dir, "results_v5.json")
+    results_path = os.path.join(args.output_dir, "results_v6.json")
     with open(results_path, "w") as f:
         json.dump(results, f, indent=2)
     print(f"\nResults saved to {results_path}")
@@ -454,8 +457,8 @@ def main():
     print(f"  Model:         {args.model_name}")
     print(f"  Test F1 macro: {test_metrics.get('test_f1_macro', 0):.4f}")
     print(f"  Test accuracy: {test_metrics.get('test_accuracy', 0):.4f}")
-    print(f"  MLP v4 F1:     0.698")
-    print(f"  Improvement:   {test_metrics.get('test_f1_macro', 0) - 0.698:+.4f}")
+    print(f"  BERT-base v5:  0.871")
+    print(f"  Improvement:   {test_metrics.get('test_f1_macro', 0) - 0.871:+.4f}")
     target_met = test_metrics.get("test_f1_macro", 0) >= 0.85
     print(f"  Target (0.85): {'MET' if target_met else 'NOT MET'}")
     print(f"  Training time: {train_time:.0f}s ({train_time/60:.1f}min)")

@@ -297,6 +297,15 @@ Focus on parser logic (`EbaySearchParser`, `EbayListingParser`) with AngleSharp 
 - Don't use `#region` / `#endregion` separators in code
 - Don't use `List<T>` in function signatures; prefer `IEnumerable<T>` for both inputs and outputs
 
+### Expensive or Irreversible Operations — Confirm First
+Before running scripts that cost money (API calls), take significant time, or produce datasets that downstream work depends on, **explicitly surface all design decisions that affect data quality** and get user approval. This includes:
+- **Data truncations**: column limits, token caps, string slicing (e.g., `desc[:300]`, `reasoning[:200]`)
+- **Data filtering**: what gets excluded and why (e.g., categories with <10 listings)
+- **Sampling strategies**: how data is distributed across categories, similarity bands, etc.
+- **Hardcoded defaults**: batch sizes, worker counts, sleep timers, model parameters
+
+Present these as a pre-run checklist — not buried in code — so the user can make informed decisions before spending money and time.
+
 ### Debugging Azure Functions
 - **Always run locally first**: When debugging Azure Functions issues, run the project locally with `func start` or `dotnet run` instead of deploying and waiting for GitHub Actions. Local debugging is much faster and provides immediate feedback.
 - Use `local.settings.json` to configure connection strings for local development
