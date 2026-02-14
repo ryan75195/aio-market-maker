@@ -49,13 +49,19 @@ var host = new HostBuilder()
               .AddEnvironmentVariables();
 
         // Azure Functions stores values under "Values" section - flatten them to root
+        // Use AsEnumerable to recursively flatten nested keys (e.g. VariantClassifier:ModelPath)
         var tempConfig = config.Build();
         var valuesSection = tempConfig.GetSection("Values");
         if (valuesSection.Exists())
         {
-            var values = valuesSection.GetChildren()
-                .Where(x => x.Value != null)
-                .ToDictionary(x => x.Key, x => x.Value!);
+            var values = new Dictionary<string, string?>();
+            foreach (var kvp in valuesSection.AsEnumerable(makePathsRelative: true))
+            {
+                if (kvp.Value != null)
+                {
+                    values[kvp.Key] = kvp.Value;
+                }
+            }
             config.AddInMemoryCollection(values);
         }
     })
