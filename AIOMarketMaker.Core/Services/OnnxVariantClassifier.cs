@@ -34,6 +34,8 @@ public class OnnxVariantClassifier : IVariantClassifierClient, IDisposable
     private const long BosId = 0;  // <s>
     private const long EosId = 2;  // </s>
     private const long PadId = 1;  // <pad>
+    private const long UnkId = 3;  // <unk>
+    private const long VocabSize = 50265;  // RoBERTa vocabulary size
 
     private readonly InferenceSession _session;
     private readonly CodeGenTokenizer _tokenizer;
@@ -194,17 +196,19 @@ public class OnnxVariantClassifier : IVariantClassifierClient, IDisposable
         var idsB = tokenizer.EncodeToIds(textB);
 
         // RoBERTa sentence pair format: <s> tokens_a </s></s> tokens_b </s>
+        // CodeGenTokenizer can produce IDs beyond the model's vocab_size for certain
+        // byte sequences. Clamp these to <unk> since they have no learned embedding.
         var combined = new List<long>(maxLength);
         combined.Add(BosId);
         foreach (var id in idsA)
         {
-            combined.Add(id);
+            combined.Add(id >= VocabSize ? UnkId : id);
         }
         combined.Add(EosId);
         combined.Add(EosId);
         foreach (var id in idsB)
         {
-            combined.Add(id);
+            combined.Add(id >= VocabSize ? UnkId : id);
         }
         combined.Add(EosId);
 
