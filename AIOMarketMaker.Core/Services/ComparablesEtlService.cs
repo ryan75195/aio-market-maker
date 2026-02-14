@@ -25,21 +25,20 @@ public class ComparablesEtlService : IComparablesEtlService
 {
     private const int PineconeTopK = 50;
     private const int MaxPineconeConcurrency = 10;
-    private const int MaxLlmConcurrency = 20;
 
     private readonly ISemanticSearchService _searchService;
-    private readonly IListingComparisonService _comparisonService;
+    private readonly IVariantClassifierClient _classifier;
     private readonly EtlDbContext _dbContext;
     private readonly ILogger<ComparablesEtlService> _logger;
 
     public ComparablesEtlService(
         ISemanticSearchService searchService,
-        IListingComparisonService comparisonService,
+        IVariantClassifierClient classifier,
         EtlDbContext dbContext,
         ILogger<ComparablesEtlService> logger)
     {
         _searchService = searchService;
-        _comparisonService = comparisonService;
+        _classifier = classifier;
         _dbContext = dbContext;
         _logger = logger;
     }
@@ -48,101 +47,83 @@ public class ComparablesEtlService : IComparablesEtlService
     {
         _logger.LogInformation("Starting comparables ETL pipeline (dryRun={DryRun})", dryRun);
 
-        // Step 1: Load all listings from DB
-        var listings = await _dbContext.Listings
+        // Step 1: Load active listings and sold listing IDs
+        var activeListings = await _dbContext.Listings
             .AsNoTracking()
+            .Where(l => l.ListingStatus == "Active")
             .ToListAsync(ct);
 
-        _logger.LogInformation("Loaded {Count} listings from database", listings.Count);
+        var soldListingIds = await _dbContext.Listings
+            .AsNoTracking()
+            .Where(l => l.ListingStatus == "Sold")
+            .Select(l => l.Id)
+            .ToListAsync(ct);
 
-        // Step 2: Filter to listings indexed in Pinecone
-        var indexedListings = await FilterToIndexedListings(listings, ct);
-        _logger.LogInformation("{Count} listings indexed in Pinecone", indexedListings.Count);
+        var soldIdSet = soldListingIds.ToHashSet();
 
-        if (indexedListings.Count == 0)
+        // Build lookup: all listings by ListingId (need sold listings for neighbor resolution)
+        var allListings = await _dbContext.Listings
+            .AsNoTracking()
+            .ToDictionaryAsync(l => l.ListingId, ct);
+
+        var allListingsById = allListings.Values.ToDictionary(l => l.Id);
+
+        _logger.LogInformation("Loaded {Active} active listings, {Sold} sold listings",
+            activeListings.Count, soldListingIds.Count);
+
+        if (activeListings.Count == 0)
         {
             return new ComparablesEtlResult(0, 0, 0, 0, 0, 0, 0, 0);
         }
 
-        // Build lookup dictionary for quick access
-        var listingsById = listings.ToDictionary(l => l.Id);
-        var listingsByListingId = listings.ToDictionary(l => l.ListingId);
-
-        // Load existing verdicts into a HashSet for O(1) cache lookup
+        // Load existing verdicts for cache check
         var existingVerdicts = await LoadExistingVerdicts(ct);
 
-        // Step 3: Query Pinecone for similar candidates (parallel)
-        var candidatePairs = await QueryPineconeForCandidates(indexedListings, listingsByListingId, existingVerdicts, ct);
-        _logger.LogInformation("Found {Count} candidate pairs to evaluate", candidatePairs.Count);
+        // Step 2: Query Pinecone for sold neighbors of active listings
+        var candidatePairs = await QueryPineconeForCandidates(
+            activeListings, allListings, soldIdSet, existingVerdicts, ct);
 
-        // Step 4: Check verdict cache — filter to uncached pairs
-        var uncachedPairs = candidatePairs
-            .Where(p => !existingVerdicts.Contains(p.CanonicalKey))
-            .ToList();
-
-        var cacheHits = candidatePairs.Count - uncachedPairs.Count;
-        _logger.LogInformation("{CacheHits} pairs already cached, {Uncached} pairs need LLM evaluation",
-            cacheHits, uncachedPairs.Count);
+        var cacheHits = existingVerdicts.Count;
+        _logger.LogInformation("Found {Count} candidate pairs to evaluate ({CacheHits} cached verdicts skipped)",
+            candidatePairs.Count, cacheHits);
 
         if (dryRun)
         {
-            _logger.LogInformation("Dry run complete. Would make {Count} LLM calls", uncachedPairs.Count);
+            _logger.LogInformation("Dry run complete. Would classify {Count} pairs", candidatePairs.Count);
             return new ComparablesEtlResult(
-                ListingsProcessed: indexedListings.Count,
-                PineconeQueries: indexedListings.Count,
+                ListingsProcessed: activeListings.Count,
+                PineconeQueries: activeListings.Count,
                 CandidatePairsFound: candidatePairs.Count,
                 CacheHits: cacheHits,
-                LlmCallsRequired: uncachedPairs.Count,
+                LlmCallsRequired: candidatePairs.Count,
                 LlmCallsMade: 0,
                 ComparablesFound: 0,
-                PredictionsWritten: 0
-            );
+                PredictionsWritten: 0);
         }
 
-        // Step 5: Call LLM for uncached pairs (parallel)
-        var verdicts = await EvaluatePairsWithLlm(uncachedPairs, listingsById, ct);
+        // Step 3: Classify pairs in batches via ONNX model
+        var verdicts = await ClassifyPairs(candidatePairs, allListingsById, ct);
         var comparablesFound = verdicts.Count(v => v.IsComparable);
 
-        // Step 6: Store verdicts in ListingRelationships
+        // Step 4: Store verdicts
         await StoreVerdicts(verdicts, ct);
 
-        // Step 7: Compute aggregates and upsert to ListingPredictions
-        var predictionsWritten = await ComputeAndStorePredictions(listingsById, ct);
+        // Step 5: Compute predictions
+        var predictionsWritten = await ComputeAndStorePredictions(allListingsById, ct);
 
-        _logger.LogInformation("ETL complete: {Processed} listings, {LlmCalls} LLM calls, {Comparables} comparables, {Predictions} predictions",
-            indexedListings.Count, verdicts.Count, comparablesFound, predictionsWritten);
+        _logger.LogInformation(
+            "ETL complete: {Active} active listings, {Pairs} pairs classified, {Comparables} comparables, {Predictions} predictions",
+            activeListings.Count, verdicts.Count, comparablesFound, predictionsWritten);
 
         return new ComparablesEtlResult(
-            ListingsProcessed: indexedListings.Count,
-            PineconeQueries: indexedListings.Count,
+            ListingsProcessed: activeListings.Count,
+            PineconeQueries: activeListings.Count,
             CandidatePairsFound: candidatePairs.Count,
             CacheHits: cacheHits,
-            LlmCallsRequired: uncachedPairs.Count,
+            LlmCallsRequired: candidatePairs.Count,
             LlmCallsMade: verdicts.Count,
             ComparablesFound: comparablesFound,
-            PredictionsWritten: predictionsWritten
-        );
-    }
-
-    private async Task<List<Listing>> FilterToIndexedListings(List<Listing> listings, CancellationToken ct)
-    {
-        var semaphore = new SemaphoreSlim(MaxPineconeConcurrency);
-        var tasks = listings.Select(async listing =>
-        {
-            await semaphore.WaitAsync(ct);
-            try
-            {
-                var exists = await _searchService.Exists(listing.ListingId, ct);
-                return exists ? listing : null;
-            }
-            finally
-            {
-                semaphore.Release();
-            }
-        });
-
-        var results = await Task.WhenAll(tasks);
-        return results.Where(l => l != null).Cast<Listing>().ToList();
+            PredictionsWritten: predictionsWritten);
     }
 
     private async Task<HashSet<(int, int)>> LoadExistingVerdicts(CancellationToken ct)
@@ -156,16 +137,18 @@ public class ComparablesEtlService : IComparablesEtlService
     }
 
     private async Task<List<CandidatePair>> QueryPineconeForCandidates(
-        List<Listing> indexedListings,
-        Dictionary<string, Listing> listingsByListingId,
+        List<Listing> activeListings,
+        Dictionary<string, Listing> allListingsByListingId,
+        HashSet<int> soldIdSet,
         HashSet<(int, int)> existingVerdicts,
         CancellationToken ct)
     {
         var allPairs = new HashSet<(int, int)>();
         var results = new List<CandidatePair>();
         var semaphore = new SemaphoreSlim(MaxPineconeConcurrency);
+        var queriedCount = 0;
 
-        var tasks = indexedListings.Select(async listing =>
+        var tasks = activeListings.Select(async listing =>
         {
             await semaphore.WaitAsync(ct);
             try
@@ -177,22 +160,40 @@ public class ComparablesEtlService : IComparablesEtlService
                     topK: PineconeTopK,
                     ct: ct);
 
+                Interlocked.Increment(ref queriedCount);
+                if (queriedCount % 1000 == 0)
+                {
+                    _logger.LogInformation("Pinecone progress: {Count}/{Total} queries",
+                        queriedCount, activeListings.Count);
+                }
+
                 var pairs = new List<CandidatePair>();
                 foreach (var hit in searchResult.Hits)
                 {
-                    if (!listingsByListingId.TryGetValue(hit.ListingId, out var matchedListing))
+                    if (!allListingsByListingId.TryGetValue(hit.ListingId, out var matchedListing))
+                    {
+                        continue;
+                    }
+
+                    // Only keep pairs where neighbor is sold
+                    if (!soldIdSet.Contains(matchedListing.Id))
                     {
                         continue;
                     }
 
                     var canonicalKey = GetCanonicalKey(listing.Id, matchedListing.Id);
 
+                    // Skip already-evaluated pairs
+                    if (existingVerdicts.Contains(canonicalKey))
+                    {
+                        continue;
+                    }
+
                     pairs.Add(new CandidatePair(
                         listing.Id,
                         matchedListing.Id,
                         hit.Score,
-                        canonicalKey
-                    ));
+                        canonicalKey));
                 }
                 return pairs;
             }
@@ -204,7 +205,6 @@ public class ComparablesEtlService : IComparablesEtlService
 
         var allResults = await Task.WhenAll(tasks);
 
-        // Dedupe pairs using canonical ordering
         foreach (var pairList in allResults)
         {
             foreach (var pair in pairList)
@@ -219,48 +219,46 @@ public class ComparablesEtlService : IComparablesEtlService
         return results;
     }
 
-    private async Task<List<VerdictResult>> EvaluatePairsWithLlm(
+    private async Task<List<VerdictResult>> ClassifyPairs(
         List<CandidatePair> pairs,
         Dictionary<int, Listing> listingsById,
         CancellationToken ct)
     {
-        var semaphore = new SemaphoreSlim(MaxLlmConcurrency);
         var results = new List<VerdictResult>();
-        var lockObj = new object();
+        const int batchSize = 128;
 
-        var tasks = pairs.Select(async pair =>
+        for (var i = 0; i < pairs.Count; i += batchSize)
         {
-            await semaphore.WaitAsync(ct);
-            try
-            {
-                var listingA = listingsById[pair.CanonicalKey.Item1];
-                var listingB = listingsById[pair.CanonicalKey.Item2];
+            ct.ThrowIfCancellationRequested();
 
-                var verdict = await _comparisonService.Compare(listingA, listingB, ct);
-
-                lock (lockObj)
-                {
-                    results.Add(new VerdictResult(
-                        pair.CanonicalKey.Item1,
-                        pair.CanonicalKey.Item2,
-                        verdict.IsComparable,
-                        verdict.Explanation,
-                        pair.Score
-                    ));
-                }
-            }
-            catch (Exception ex)
+            var batch = pairs.Skip(i).Take(batchSize).ToList();
+            var requests = batch.Select(p =>
             {
-                _logger.LogWarning(ex, "Failed to evaluate pair ({IdA}, {IdB})",
-                    pair.CanonicalKey.Item1, pair.CanonicalKey.Item2);
-            }
-            finally
-            {
-                semaphore.Release();
-            }
-        });
+                var a = listingsById[p.CanonicalKey.Item1];
+                var b = listingsById[p.CanonicalKey.Item2];
+                return new ClassifyPairRequest(
+                    a.Title ?? "", a.Description ?? "",
+                    b.Title ?? "", b.Description ?? "");
+            }).ToList();
 
-        await Task.WhenAll(tasks);
+            var classifyResults = await _classifier.Classify(requests, ct);
+
+            for (var j = 0; j < batch.Count; j++)
+            {
+                var pair = batch[j];
+                var result = classifyResults[j];
+                results.Add(new VerdictResult(
+                    pair.CanonicalKey.Item1,
+                    pair.CanonicalKey.Item2,
+                    result.IsComparable,
+                    $"Model: confidence={result.Confidence:F3}",
+                    pair.Score));
+            }
+
+            _logger.LogInformation("Classified batch {Batch}/{Total} ({Count} pairs)",
+                i / batchSize + 1, (pairs.Count + batchSize - 1) / batchSize, batch.Count);
+        }
+
         return results;
     }
 
