@@ -190,6 +190,29 @@ public class OnnxVariantClassifier_IntegrationTests
         ).SetDescription("Same brand/line but fundamentally different hardware");
     }
 
+    // --- Empty description edge case ---
+
+    [Test]
+    public async Task Should_handle_empty_descriptions()
+    {
+        var pair = new ClassifyPairRequest(
+            "Sony PlayStation 5 Slim Disc Edition",
+            "",
+            "PS5 Slim Disc Edition Console",
+            "");
+
+        var results = await _classifier.Classify([pair]);
+        var result = results[0];
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.Confidence, Is.GreaterThan(0f), "Should produce a valid confidence");
+            Assert.That(result.Confidence, Is.LessThanOrEqualTo(1f), "Confidence should be <= 1.0");
+        });
+
+        TestContext.WriteLine($"[EMPTY DESC] PS5 title-only: isComparable={result.IsComparable}, confidence={result.Confidence:F4}");
+    }
+
     // --- Performance test ---
 
     [Test]
