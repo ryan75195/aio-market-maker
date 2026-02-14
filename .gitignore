@@ -393,3 +393,6 @@ publish.zip
 *.zip
 !.github/**/*.zip
 logs/
+
+# ONNX model files (too large for git)
+models/
