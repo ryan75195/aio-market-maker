@@ -1,3 +1,4 @@
+using System.Threading.Channels;
 using AIOMarketMaker.Core.Data;
 using AIOMarketMaker.Core.Data.Models;
 using Microsoft.EntityFrameworkCore;
@@ -79,49 +80,138 @@ public class ComparablesEtlService : IComparablesEtlService
         // Load existing verdicts for cache check
         var existingVerdicts = await LoadExistingVerdicts(ct);
 
-        // Step 2: Query Pinecone for sold neighbors of active listings
-        var candidatePairs = await QueryPineconeForCandidates(
-            activeListings, allListings, soldIdSet, existingVerdicts, ct);
+        // Step 2: Pipeline — Pinecone producers → Channel → ONNX batch consumer
+        var channel = Channel.CreateUnbounded<CandidatePair>();
+        var seenPairs = new HashSet<(int, int)>();
+        var pairsWritten = 0;
+        var cacheHits = 0;
 
-        var cacheHits = existingVerdicts.Count;
-        _logger.LogInformation("Found {Count} candidate pairs to evaluate ({CacheHits} cached verdicts skipped)",
-            candidatePairs.Count, cacheHits);
+        // Producer: query Pinecone for each active listing, write sold-neighbor pairs to channel
+        var producerTask = Task.Run(async () =>
+        {
+            var semaphore = new SemaphoreSlim(MaxPineconeConcurrency);
+            var queriedCount = 0;
+
+            var tasks = activeListings.Select(async listing =>
+            {
+                await semaphore.WaitAsync(ct);
+                try
+                {
+                    var searchResult = await _searchService.FindSimilar(
+                        listing.ListingId,
+                        filterToListingIds: null,
+                        metadataFilter: null,
+                        topK: PineconeTopK,
+                        ct: ct);
+
+                    var count = Interlocked.Increment(ref queriedCount);
+                    if (count % 1000 == 0)
+                    {
+                        _logger.LogInformation("Pinecone progress: {Count}/{Total}",
+                            count, activeListings.Count);
+                    }
+
+                    foreach (var hit in searchResult.Hits)
+                    {
+                        if (!allListings.TryGetValue(hit.ListingId, out var matched))
+                        {
+                            continue;
+                        }
+
+                        if (!soldIdSet.Contains(matched.Id))
+                        {
+                            continue;
+                        }
+
+                        var key = GetCanonicalKey(listing.Id, matched.Id);
+
+                        if (existingVerdicts.Contains(key))
+                        {
+                            Interlocked.Increment(ref cacheHits);
+                            continue;
+                        }
+
+                        bool added;
+                        lock (seenPairs)
+                        {
+                            added = seenPairs.Add(key);
+                        }
+
+                        if (added)
+                        {
+                            Interlocked.Increment(ref pairsWritten);
+                            await channel.Writer.WriteAsync(
+                                new CandidatePair(listing.Id, matched.Id, hit.Score, key), ct);
+                        }
+                    }
+                }
+                finally
+                {
+                    semaphore.Release();
+                }
+            });
+
+            await Task.WhenAll(tasks);
+            channel.Writer.Complete();
+        }, ct);
 
         if (dryRun)
         {
-            _logger.LogInformation("Dry run complete. Would classify {Count} pairs", candidatePairs.Count);
+            await producerTask;
             return new ComparablesEtlResult(
                 ListingsProcessed: activeListings.Count,
                 PineconeQueries: activeListings.Count,
-                CandidatePairsFound: candidatePairs.Count,
+                CandidatePairsFound: pairsWritten,
                 CacheHits: cacheHits,
-                LlmCallsRequired: candidatePairs.Count,
+                LlmCallsRequired: pairsWritten,
                 LlmCallsMade: 0,
                 ComparablesFound: 0,
                 PredictionsWritten: 0);
         }
 
-        // Step 3: Classify pairs in batches via ONNX model
-        var verdicts = await ClassifyPairs(candidatePairs, allListingsById, ct);
-        var comparablesFound = verdicts.Count(v => v.IsComparable);
+        // Consumer: collect batches, classify, save verdicts
+        var totalClassified = 0;
+        var comparablesFound = 0;
+        var batch = new List<CandidatePair>(128);
 
-        // Step 4: Store verdicts
-        await StoreVerdicts(verdicts, ct);
+        await foreach (var pair in channel.Reader.ReadAllAsync(ct))
+        {
+            batch.Add(pair);
 
-        // Step 5: Compute predictions
-        var predictionsWritten = await ComputeAndStorePredictions(allListingsById, ct);
+            if (batch.Count >= 128)
+            {
+                var batchResult = await ProcessBatch(batch, allListingsById, ct);
+                totalClassified += batchResult.Classified;
+                comparablesFound += batchResult.Comparables;
+                batch.Clear();
+            }
+        }
+
+        // Flush remaining
+        if (batch.Count > 0)
+        {
+            var batchResult = await ProcessBatch(batch, allListingsById, ct);
+            totalClassified += batchResult.Classified;
+            comparablesFound += batchResult.Comparables;
+        }
+
+        await producerTask;
+
+        // Compute predictions for all active listings (includes relationships from previous runs)
+        var allActiveIds = activeListings.Select(l => l.Id).ToHashSet();
+        var predictionsWritten = await ComputePredictionsForListings(allActiveIds, allListingsById, soldIdSet, ct);
 
         _logger.LogInformation(
-            "ETL complete: {Active} active listings, {Pairs} pairs classified, {Comparables} comparables, {Predictions} predictions",
-            activeListings.Count, verdicts.Count, comparablesFound, predictionsWritten);
+            "ETL complete: {Active} active, {Pairs} classified, {Comparables} comparables, {Predictions} predictions",
+            activeListings.Count, totalClassified, comparablesFound, predictionsWritten);
 
         return new ComparablesEtlResult(
             ListingsProcessed: activeListings.Count,
             PineconeQueries: activeListings.Count,
-            CandidatePairsFound: candidatePairs.Count,
+            CandidatePairsFound: pairsWritten,
             CacheHits: cacheHits,
-            LlmCallsRequired: candidatePairs.Count,
-            LlmCallsMade: verdicts.Count,
+            LlmCallsRequired: pairsWritten,
+            LlmCallsMade: totalClassified,
             ComparablesFound: comparablesFound,
             PredictionsWritten: predictionsWritten);
     }
@@ -136,217 +226,107 @@ public class ComparablesEtlService : IComparablesEtlService
         return verdicts.Select(v => (v.ListingIdA, v.ListingIdB)).ToHashSet();
     }
 
-    private async Task<List<CandidatePair>> QueryPineconeForCandidates(
-        List<Listing> activeListings,
-        Dictionary<string, Listing> allListingsByListingId,
-        HashSet<int> soldIdSet,
-        HashSet<(int, int)> existingVerdicts,
-        CancellationToken ct)
-    {
-        var allPairs = new HashSet<(int, int)>();
-        var results = new List<CandidatePair>();
-        var semaphore = new SemaphoreSlim(MaxPineconeConcurrency);
-        var queriedCount = 0;
+    private record BatchResult(int Classified, int Comparables);
 
-        var tasks = activeListings.Select(async listing =>
-        {
-            await semaphore.WaitAsync(ct);
-            try
-            {
-                var searchResult = await _searchService.FindSimilar(
-                    listing.ListingId,
-                    filterToListingIds: null,
-                    metadataFilter: null,
-                    topK: PineconeTopK,
-                    ct: ct);
-
-                Interlocked.Increment(ref queriedCount);
-                if (queriedCount % 1000 == 0)
-                {
-                    _logger.LogInformation("Pinecone progress: {Count}/{Total} queries",
-                        queriedCount, activeListings.Count);
-                }
-
-                var pairs = new List<CandidatePair>();
-                foreach (var hit in searchResult.Hits)
-                {
-                    if (!allListingsByListingId.TryGetValue(hit.ListingId, out var matchedListing))
-                    {
-                        continue;
-                    }
-
-                    // Only keep pairs where neighbor is sold
-                    if (!soldIdSet.Contains(matchedListing.Id))
-                    {
-                        continue;
-                    }
-
-                    var canonicalKey = GetCanonicalKey(listing.Id, matchedListing.Id);
-
-                    // Skip already-evaluated pairs
-                    if (existingVerdicts.Contains(canonicalKey))
-                    {
-                        continue;
-                    }
-
-                    pairs.Add(new CandidatePair(
-                        listing.Id,
-                        matchedListing.Id,
-                        hit.Score,
-                        canonicalKey));
-                }
-                return pairs;
-            }
-            finally
-            {
-                semaphore.Release();
-            }
-        });
-
-        var allResults = await Task.WhenAll(tasks);
-
-        foreach (var pairList in allResults)
-        {
-            foreach (var pair in pairList)
-            {
-                if (allPairs.Add(pair.CanonicalKey))
-                {
-                    results.Add(pair);
-                }
-            }
-        }
-
-        return results;
-    }
-
-    private async Task<List<VerdictResult>> ClassifyPairs(
-        List<CandidatePair> pairs,
+    private async Task<BatchResult> ProcessBatch(
+        List<CandidatePair> batch,
         Dictionary<int, Listing> listingsById,
         CancellationToken ct)
     {
-        var results = new List<VerdictResult>();
-        const int batchSize = 128;
-
-        for (var i = 0; i < pairs.Count; i += batchSize)
+        // Build classify requests
+        var requests = batch.Select(p =>
         {
-            ct.ThrowIfCancellationRequested();
+            var a = listingsById[p.CanonicalKey.Item1];
+            var b = listingsById[p.CanonicalKey.Item2];
+            return new ClassifyPairRequest(
+                a.Title ?? "", a.Description ?? "",
+                b.Title ?? "", b.Description ?? "");
+        }).ToList();
 
-            var batch = pairs.Skip(i).Take(batchSize).ToList();
-            var requests = batch.Select(p =>
+        var results = await _classifier.Classify(requests, ct);
+
+        // Save verdicts
+        var comparables = 0;
+        for (var i = 0; i < batch.Count; i++)
+        {
+            var pair = batch[i];
+            var result = results[i];
+
+            if (result.IsComparable)
             {
-                var a = listingsById[p.CanonicalKey.Item1];
-                var b = listingsById[p.CanonicalKey.Item2];
-                return new ClassifyPairRequest(
-                    a.Title ?? "", a.Description ?? "",
-                    b.Title ?? "", b.Description ?? "");
-            }).ToList();
-
-            var classifyResults = await _classifier.Classify(requests, ct);
-
-            for (var j = 0; j < batch.Count; j++)
-            {
-                var pair = batch[j];
-                var result = classifyResults[j];
-                results.Add(new VerdictResult(
-                    pair.CanonicalKey.Item1,
-                    pair.CanonicalKey.Item2,
-                    result.IsComparable,
-                    $"Model: confidence={result.Confidence:F3}",
-                    pair.Score));
+                comparables++;
             }
 
-            _logger.LogInformation("Classified batch {Batch}/{Total} ({Count} pairs)",
-                i / batchSize + 1, (pairs.Count + batchSize - 1) / batchSize, batch.Count);
-        }
-
-        return results;
-    }
-
-    private async Task StoreVerdicts(List<VerdictResult> verdicts, CancellationToken ct)
-    {
-        foreach (var verdict in verdicts)
-        {
             _dbContext.ListingRelationships.Add(new ListingRelationship
             {
-                ListingIdA = verdict.ListingIdA,
-                ListingIdB = verdict.ListingIdB,
-                IsComparable = verdict.IsComparable,
-                Explanation = verdict.Explanation,
-                SimilarityScore = verdict.SimilarityScore,
+                ListingIdA = pair.CanonicalKey.Item1,
+                ListingIdB = pair.CanonicalKey.Item2,
+                IsComparable = result.IsComparable,
+                Explanation = $"Model: confidence={result.Confidence:F3}",
+                SimilarityScore = pair.Score,
                 CreatedUtc = DateTime.UtcNow
             });
         }
 
         await _dbContext.SaveChangesAsync(ct);
+
+        _logger.LogInformation("Batch: {Count} pairs, {Comps} comparable",
+            batch.Count, comparables);
+
+        return new BatchResult(batch.Count, comparables);
     }
 
-    private async Task<int> ComputeAndStorePredictions(
+    private async Task<int> ComputePredictionsForListings(
+        HashSet<int> activeListingIds,
         Dictionary<int, Listing> listingsById,
+        HashSet<int> soldIdSet,
         CancellationToken ct)
     {
-        // Get active listings
-        var activeListingIds = listingsById.Values
-            .Where(l => l.ListingStatus == "Active")
-            .Select(l => l.Id)
-            .ToHashSet();
-
         if (activeListingIds.Count == 0)
         {
             return 0;
         }
 
-        // Load all comparable relationships for active listings
-        var relationships = await _dbContext.ListingRelationships
-            .AsNoTracking()
-            .Where(r => r.IsComparable &&
-                (activeListingIds.Contains(r.ListingIdA) || activeListingIds.Contains(r.ListingIdB)))
-            .ToListAsync(ct);
-
-        // Load sold status history to get sold prices
-        var soldListingIds = listingsById.Values
-            .Where(l => l.ListingStatus == "Sold")
-            .Select(l => l.Id)
-            .ToHashSet();
-
-        var soldHistory = await _dbContext.ListingStatusHistory
-            .AsNoTracking()
-            .Where(h => soldListingIds.Contains(h.ListingId) && h.ListingStatus == "Sold")
-            .GroupBy(h => h.ListingId)
-            .Select(g => new { ListingId = g.Key, SoldPrice = g.OrderByDescending(h => h.RecordedUtc).First().Price })
-            .ToDictionaryAsync(x => x.ListingId, x => x.SoldPrice, ct);
-
-        // For each active listing, compute prediction
         var predictionsWritten = 0;
-        foreach (var activeListingId in activeListingIds)
-        {
-            var activeListing = listingsById[activeListingId];
 
-            // Find comparable sold listings
-            var comparableSoldIds = relationships
-                .Where(r =>
-                    (r.ListingIdA == activeListingId && soldListingIds.Contains(r.ListingIdB)) ||
-                    (r.ListingIdB == activeListingId && soldListingIds.Contains(r.ListingIdA)))
-                .Select(r => r.ListingIdA == activeListingId ? r.ListingIdB : r.ListingIdA)
+        foreach (var activeId in activeListingIds)
+        {
+            if (!listingsById.TryGetValue(activeId, out var activeListing))
+            {
+                continue;
+            }
+
+            // Find comparable sold listings from all relationships (including previous runs)
+            var comparableSoldIds = await _dbContext.ListingRelationships
+                .AsNoTracking()
+                .Where(r => r.IsComparable &&
+                    ((r.ListingIdA == activeId && soldIdSet.Contains(r.ListingIdB)) ||
+                     (r.ListingIdB == activeId && soldIdSet.Contains(r.ListingIdA))))
+                .Select(r => r.ListingIdA == activeId ? r.ListingIdB : r.ListingIdA)
                 .Distinct()
-                .ToList();
+                .ToListAsync(ct);
 
             if (comparableSoldIds.Count == 0)
             {
                 continue;
             }
 
-            // Get sold prices from history, falling back to listing price
-            var soldPrices = comparableSoldIds
-                .Select(id =>
+            var soldPrices = new List<decimal>();
+            foreach (var soldId in comparableSoldIds)
+            {
+                var historyPrice = await _dbContext.ListingStatusHistory
+                    .AsNoTracking()
+                    .Where(h => h.ListingId == soldId && h.ListingStatus == "Sold")
+                    .OrderByDescending(h => h.RecordedUtc)
+                    .Select(h => h.Price)
+                    .FirstOrDefaultAsync(ct);
+
+                var price = historyPrice ?? listingsById.GetValueOrDefault(soldId)?.Price ?? 0m;
+                if (price > 0)
                 {
-                    if (soldHistory.TryGetValue(id, out var historyPrice) && historyPrice.HasValue)
-                    {
-                        return historyPrice.Value;
-                    }
-                    return listingsById[id].Price ?? 0m;
-                })
-                .Where(p => p > 0)
-                .ToList();
+                    soldPrices.Add(price);
+                }
+            }
 
             if (soldPrices.Count == 0)
             {
@@ -356,22 +336,21 @@ public class ComparablesEtlService : IComparablesEtlService
             var avgSoldPrice = soldPrices.Average();
             var potentialProfit = avgSoldPrice - (activeListing.Price ?? 0m);
 
-            // Upsert prediction
-            var existingPrediction = await _dbContext.ListingPredictions
-                .FirstOrDefaultAsync(p => p.ListingId == activeListingId, ct);
+            var existing = await _dbContext.ListingPredictions
+                .FirstOrDefaultAsync(p => p.ListingId == activeId, ct);
 
-            if (existingPrediction != null)
+            if (existing != null)
             {
-                existingPrediction.AverageSoldPrice = avgSoldPrice;
-                existingPrediction.SimilarSoldCount = soldPrices.Count;
-                existingPrediction.PotentialProfit = potentialProfit;
-                existingPrediction.ComputedUtc = DateTime.UtcNow;
+                existing.AverageSoldPrice = avgSoldPrice;
+                existing.SimilarSoldCount = soldPrices.Count;
+                existing.PotentialProfit = potentialProfit;
+                existing.ComputedUtc = DateTime.UtcNow;
             }
             else
             {
                 _dbContext.ListingPredictions.Add(new ListingPrediction
                 {
-                    ListingId = activeListingId,
+                    ListingId = activeId,
                     AverageSoldPrice = avgSoldPrice,
                     SimilarSoldCount = soldPrices.Count,
                     PotentialProfit = potentialProfit,
@@ -392,6 +371,4 @@ public class ComparablesEtlService : IComparablesEtlService
     }
 
     private record CandidatePair(int ListingIdA, int ListingIdB, float Score, (int, int) CanonicalKey);
-
-    private record VerdictResult(int ListingIdA, int ListingIdB, bool IsComparable, string Explanation, double SimilarityScore);
 }
