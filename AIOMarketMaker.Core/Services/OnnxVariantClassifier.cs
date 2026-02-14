@@ -20,14 +20,14 @@ public record ClassifyPairRequest(
     string TitleB,
     string DescriptionB);
 
-public record PairResult(bool IsComparable, float Confidence, bool NeedsFallback);
+public record PairResult(bool IsComparable, float Confidence);
 
 public record OnnxClassifierConfig(
     string ModelPath,
     string VocabPath,
     string MergesPath,
     int MaxLength = 256,
-    float ConfidenceThreshold = 0.80f);
+    int BatchSize = 128);
 
 public class OnnxVariantClassifier : IVariantClassifierClient, IDisposable
 {
@@ -38,14 +38,12 @@ public class OnnxVariantClassifier : IVariantClassifierClient, IDisposable
     private readonly InferenceSession _session;
     private readonly CodeGenTokenizer _tokenizer;
     private readonly int _maxLength;
-    private readonly float _confidenceThreshold;
     private readonly ILogger<OnnxVariantClassifier> _logger;
     private readonly bool _isHealthy;
 
     public OnnxVariantClassifier(OnnxClassifierConfig config, ILogger<OnnxVariantClassifier> logger)
     {
         _maxLength = config.MaxLength;
-        _confidenceThreshold = config.ConfidenceThreshold;
         _logger = logger;
 
         if (!File.Exists(config.ModelPath))
@@ -89,24 +87,50 @@ public class OnnxVariantClassifier : IVariantClassifierClient, IDisposable
         CancellationToken ct = default)
     {
         var pairList = pairs.ToList();
-        var results = new List<PairResult>(pairList.Count);
-
-        foreach (var pair in pairList)
+        if (pairList.Count == 0)
         {
-            ct.ThrowIfCancellationRequested();
+            return Task.FromResult<IReadOnlyList<PairResult>>(Array.Empty<PairResult>());
+        }
 
+        ct.ThrowIfCancellationRequested();
+
+        // Tokenize all pairs
+        var allInputIds = new long[pairList.Count * _maxLength];
+        var allAttentionMask = new long[pairList.Count * _maxLength];
+
+        for (var i = 0; i < pairList.Count; i++)
+        {
+            var pair = pairList[i];
             var textA = $"{pair.TitleA} | {pair.DescriptionA}";
             var textB = $"{pair.TitleB} | {pair.DescriptionB}";
-
             var (inputIds, attentionMask) = TokenizePairInternal(textA, textB);
-            var logits = RunInference(inputIds, attentionMask);
-            var probs = Softmax(logits);
 
+            Array.Copy(inputIds, 0, allInputIds, i * _maxLength, _maxLength);
+            Array.Copy(attentionMask, 0, allAttentionMask, i * _maxLength, _maxLength);
+        }
+
+        // Build batched tensors [N, maxLength]
+        var inputTensor = new DenseTensor<long>(allInputIds, [pairList.Count, _maxLength]);
+        var maskTensor = new DenseTensor<long>(allAttentionMask, [pairList.Count, _maxLength]);
+        var inputs = new List<NamedOnnxValue>
+        {
+            NamedOnnxValue.CreateFromTensor("input_ids", inputTensor),
+            NamedOnnxValue.CreateFromTensor("attention_mask", maskTensor)
+        };
+
+        // Single inference call for entire batch
+        using var output = _session.Run(inputs);
+        var logitsTensor = output.First().AsTensor<float>();
+
+        // Parse results
+        var results = new List<PairResult>(pairList.Count);
+        for (var i = 0; i < pairList.Count; i++)
+        {
+            var logits = new float[] { logitsTensor[i, 0], logitsTensor[i, 1] };
+            var probs = Softmax(logits);
             var isComparable = probs[1] > probs[0];
             var confidence = probs.Max();
-            var needsFallback = confidence < _confidenceThreshold;
-
-            results.Add(new PairResult(isComparable, confidence, needsFallback));
+            results.Add(new PairResult(isComparable, confidence));
         }
 
         return Task.FromResult<IReadOnlyList<PairResult>>(results);
@@ -137,6 +161,25 @@ public class OnnxVariantClassifier : IVariantClassifierClient, IDisposable
         var exps = logits.Select(l => MathF.Exp(l - max)).ToArray();
         var sum = exps.Sum();
         return exps.Select(e => e / sum).ToArray();
+    }
+
+    public static float[][] BatchSoftmax(float[,] batchLogits)
+    {
+        var batchSize = batchLogits.GetLength(0);
+        var numClasses = batchLogits.GetLength(1);
+        var results = new float[batchSize][];
+
+        for (var i = 0; i < batchSize; i++)
+        {
+            var logits = new float[numClasses];
+            for (var j = 0; j < numClasses; j++)
+            {
+                logits[j] = batchLogits[i, j];
+            }
+            results[i] = Softmax(logits);
+        }
+
+        return results;
     }
 
     private (long[] InputIds, long[] AttentionMask) TokenizePairInternal(string textA, string textB)
@@ -187,20 +230,6 @@ public class OnnxVariantClassifier : IVariantClassifierClient, IDisposable
         }
 
         return (combined.ToArray(), mask);
-    }
-
-    private float[] RunInference(long[] inputIds, long[] attentionMask)
-    {
-        var inputTensor = new DenseTensor<long>(inputIds, [1, _maxLength]);
-        var maskTensor = new DenseTensor<long>(attentionMask, [1, _maxLength]);
-        var inputs = new List<NamedOnnxValue>
-        {
-            NamedOnnxValue.CreateFromTensor("input_ids", inputTensor),
-            NamedOnnxValue.CreateFromTensor("attention_mask", maskTensor)
-        };
-
-        using var results = _session.Run(inputs);
-        return results.First().AsEnumerable<float>().ToArray();
     }
 
     public void Dispose()

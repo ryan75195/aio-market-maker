@@ -172,11 +172,30 @@ var host = new HostBuilder()
         // Pricing analysis service
         services.AddSingleton<IPricingAnalysisService, PricingAnalysisService>();
 
-        // ListingComparisonService (LLM classification)
+        // Variant classifier (local ONNX model)
+        var classifierConfig = new OnnxClassifierConfig(
+            ModelPath: configuration.GetValue<string>("VariantClassifier:ModelPath") ?? "models/variant-classifier/model.onnx",
+            VocabPath: configuration.GetValue<string>("VariantClassifier:VocabPath") ?? "models/variant-classifier/vocab.json",
+            MergesPath: configuration.GetValue<string>("VariantClassifier:MergesPath") ?? "models/variant-classifier/merges.txt");
+        services.AddSingleton(classifierConfig);
+        services.AddSingleton<IVariantClassifierClient, OnnxVariantClassifier>();
+
+        // GPT comparison (fallback for low-confidence pairs)
         var chatModel = configuration.GetValue<string>("OpenAi:ChatModel") ?? "gpt-5-nano";
         var comparisonConfig = new ListingComparisonConfig(openAiKey, chatModel);
         services.AddSingleton(comparisonConfig);
-        services.AddSingleton<IListingComparisonService, ListingComparisonService>();
+        services.AddSingleton<ListingComparisonService>();
+
+        // Model-first with GPT fallback
+        var modelFirstConfig = new ModelFirstComparisonConfig(
+            ConfidenceThreshold: configuration.GetValue<float>("VariantClassifier:ConfidenceThreshold", 0.80f),
+            EnableGptFallback: configuration.GetValue<bool>("VariantClassifier:EnableGptFallback", false));
+        services.AddSingleton<IListingComparisonService>(sp =>
+            new ModelFirstComparisonService(
+                sp.GetRequiredService<IVariantClassifierClient>(),
+                sp.GetRequiredService<ListingComparisonService>(),
+                modelFirstConfig,
+                sp.GetRequiredService<ILogger<ModelFirstComparisonService>>()));
 
         // ComparablesEtlService
         services.AddScoped<IComparablesEtlService, ComparablesEtlService>();

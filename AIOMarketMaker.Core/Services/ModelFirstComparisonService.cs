@@ -3,19 +3,26 @@ using Microsoft.Extensions.Logging;
 
 namespace AIOMarketMaker.Core.Services;
 
+public record ModelFirstComparisonConfig(float ConfidenceThreshold = 0.80f, bool EnableGptFallback = true);
+
 public class ModelFirstComparisonService : IListingComparisonService
 {
     private readonly IVariantClassifierClient _classifier;
     private readonly IListingComparisonService _gptFallback;
+    private readonly float _confidenceThreshold;
+    private readonly bool _enableGptFallback;
     private readonly ILogger<ModelFirstComparisonService> _logger;
 
     public ModelFirstComparisonService(
         IVariantClassifierClient classifier,
         IListingComparisonService gptFallback,
+        ModelFirstComparisonConfig config,
         ILogger<ModelFirstComparisonService> logger)
     {
         _classifier = classifier;
         _gptFallback = gptFallback;
+        _confidenceThreshold = config.ConfidenceThreshold;
+        _enableGptFallback = config.EnableGptFallback;
         _logger = logger;
     }
 
@@ -32,7 +39,7 @@ public class ModelFirstComparisonService : IListingComparisonService
 
             var result = results[0];
 
-            if (!result.NeedsFallback)
+            if (result.Confidence >= _confidenceThreshold || !_enableGptFallback)
             {
                 _logger.LogDebug(
                     "Model verdict for ({IdA}, {IdB}): {Verdict} (confidence={Confidence:F3})",
@@ -49,6 +56,11 @@ public class ModelFirstComparisonService : IListingComparisonService
         }
         catch (Exception ex)
         {
+            if (!_enableGptFallback)
+            {
+                throw;
+            }
+
             _logger.LogWarning(ex,
                 "Model service unavailable, falling back to GPT for ({IdA}, {IdB})",
                 a.Id, b.Id);

@@ -21,8 +21,7 @@ public class OnnxVariantClassifier_IntegrationTests
         var config = new OnnxClassifierConfig(
             ModelPath: Path.Combine(ModelDir, "model.onnx"),
             VocabPath: Path.Combine(ModelDir, "vocab.json"),
-            MergesPath: Path.Combine(ModelDir, "merges.txt"),
-            ConfidenceThreshold: 0.80f);
+            MergesPath: Path.Combine(ModelDir, "merges.txt"));
 
         _classifier = new OnnxVariantClassifier(config, Mock.Of<ILogger<OnnxVariantClassifier>>());
     }
@@ -45,7 +44,7 @@ public class OnnxVariantClassifier_IntegrationTests
         {
             Assert.That(result.IsComparable, Is.True, $"Expected comparable: {description}");
             Assert.That(result.Confidence, Is.GreaterThan(0.80f), $"Expected high confidence: {description}");
-            Assert.That(result.NeedsFallback, Is.False, $"Should not need fallback: {description}");
+            Assert.That(result.Confidence, Is.GreaterThan(0.50f), $"Should have decisive confidence: {description}");
         });
 
         TestContext.WriteLine($"[SAME] {description}: confidence={result.Confidence:F4}");
@@ -102,7 +101,7 @@ public class OnnxVariantClassifier_IntegrationTests
         {
             Assert.That(result.IsComparable, Is.False, $"Expected not comparable: {description}");
             Assert.That(result.Confidence, Is.GreaterThan(0.80f), $"Expected high confidence: {description}");
-            Assert.That(result.NeedsFallback, Is.False, $"Should not need fallback: {description}");
+            Assert.That(result.Confidence, Is.GreaterThan(0.50f), $"Should have decisive confidence: {description}");
         });
 
         TestContext.WriteLine($"[DIFF] {description}: confidence={result.Confidence:F4}");
@@ -157,7 +156,7 @@ public class OnnxVariantClassifier_IntegrationTests
 
         Assert.That(result.IsComparable, Is.False, $"Expected not comparable: {description}");
 
-        TestContext.WriteLine($"[VARIANT] {description}: isComparable={result.IsComparable}, confidence={result.Confidence:F4}, needsFallback={result.NeedsFallback}");
+        TestContext.WriteLine($"[VARIANT] {description}: isComparable={result.IsComparable}, confidence={result.Confidence:F4}");
     }
 
     private static IEnumerable<TestCaseData> SimilarButDifferentPairs()

@@ -98,6 +98,27 @@ public class OnnxVariantClassifier_UnitTests
         });
     }
 
+    [Test]
+    public void Should_apply_batch_softmax_correctly()
+    {
+        var batchLogits = new float[,]
+        {
+            { -2.284080f, 3.348258f },
+            { 1.5f, -1.5f }
+        };
+
+        var results = OnnxVariantClassifier.BatchSoftmax(batchLogits);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(results, Has.Length.EqualTo(2));
+            Assert.That(results[0][0], Is.EqualTo(0.003567f).Within(0.0001f));
+            Assert.That(results[0][1], Is.EqualTo(0.996433f).Within(0.0001f));
+            Assert.That(results[1][0], Is.EqualTo(0.9526f).Within(0.001f));
+            Assert.That(results[1][1], Is.EqualTo(0.0474f).Within(0.001f));
+        });
+    }
+
     private static string FindModelFile(string filename)
     {
         // Walk up from test bin directory to find models/variant-classifier/
