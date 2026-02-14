@@ -164,59 +164,8 @@ public class ComparablesEtlService_UnitTests
         });
     }
 
-    [Test]
-    public async Task Should_compute_predictions_from_comparable_sold_listings()
-    {
-        var active = SeedListing(1, "iPhone 15 Pro", "Active", 800m);
-        var sold1 = SeedListing(2, "iPhone 15 Pro", "Sold", 900m);
-        var sold2 = SeedListing(3, "iPhone 15 Pro", "Sold", 850m);
-
-        // Add status history with sold dates for the sold listings
-        _dbContext.ListingStatusHistory.Add(new ListingStatusHistory
-        {
-            ListingId = 2,
-            ListingStatus = "Sold",
-            SoldDateUtc = DateTime.UtcNow.AddDays(-5),
-            RecordedUtc = DateTime.UtcNow,
-            Price = 900m
-        });
-        _dbContext.ListingStatusHistory.Add(new ListingStatusHistory
-        {
-            ListingId = 3,
-            ListingStatus = "Sold",
-            SoldDateUtc = DateTime.UtcNow.AddDays(-10),
-            RecordedUtc = DateTime.UtcNow,
-            Price = 850m
-        });
-        _dbContext.SaveChanges();
-
-        // Pre-populate verdicts (simulating step 4 already done)
-        _dbContext.ListingRelationships.Add(new ListingRelationship
-        {
-            ListingIdA = 1, ListingIdB = 2,
-            IsComparable = true, Explanation = "Same", SimilarityScore = 0.9
-        });
-        _dbContext.ListingRelationships.Add(new ListingRelationship
-        {
-            ListingIdA = 1, ListingIdB = 3,
-            IsComparable = true, Explanation = "Same", SimilarityScore = 0.88
-        });
-        _dbContext.SaveChanges();
-
-        // No new Pinecone results needed — just testing aggregation
-        MockPineconeResult("1");
-
-        await _service.Run(dryRun: false);
-
-        var prediction = _dbContext.ListingPredictions.SingleOrDefault(p => p.ListingId == 1);
-        Assert.Multiple(() =>
-        {
-            Assert.That(prediction, Is.Not.Null);
-            Assert.That(prediction!.AverageSoldPrice, Is.EqualTo(875m));
-            Assert.That(prediction.SimilarSoldCount, Is.EqualTo(2));
-            Assert.That(prediction.PotentialProfit, Is.EqualTo(75m));
-        });
-    }
+    // Predictions are now computed live by vw_ListingPredictions SQL view.
+    // No ETL step to test — view logic is verified by integration tests against real DB.
 
     [Test]
     public async Task Should_report_counts_without_making_llm_calls_in_dry_run()

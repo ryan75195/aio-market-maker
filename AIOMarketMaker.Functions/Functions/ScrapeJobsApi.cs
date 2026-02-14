@@ -558,9 +558,8 @@ public class ScrapeJobsApi
 
         if (count > 0)
         {
-            // Delete relationships and predictions first (NoAction FK to Listings)
+            // Delete relationships first (NoAction FK to Listings). Predictions are a live view.
             await _dbContext.Database.ExecuteSqlRawAsync("DELETE FROM ListingRelationships");
-            await _dbContext.Database.ExecuteSqlRawAsync("DELETE FROM ListingPredictions");
             await _dbContext.Database.ExecuteSqlRawAsync("DELETE FROM Listings");
             _logger.LogInformation("Cleared {Count} listings from database", count);
         }
@@ -602,9 +601,8 @@ public class ScrapeJobsApi
         var listingsCount = await _dbContext.Listings.CountAsync();
         var runsCount = await _dbContext.ScrapeRuns.CountAsync();
 
-        // Delete in correct order: relationships/predictions first (NoAction FK), then Listings, then ScrapeRuns (cascades)
+        // Delete in correct order: relationships first (NoAction FK), then Listings, then ScrapeRuns (cascades)
         await _dbContext.Database.ExecuteSqlRawAsync("DELETE FROM ListingRelationships");
-        await _dbContext.Database.ExecuteSqlRawAsync("DELETE FROM ListingPredictions");
         if (listingsCount > 0)
             await _dbContext.Database.ExecuteSqlRawAsync("DELETE FROM Listings");
         if (runsCount > 0)

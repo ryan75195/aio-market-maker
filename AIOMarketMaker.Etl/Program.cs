@@ -228,10 +228,10 @@ if (args.Contains("--comparables"))
     Console.WriteLine($"Pinecone queries:       {result.PineconeQueries}");
     Console.WriteLine($"Candidate pairs found:  {result.CandidatePairsFound}");
     Console.WriteLine($"Cache hits:             {result.CacheHits}");
-    Console.WriteLine($"LLM calls required:     {result.LlmCallsRequired}");
-    Console.WriteLine($"LLM calls made:         {result.LlmCallsMade}");
+    Console.WriteLine($"ONNX pairs classified:  {result.LlmCallsMade}");
     Console.WriteLine($"Comparables found:      {result.ComparablesFound}");
-    Console.WriteLine($"Predictions written:    {result.PredictionsWritten}");
+    Console.WriteLine();
+    Console.WriteLine("Predictions are computed live via vw_ListingPredictions view.");
     return;
 }
 

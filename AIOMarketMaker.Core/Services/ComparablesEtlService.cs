@@ -18,8 +18,7 @@ public record ComparablesEtlResult(
     int CacheHits,
     int LlmCallsRequired,
     int LlmCallsMade,
-    int ComparablesFound,
-    int PredictionsWritten
+    int ComparablesFound
 );
 
 public class ComparablesEtlService : IComparablesEtlService
@@ -74,7 +73,7 @@ public class ComparablesEtlService : IComparablesEtlService
 
         if (activeListings.Count == 0)
         {
-            return new ComparablesEtlResult(0, 0, 0, 0, 0, 0, 0, 0);
+            return new ComparablesEtlResult(0, 0, 0, 0, 0, 0, 0);
         }
 
         // Load existing verdicts for cache check
@@ -165,8 +164,7 @@ public class ComparablesEtlService : IComparablesEtlService
                 CacheHits: cacheHits,
                 LlmCallsRequired: pairsWritten,
                 LlmCallsMade: 0,
-                ComparablesFound: 0,
-                PredictionsWritten: 0);
+                ComparablesFound: 0);
         }
 
         // Consumer: collect batches, classify, save verdicts
@@ -197,13 +195,9 @@ public class ComparablesEtlService : IComparablesEtlService
 
         await producerTask;
 
-        // Compute predictions for all active listings (includes relationships from previous runs)
-        var allActiveIds = activeListings.Select(l => l.Id).ToHashSet();
-        var predictionsWritten = await ComputePredictionsForListings(allActiveIds, allListingsById, soldIdSet, ct);
-
         _logger.LogInformation(
-            "ETL complete: {Active} active, {Pairs} classified, {Comparables} comparables, {Predictions} predictions",
-            activeListings.Count, totalClassified, comparablesFound, predictionsWritten);
+            "ETL complete: {Active} active, {Pairs} classified, {Comparables} comparables",
+            activeListings.Count, totalClassified, comparablesFound);
 
         return new ComparablesEtlResult(
             ListingsProcessed: activeListings.Count,
@@ -212,8 +206,7 @@ public class ComparablesEtlService : IComparablesEtlService
             CacheHits: cacheHits,
             LlmCallsRequired: pairsWritten,
             LlmCallsMade: totalClassified,
-            ComparablesFound: comparablesFound,
-            PredictionsWritten: predictionsWritten);
+            ComparablesFound: comparablesFound);
     }
 
     private async Task<HashSet<(int, int)>> LoadExistingVerdicts(CancellationToken ct)
@@ -274,127 +267,6 @@ public class ComparablesEtlService : IComparablesEtlService
             batch.Count, comparables);
 
         return new BatchResult(batch.Count, comparables);
-    }
-
-    private async Task<int> ComputePredictionsForListings(
-        HashSet<int> activeListingIds,
-        Dictionary<int, Listing> listingsById,
-        HashSet<int> soldIdSet,
-        CancellationToken ct)
-    {
-        if (activeListingIds.Count == 0)
-        {
-            return 0;
-        }
-
-        // Batch load: all comparable relationships (no per-listing queries)
-        var allComparableRelationships = await _dbContext.ListingRelationships
-            .AsNoTracking()
-            .Where(r => r.IsComparable)
-            .Select(r => new { r.ListingIdA, r.ListingIdB })
-            .ToListAsync(ct);
-
-        // Build active→sold neighbor map in memory
-        var activeToSoldNeighbors = new Dictionary<int, HashSet<int>>();
-        foreach (var r in allComparableRelationships)
-        {
-            if (activeListingIds.Contains(r.ListingIdA) && soldIdSet.Contains(r.ListingIdB))
-            {
-                if (!activeToSoldNeighbors.TryGetValue(r.ListingIdA, out var neighbors))
-                {
-                    neighbors = new HashSet<int>();
-                    activeToSoldNeighbors[r.ListingIdA] = neighbors;
-                }
-                neighbors.Add(r.ListingIdB);
-            }
-
-            if (activeListingIds.Contains(r.ListingIdB) && soldIdSet.Contains(r.ListingIdA))
-            {
-                if (!activeToSoldNeighbors.TryGetValue(r.ListingIdB, out var neighbors))
-                {
-                    neighbors = new HashSet<int>();
-                    activeToSoldNeighbors[r.ListingIdB] = neighbors;
-                }
-                neighbors.Add(r.ListingIdA);
-            }
-        }
-
-        if (activeToSoldNeighbors.Count == 0)
-        {
-            return 0;
-        }
-
-        // Collect all sold IDs that need prices
-        var allSoldNeighborIds = activeToSoldNeighbors.Values
-            .SelectMany(ids => ids)
-            .ToHashSet();
-
-        // Batch load sold prices from status history
-        var soldHistoryPrices = await _dbContext.ListingStatusHistory
-            .AsNoTracking()
-            .Where(h => allSoldNeighborIds.Contains(h.ListingId) && h.ListingStatus == "Sold")
-            .GroupBy(h => h.ListingId)
-            .Select(g => new { ListingId = g.Key, Price = g.OrderByDescending(h => h.RecordedUtc).First().Price })
-            .ToDictionaryAsync(x => x.ListingId, x => x.Price, ct);
-
-        // Batch load existing predictions
-        var existingPredictions = await _dbContext.ListingPredictions
-            .Where(p => activeListingIds.Contains(p.ListingId))
-            .ToDictionaryAsync(p => p.ListingId, ct);
-
-        var predictionsWritten = 0;
-
-        foreach (var (activeId, soldNeighborIds) in activeToSoldNeighbors)
-        {
-            if (!listingsById.TryGetValue(activeId, out var activeListing))
-            {
-                continue;
-            }
-
-            var soldPrices = new List<decimal>();
-            foreach (var soldId in soldNeighborIds)
-            {
-                var price = soldHistoryPrices.GetValueOrDefault(soldId)
-                    ?? listingsById.GetValueOrDefault(soldId)?.Price
-                    ?? 0m;
-                if (price > 0)
-                {
-                    soldPrices.Add(price);
-                }
-            }
-
-            if (soldPrices.Count == 0)
-            {
-                continue;
-            }
-
-            var avgSoldPrice = soldPrices.Average();
-            var potentialProfit = avgSoldPrice - (activeListing.Price ?? 0m);
-
-            if (existingPredictions.TryGetValue(activeId, out var existing))
-            {
-                existing.AverageSoldPrice = avgSoldPrice;
-                existing.SimilarSoldCount = soldPrices.Count;
-                existing.PotentialProfit = potentialProfit;
-                existing.ComputedUtc = DateTime.UtcNow;
-            }
-            else
-            {
-                _dbContext.ListingPredictions.Add(new ListingPrediction
-                {
-                    ListingId = activeId,
-                    AverageSoldPrice = avgSoldPrice,
-                    SimilarSoldCount = soldPrices.Count,
-                    PotentialProfit = potentialProfit,
-                    ComputedUtc = DateTime.UtcNow
-                });
-            }
-
-            predictionsWritten++;
-        }
-
-        await _dbContext.SaveChangesAsync(ct);
-        return predictionsWritten;
     }
 
     private static (int, int) GetCanonicalKey(int idA, int idB)

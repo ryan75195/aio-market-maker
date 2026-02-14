@@ -126,9 +126,8 @@ public static class ListingEndpoints
 
         if (count > 0)
         {
-            // Delete relationships and predictions first (NoAction FK to Listings)
+            // Delete relationships first (NoAction FK to Listings). Predictions are a live view.
             await db.Database.ExecuteSqlRawAsync("DELETE FROM ListingRelationships");
-            await db.Database.ExecuteSqlRawAsync("DELETE FROM ListingPredictions");
             await db.Database.ExecuteSqlRawAsync("DELETE FROM Listings");
             logger.LogInformation("Cleared {Count} listings from database", count);
         }
@@ -159,9 +158,8 @@ public static class ListingEndpoints
         var listingsCount = await db.Listings.CountAsync();
         var runsCount = await db.ScrapeRuns.CountAsync();
 
-        // Delete in correct order: relationships/predictions first (NoAction FK), then Listings, then ScrapeRuns (cascades)
+        // Delete in correct order: relationships first (NoAction FK), then Listings, then ScrapeRuns (cascades)
         await db.Database.ExecuteSqlRawAsync("DELETE FROM ListingRelationships");
-        await db.Database.ExecuteSqlRawAsync("DELETE FROM ListingPredictions");
         if (listingsCount > 0)
         {
             await db.Database.ExecuteSqlRawAsync("DELETE FROM Listings");
