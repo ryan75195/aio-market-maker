@@ -287,41 +287,76 @@ public class ComparablesEtlService : IComparablesEtlService
             return 0;
         }
 
+        // Batch load: all comparable relationships (no per-listing queries)
+        var allComparableRelationships = await _dbContext.ListingRelationships
+            .AsNoTracking()
+            .Where(r => r.IsComparable)
+            .Select(r => new { r.ListingIdA, r.ListingIdB })
+            .ToListAsync(ct);
+
+        // Build active→sold neighbor map in memory
+        var activeToSoldNeighbors = new Dictionary<int, HashSet<int>>();
+        foreach (var r in allComparableRelationships)
+        {
+            if (activeListingIds.Contains(r.ListingIdA) && soldIdSet.Contains(r.ListingIdB))
+            {
+                if (!activeToSoldNeighbors.TryGetValue(r.ListingIdA, out var neighbors))
+                {
+                    neighbors = new HashSet<int>();
+                    activeToSoldNeighbors[r.ListingIdA] = neighbors;
+                }
+                neighbors.Add(r.ListingIdB);
+            }
+
+            if (activeListingIds.Contains(r.ListingIdB) && soldIdSet.Contains(r.ListingIdA))
+            {
+                if (!activeToSoldNeighbors.TryGetValue(r.ListingIdB, out var neighbors))
+                {
+                    neighbors = new HashSet<int>();
+                    activeToSoldNeighbors[r.ListingIdB] = neighbors;
+                }
+                neighbors.Add(r.ListingIdA);
+            }
+        }
+
+        if (activeToSoldNeighbors.Count == 0)
+        {
+            return 0;
+        }
+
+        // Collect all sold IDs that need prices
+        var allSoldNeighborIds = activeToSoldNeighbors.Values
+            .SelectMany(ids => ids)
+            .ToHashSet();
+
+        // Batch load sold prices from status history
+        var soldHistoryPrices = await _dbContext.ListingStatusHistory
+            .AsNoTracking()
+            .Where(h => allSoldNeighborIds.Contains(h.ListingId) && h.ListingStatus == "Sold")
+            .GroupBy(h => h.ListingId)
+            .Select(g => new { ListingId = g.Key, Price = g.OrderByDescending(h => h.RecordedUtc).First().Price })
+            .ToDictionaryAsync(x => x.ListingId, x => x.Price, ct);
+
+        // Batch load existing predictions
+        var existingPredictions = await _dbContext.ListingPredictions
+            .Where(p => activeListingIds.Contains(p.ListingId))
+            .ToDictionaryAsync(p => p.ListingId, ct);
+
         var predictionsWritten = 0;
 
-        foreach (var activeId in activeListingIds)
+        foreach (var (activeId, soldNeighborIds) in activeToSoldNeighbors)
         {
             if (!listingsById.TryGetValue(activeId, out var activeListing))
             {
                 continue;
             }
 
-            // Find comparable sold listings from all relationships (including previous runs)
-            var comparableSoldIds = await _dbContext.ListingRelationships
-                .AsNoTracking()
-                .Where(r => r.IsComparable &&
-                    ((r.ListingIdA == activeId && soldIdSet.Contains(r.ListingIdB)) ||
-                     (r.ListingIdB == activeId && soldIdSet.Contains(r.ListingIdA))))
-                .Select(r => r.ListingIdA == activeId ? r.ListingIdB : r.ListingIdA)
-                .Distinct()
-                .ToListAsync(ct);
-
-            if (comparableSoldIds.Count == 0)
-            {
-                continue;
-            }
-
             var soldPrices = new List<decimal>();
-            foreach (var soldId in comparableSoldIds)
+            foreach (var soldId in soldNeighborIds)
             {
-                var historyPrice = await _dbContext.ListingStatusHistory
-                    .AsNoTracking()
-                    .Where(h => h.ListingId == soldId && h.ListingStatus == "Sold")
-                    .OrderByDescending(h => h.RecordedUtc)
-                    .Select(h => h.Price)
-                    .FirstOrDefaultAsync(ct);
-
-                var price = historyPrice ?? listingsById.GetValueOrDefault(soldId)?.Price ?? 0m;
+                var price = soldHistoryPrices.GetValueOrDefault(soldId)
+                    ?? listingsById.GetValueOrDefault(soldId)?.Price
+                    ?? 0m;
                 if (price > 0)
                 {
                     soldPrices.Add(price);
@@ -336,10 +371,7 @@ public class ComparablesEtlService : IComparablesEtlService
             var avgSoldPrice = soldPrices.Average();
             var potentialProfit = avgSoldPrice - (activeListing.Price ?? 0m);
 
-            var existing = await _dbContext.ListingPredictions
-                .FirstOrDefaultAsync(p => p.ListingId == activeId, ct);
-
-            if (existing != null)
+            if (existingPredictions.TryGetValue(activeId, out var existing))
             {
                 existing.AverageSoldPrice = avgSoldPrice;
                 existing.SimilarSoldCount = soldPrices.Count;
