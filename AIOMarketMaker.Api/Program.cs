@@ -115,8 +115,7 @@ builder.Services.AddSingleton<IPricingAnalysisService, PricingAnalysisService>()
 var classifierConfig = new OnnxClassifierConfig(
     ModelPath: configuration.GetValue<string>("VariantClassifier:ModelPath") ?? "models/variant-classifier/model.onnx",
     VocabPath: configuration.GetValue<string>("VariantClassifier:VocabPath") ?? "models/variant-classifier/vocab.json",
-    MergesPath: configuration.GetValue<string>("VariantClassifier:MergesPath") ?? "models/variant-classifier/merges.txt",
-    ConfidenceThreshold: configuration.GetValue<float>("VariantClassifier:ConfidenceThreshold", 0.80f));
+    MergesPath: configuration.GetValue<string>("VariantClassifier:MergesPath") ?? "models/variant-classifier/merges.txt");
 builder.Services.AddSingleton(classifierConfig);
 builder.Services.AddSingleton<IVariantClassifierClient, OnnxVariantClassifier>();
 
@@ -126,11 +125,15 @@ var comparisonConfig = new ListingComparisonConfig(openAiKey, chatModel);
 builder.Services.AddSingleton(comparisonConfig);
 builder.Services.AddSingleton<ListingComparisonService>();
 
-// Model-first with GPT fallback
+// Model-first with GPT fallback (threshold owned by the service, not the classifier)
+var modelFirstConfig = new ModelFirstComparisonConfig(
+    ConfidenceThreshold: configuration.GetValue<float>("VariantClassifier:ConfidenceThreshold", 0.80f),
+    EnableGptFallback: configuration.GetValue<bool>("VariantClassifier:EnableGptFallback", true));
 builder.Services.AddSingleton<IListingComparisonService>(sp =>
     new ModelFirstComparisonService(
         sp.GetRequiredService<IVariantClassifierClient>(),
         sp.GetRequiredService<ListingComparisonService>(),
+        modelFirstConfig,
         sp.GetRequiredService<ILogger<ModelFirstComparisonService>>()));
 
 // ComparablesEtlService

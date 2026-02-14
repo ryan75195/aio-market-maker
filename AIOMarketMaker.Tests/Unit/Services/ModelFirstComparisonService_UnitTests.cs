@@ -22,6 +22,7 @@ public class ModelFirstComparisonService_UnitTests
         _service = new ModelFirstComparisonService(
             _classifierMock.Object,
             _gptFallbackMock.Object,
+            new ModelFirstComparisonConfig(ConfidenceThreshold: 0.80f),
             Mock.Of<ILogger<ModelFirstComparisonService>>());
     }
 
@@ -37,7 +38,7 @@ public class ModelFirstComparisonService_UnitTests
     {
         _classifierMock
             .Setup(c => c.Classify(It.IsAny<IEnumerable<ClassifyPairRequest>>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new[] { new PairResult(true, 0.95f, false) });
+            .ReturnsAsync(new[] { new PairResult(true, 0.95f) });
 
         var result = await _service.Compare(
             CreateListing(1, "Dyson V15 Detect Absolute"),
@@ -58,7 +59,7 @@ public class ModelFirstComparisonService_UnitTests
     {
         _classifierMock
             .Setup(c => c.Classify(It.IsAny<IEnumerable<ClassifyPairRequest>>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new[] { new PairResult(false, 0.99f, false) });
+            .ReturnsAsync(new[] { new PairResult(false, 0.99f) });
 
         var result = await _service.Compare(
             CreateListing(1, "Dyson V15 Detect Absolute"),
@@ -75,7 +76,7 @@ public class ModelFirstComparisonService_UnitTests
     {
         _classifierMock
             .Setup(c => c.Classify(It.IsAny<IEnumerable<ClassifyPairRequest>>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new[] { new PairResult(false, 0.62f, true) });
+            .ReturnsAsync(new[] { new PairResult(false, 0.62f) });
 
         _gptFallbackMock
             .Setup(g => g.Compare(It.IsAny<Listing>(), It.IsAny<Listing>(), It.IsAny<CancellationToken>()))
@@ -93,6 +94,33 @@ public class ModelFirstComparisonService_UnitTests
         _gptFallbackMock.Verify(
             g => g.Compare(It.IsAny<Listing>(), It.IsAny<Listing>(), It.IsAny<CancellationToken>()),
             Times.Once);
+    }
+
+    [Test]
+    public async Task Should_use_model_verdict_when_fallback_disabled_even_if_low_confidence()
+    {
+        var serviceNoFallback = new ModelFirstComparisonService(
+            _classifierMock.Object,
+            _gptFallbackMock.Object,
+            new ModelFirstComparisonConfig(ConfidenceThreshold: 0.80f, EnableGptFallback: false),
+            Mock.Of<ILogger<ModelFirstComparisonService>>());
+
+        _classifierMock
+            .Setup(c => c.Classify(It.IsAny<IEnumerable<ClassifyPairRequest>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new[] { new PairResult(false, 0.55f) });
+
+        var result = await serviceNoFallback.Compare(
+            CreateListing(1, "Dyson V15 Detect"),
+            CreateListing(2, "Dyson V15 Detect Iron"));
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.IsComparable, Is.False);
+            Assert.That(result.Explanation, Does.Contain("0.550"));
+        });
+        _gptFallbackMock.Verify(
+            g => g.Compare(It.IsAny<Listing>(), It.IsAny<Listing>(), It.IsAny<CancellationToken>()),
+            Times.Never);
     }
 
     [Test]
