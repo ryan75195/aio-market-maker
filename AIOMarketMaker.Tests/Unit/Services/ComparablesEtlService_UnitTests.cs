@@ -14,7 +14,7 @@ public class ComparablesEtlService_UnitTests
 {
     private EtlDbContext _dbContext = null!;
     private Mock<ISemanticSearchService> _searchMock = null!;
-    private Mock<IListingComparisonService> _comparisonMock = null!;
+    private Mock<IVariantClassifierClient> _classifierMock = null!;
     private Mock<ILogger<ComparablesEtlService>> _loggerMock = null!;
     private ComparablesEtlService _service = null!;
 
@@ -23,7 +23,7 @@ public class ComparablesEtlService_UnitTests
     {
         _dbContext = InMemoryDbContextFactory.Create();
         _searchMock = new Mock<ISemanticSearchService>();
-        _comparisonMock = new Mock<IListingComparisonService>();
+        _classifierMock = new Mock<IVariantClassifierClient>();
         _loggerMock = new Mock<ILogger<ComparablesEtlService>>();
 
         // Default: FindSimilar returns empty results unless explicitly mocked
@@ -37,7 +37,7 @@ public class ComparablesEtlService_UnitTests
 
         _service = new ComparablesEtlService(
             _searchMock.Object,
-            _comparisonMock.Object,
+            _classifierMock.Object,
             _dbContext,
             _loggerMock.Object);
     }
@@ -95,14 +95,10 @@ public class ComparablesEtlService_UnitTests
 
         MockPineconeResult("1", ("2", 0.92));
 
-        _comparisonMock.Setup(c => c.Compare(
-                It.Is<Listing>(l => l.Id == 1),
-                It.Is<Listing>(l => l.Id == 2),
+        _classifierMock.Setup(c => c.Classify(
+                It.IsAny<IEnumerable<ClassifyPairRequest>>(),
                 It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new ComparableVerdict(true, "Same product"));
-
-        _searchMock.Setup(s => s.Exists(It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(true);
+            .ReturnsAsync(new[] { new PairResult(true, 0.95f) });
 
         var result = await _service.Run(dryRun: false);
 
@@ -113,7 +109,7 @@ public class ComparablesEtlService_UnitTests
             Assert.That(verdict!.ListingIdA, Is.EqualTo(1));
             Assert.That(verdict.ListingIdB, Is.EqualTo(2));
             Assert.That(verdict.IsComparable, Is.True);
-            Assert.That(verdict.Explanation, Is.EqualTo("Same product"));
+            Assert.That(verdict.Explanation, Does.Contain("Model: confidence="));
             Assert.That(result.LlmCallsMade, Is.EqualTo(1));
         });
     }
@@ -136,13 +132,10 @@ public class ComparablesEtlService_UnitTests
 
         MockPineconeResult("1", ("2", 0.92));
 
-        _searchMock.Setup(s => s.Exists(It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(true);
-
         var result = await _service.Run(dryRun: false);
 
-        _comparisonMock.Verify(
-            c => c.Compare(It.IsAny<Listing>(), It.IsAny<Listing>(), It.IsAny<CancellationToken>()),
+        _classifierMock.Verify(
+            c => c.Classify(It.IsAny<IEnumerable<ClassifyPairRequest>>(), It.IsAny<CancellationToken>()),
             Times.Never);
         Assert.That(result.CacheHits, Is.EqualTo(1));
     }
@@ -156,14 +149,10 @@ public class ComparablesEtlService_UnitTests
 
         MockPineconeResult("5", ("3", 0.88));
 
-        _comparisonMock.Setup(c => c.Compare(
-                It.IsAny<Listing>(),
-                It.IsAny<Listing>(),
+        _classifierMock.Setup(c => c.Classify(
+                It.IsAny<IEnumerable<ClassifyPairRequest>>(),
                 It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new ComparableVerdict(true, "Same phone"));
-
-        _searchMock.Setup(s => s.Exists(It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(true);
+            .ReturnsAsync(new[] { new PairResult(true, 0.92f) });
 
         await _service.Run(dryRun: false);
 
@@ -215,8 +204,6 @@ public class ComparablesEtlService_UnitTests
         _dbContext.SaveChanges();
 
         // No new Pinecone results needed — just testing aggregation
-        _searchMock.Setup(s => s.Exists(It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(true);
         MockPineconeResult("1");
 
         await _service.Run(dryRun: false);
@@ -239,13 +226,10 @@ public class ComparablesEtlService_UnitTests
 
         MockPineconeResult("1", ("2", 0.92));
 
-        _searchMock.Setup(s => s.Exists(It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(true);
-
         var result = await _service.Run(dryRun: true);
 
-        _comparisonMock.Verify(
-            c => c.Compare(It.IsAny<Listing>(), It.IsAny<Listing>(), It.IsAny<CancellationToken>()),
+        _classifierMock.Verify(
+            c => c.Classify(It.IsAny<IEnumerable<ClassifyPairRequest>>(), It.IsAny<CancellationToken>()),
             Times.Never);
 
         Assert.Multiple(() =>
@@ -257,19 +241,29 @@ public class ComparablesEtlService_UnitTests
     }
 
     [Test]
-    public async Task Should_skip_listings_not_indexed_in_pinecone()
+    public async Task Should_skip_active_neighbors_and_only_classify_sold()
     {
-        var active = SeedListing(1, "iPhone 15 Pro", "Active", 800m);
+        var active1 = SeedListing(1, "iPhone 15 Pro", "Active", 800m);
+        var active2 = SeedListing(2, "iPhone 15 Pro Black", "Active", 810m);
+        var sold1 = SeedListing(3, "iPhone 15 Pro 256GB", "Sold", 850m);
 
-        _searchMock.Setup(s => s.Exists("1", It.IsAny<CancellationToken>()))
-            .ReturnsAsync(false);
+        // Pinecone returns both active2 and sold1 as neighbors of active1
+        MockPineconeResult("1", ("2", 0.91), ("3", 0.89));
+
+        _classifierMock.Setup(c => c.Classify(
+                It.IsAny<IEnumerable<ClassifyPairRequest>>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new[] { new PairResult(true, 0.95f) });
 
         var result = await _service.Run(dryRun: false);
 
-        Assert.That(result.ListingsProcessed, Is.EqualTo(0));
-        _searchMock.Verify(
-            s => s.FindSimilar(It.IsAny<string>(), It.IsAny<IEnumerable<string>?>(),
-                It.IsAny<Pinecone.Metadata?>(), It.IsAny<int?>(), It.IsAny<CancellationToken>()),
-            Times.Never);
+        // Should only classify 1 pair (active1 <-> sold1), not active1 <-> active2
+        Assert.That(result.LlmCallsMade, Is.EqualTo(1));
+        var verdict = _dbContext.ListingRelationships.Single();
+        Assert.Multiple(() =>
+        {
+            Assert.That(verdict.ListingIdA, Is.EqualTo(1));
+            Assert.That(verdict.ListingIdB, Is.EqualTo(3));
+        });
     }
 }
