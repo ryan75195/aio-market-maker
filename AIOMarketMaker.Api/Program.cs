@@ -111,13 +111,14 @@ builder.Services.AddSingleton<IListingIndexingService, ListingIndexingService>()
 // Pricing analysis service
 builder.Services.AddSingleton<IPricingAnalysisService, PricingAnalysisService>();
 
-// Variant classifier (Python model service)
-var classifierBaseUrl = configuration.GetValue<string>("VariantClassifier:BaseUrl") ?? "http://localhost:8010";
-builder.Services.AddHttpClient<IVariantClassifierClient, VariantClassifierClient>(client =>
-{
-    client.BaseAddress = new Uri(classifierBaseUrl);
-    client.Timeout = TimeSpan.FromSeconds(60);
-});
+// Variant classifier (local ONNX model)
+var classifierConfig = new OnnxClassifierConfig(
+    ModelPath: configuration.GetValue<string>("VariantClassifier:ModelPath") ?? "models/variant-classifier/model.onnx",
+    VocabPath: configuration.GetValue<string>("VariantClassifier:VocabPath") ?? "models/variant-classifier/vocab.json",
+    MergesPath: configuration.GetValue<string>("VariantClassifier:MergesPath") ?? "models/variant-classifier/merges.txt",
+    ConfidenceThreshold: configuration.GetValue<float>("VariantClassifier:ConfidenceThreshold", 0.80f));
+builder.Services.AddSingleton(classifierConfig);
+builder.Services.AddSingleton<IVariantClassifierClient, OnnxVariantClassifier>();
 
 // GPT comparison (fallback for low-confidence pairs)
 var chatModel = configuration.GetValue<string>("OpenAi:ChatModel") ?? "gpt-5-nano";
