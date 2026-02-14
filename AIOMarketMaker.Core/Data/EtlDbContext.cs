@@ -139,18 +139,13 @@ public class EtlDbContext : DbContext
                 .OnDelete(DeleteBehavior.NoAction);
         });
 
-        // ListingPredictions
+        // ListingPredictions — backed by vw_ListingPredictions view (read-only)
         modelBuilder.Entity<ListingPrediction>(entity =>
         {
-            entity.ToTable("ListingPredictions");
-            entity.HasIndex(e => e.ListingId).IsUnique();
+            entity.ToView("vw_ListingPredictions");
+            entity.HasNoKey();
             entity.Property(e => e.AverageSoldPrice).HasColumnType("decimal(18,2)");
             entity.Property(e => e.PotentialProfit).HasColumnType("decimal(18,2)");
-
-            entity.HasOne(e => e.Listing)
-                .WithMany()
-                .HasForeignKey(e => e.ListingId)
-                .OnDelete(DeleteBehavior.NoAction);
         });
     }
 }
