@@ -1,4 +1,6 @@
 using AIOMarketMaker.Core.Services;
+using Microsoft.Extensions.Logging;
+using Moq;
 using NUnit.Framework;
 
 namespace AIOMarketMaker.Tests.Unit.Services;
@@ -7,6 +9,24 @@ namespace AIOMarketMaker.Tests.Unit.Services;
 [Category("Unit")]
 public class OnnxVariantClassifier_UnitTests
 {
+    [Test]
+    public void Should_throw_when_model_file_missing()
+    {
+        var config = new OnnxClassifierConfig(
+            ModelPath: "/nonexistent/path/model.onnx",
+            VocabPath: "/nonexistent/vocab.json",
+            MergesPath: "/nonexistent/merges.txt");
+
+        var ex = Assert.Throws<FileNotFoundException>(() =>
+            new OnnxVariantClassifier(config, Mock.Of<ILogger<OnnxVariantClassifier>>()));
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(ex!.Message, Does.Contain("ONNX model not found"));
+            Assert.That(ex.Message, Does.Contain("gpu-setup.md"));
+        });
+    }
+
     [Test]
     public void Should_tokenize_pair_with_correct_roberta_format()
     {
