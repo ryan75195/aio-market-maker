@@ -35,15 +35,25 @@ public static class HistoryEndpoints
         group.MapGet("/{runId:int}/issues", GetHistoryIssues);
     }
 
-    private static async Task<IResult> GetHistory(EtlDbContext db)
+    private static async Task<IResult> GetHistory(EtlDbContext db, int page = 1, int pageSize = 50)
     {
-        var runs = await db.ScrapeRuns
+        if (page < 1) { page = 1; }
+        if (pageSize < 1) { pageSize = 50; }
+        if (pageSize > 200) { pageSize = 200; }
+
+        var baseQuery = db.ScrapeRuns
             .OrderBy(r =>
                 r.Status == "Searching" || r.Status == "Indexing" || r.Status == "Running" || r.Status == "Processing" ? 0 :
                 r.Status == "Queued" ? 1 :
                 2)
-            .ThenByDescending(r => r.StartedUtc)
-            .Take(50)
+            .ThenByDescending(r => r.StartedUtc);
+
+        var totalCount = await db.ScrapeRuns.CountAsync();
+        var totalPages = (int)Math.Ceiling((double)totalCount / pageSize);
+
+        var runs = await baseQuery
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
             .Select(r => new HistoryRunProjection(
                 r.Id, r.InstanceId, r.JobId,
                 r.JobId != null
@@ -74,7 +84,7 @@ public static class HistoryEndpoints
             r.ListingsProcessed, r.CurrentPhase, r.ErrorMessage,
             issueCounts.GetValueOrDefault(r.Id, 0)));
 
-        return Results.Ok(runsWithIssues);
+        return Results.Ok(new { items = runsWithIssues, totalCount, totalPages, page, pageSize });
     }
 
     private static async Task<IResult> GetHistoryIssues(int runId, EtlDbContext db)

@@ -1,3 +1,4 @@
+using Pinecone;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -233,6 +234,328 @@ if (args.Contains("--comparables"))
     Console.WriteLine();
     Console.WriteLine("Predictions are computed live via vw_ListingPredictions view.");
     return;
+}
+
+if (args.Contains("--k-analysis"))
+{
+    await RunKAnalysis(host, args);
+    return;
+}
+
+if (args.Contains("--validate"))
+{
+    await RunValidation(host, args);
+    return;
+}
+
+static async Task RunValidation(IHost host, string[] args)
+{
+    const int neighborsPerListing = 20;
+
+    using var scope = host.Services.CreateScope();
+    var db = scope.ServiceProvider.GetRequiredService<EtlDbContext>();
+    var pinecone = scope.ServiceProvider.GetRequiredService<IPineconeIndexClient>();
+    var classifier = scope.ServiceProvider.GetRequiredService<IVariantClassifierClient>();
+
+    // Load all listings
+    Console.Write("Loading listings...");
+    var allListings = await db.Listings
+        .AsNoTracking()
+        .ToDictionaryAsync(l => l.ListingId);
+    var listingsById = allListings.Values.ToDictionary(l => l.Id);
+    Console.WriteLine($" {allListings.Count:N0} loaded.");
+
+    // Load scrape jobs for category names
+    var jobs = await db.ScrapeJobs.AsNoTracking().ToDictionaryAsync(j => j.Id);
+
+    // Pick interesting categories to validate - mix of easy and hard
+    var targetJobTerms = new[] {
+        "PlayStation 5 Console", "RTX 4090 Graphics Card", "Dyson Airwrap",
+        "Nike Air Jordan 1", "Cartier Love Bracelet", "Rolex Submariner",
+        "LEGO Star Wars Set", "Moissanite Engagement Ring", "Canada Goose",
+        "Mac Mini", "Sonos One Speaker", "TaylorMade Stealth 2 Driver"
+    };
+
+    var targetJobIds = jobs.Values
+        .Where(j => targetJobTerms.Any(t => j.SearchTerm.Contains(t, StringComparison.OrdinalIgnoreCase)))
+        .Select(j => j.Id)
+        .ToHashSet();
+
+    // Sample 2 active listings per category
+    var activeListings = allListings.Values
+        .Where(l => l.ListingStatus == "Active" && targetJobIds.Contains(l.ScrapeJobId))
+        .GroupBy(l => l.ScrapeJobId)
+        .SelectMany(g => g.OrderByDescending(l => l.Id).Take(2))
+        .ToList();
+
+    Console.WriteLine($"Validating {activeListings.Count} listings across {activeListings.Select(l => l.ScrapeJobId).Distinct().Count()} categories");
+    Console.WriteLine(new string('=', 120));
+
+    foreach (var listing in activeListings)
+    {
+        var jobName = jobs.TryGetValue(listing.ScrapeJobId, out var job) ? job.SearchTerm : "Unknown";
+
+        Console.WriteLine();
+        Console.WriteLine($"[{jobName}] ACTIVE: {listing.Title}");
+        Console.WriteLine($"  Price: {listing.Price:C} | Condition: {listing.Condition} | Id: {listing.Id}");
+        Console.WriteLine($"  Desc: {(listing.Description ?? "")[..Math.Min((listing.Description ?? "").Length, 150)]}");
+        Console.WriteLine();
+
+        // Query Pinecone
+        var request = new Pinecone.QueryRequest
+        {
+            Id = listing.ListingId,
+            TopK = (uint)(neighborsPerListing + 1),
+            IncludeMetadata = false,
+            IncludeValues = false
+        };
+
+        var response = await pinecone.Query(request);
+        var neighbors = response.Matches?
+            .Where(m => m.Id != listing.ListingId)
+            .Take(neighborsPerListing)
+            .ToList() ?? [];
+
+        if (neighbors.Count == 0)
+        {
+            Console.WriteLine("  (no Pinecone neighbors found)");
+            continue;
+        }
+
+        // Build classify requests
+        var pairsToClassify = new List<(float Score, AIOMarketMaker.Core.Data.Models.Listing Neighbor, ClassifyPairRequest Request)>();
+        foreach (var neighbor in neighbors)
+        {
+            if (!allListings.TryGetValue(neighbor.Id, out var neighborListing))
+            {
+                continue;
+            }
+            pairsToClassify.Add((
+                Score: neighbor.Score ?? 0f,
+                Neighbor: neighborListing,
+                Request: new ClassifyPairRequest(
+                    listing.Title ?? "", listing.Description ?? "",
+                    neighborListing.Title ?? "", neighborListing.Description ?? "")));
+        }
+
+        // Classify batch
+        var requests = pairsToClassify.Select(p => p.Request).ToList();
+        var results = await classifier.Classify(requests, CancellationToken.None);
+
+        // Print results
+        for (var i = 0; i < pairsToClassify.Count; i++)
+        {
+            var pair = pairsToClassify[i];
+            var result = results[i];
+            var verdict = result.IsComparable ? "MATCH" : "REJECT";
+            var marker = result.IsComparable ? "+" : "-";
+            var status = pair.Neighbor.ListingStatus ?? "?";
+            var price = pair.Neighbor.Price;
+
+            Console.WriteLine($"  {marker} [{verdict}] conf={result.Confidence:F3} sim={pair.Score:F3} | {status} {price:C} | {pair.Neighbor.Title?[..Math.Min(pair.Neighbor.Title?.Length ?? 0, 80)]}");
+        }
+
+        Console.WriteLine($"  --- {results.Count(r => r.IsComparable)}/{pairsToClassify.Count} accepted ---");
+    }
+}
+
+static async Task RunKAnalysis(IHost host, string[] args)
+{
+    const int maxK = 500;
+    const int sampleSize = 20;
+
+    // Parse optional --sample N
+    var sampleArg = Array.IndexOf(args, "--sample");
+    var actualSample = sampleArg >= 0 && sampleArg + 1 < args.Length && int.TryParse(args[sampleArg + 1], out var s) ? s : sampleSize;
+
+    using var scope = host.Services.CreateScope();
+    var db = scope.ServiceProvider.GetRequiredService<EtlDbContext>();
+    var pinecone = scope.ServiceProvider.GetRequiredService<IPineconeIndexClient>();
+    var classifier = scope.ServiceProvider.GetRequiredService<IVariantClassifierClient>();
+
+    Console.WriteLine($"K-Analysis: sampling {actualSample} active listings, querying Pinecone with K={maxK}");
+    Console.WriteLine();
+
+    // Load all listings into lookup dictionary
+    Console.Write("Loading listings...");
+    var allListings = await db.Listings
+        .AsNoTracking()
+        .ToDictionaryAsync(l => l.ListingId);
+    var listingsById = allListings.Values.ToDictionary(l => l.Id);
+    Console.WriteLine($" {allListings.Count:N0} listings loaded.");
+
+    // Sample active listings spread across different scrape jobs (from in-memory data)
+    var activeListings = allListings.Values
+        .Where(l => l.ListingStatus == "Active")
+        .GroupBy(l => l.ScrapeJobId)
+        .SelectMany(g => g.OrderBy(l => l.Id).Take(3))
+        .Take(actualSample)
+        .ToList();
+
+    Console.WriteLine($"Sampled {activeListings.Count} active listings from {activeListings.Select(l => l.ScrapeJobId).Distinct().Count()} jobs:");
+    foreach (var l in activeListings)
+    {
+        Console.WriteLine($"  [{l.Id}] {l.Title?[..Math.Min(l.Title.Length, 70)]}");
+    }
+    Console.WriteLine();
+
+    // Track results: rank -> (accepted, rejected, similarities)
+    var rankResults = new Dictionary<int, (int Accepted, int Rejected, List<float> Scores, List<float> Confidences)>();
+    for (var r = 1; r <= maxK; r++)
+    {
+        rankResults[r] = (0, 0, new List<float>(), new List<float>());
+    }
+
+    var totalQueries = 0;
+    var totalPairs = 0;
+
+    foreach (var listing in activeListings)
+    {
+        totalQueries++;
+        Console.Write($"[{totalQueries}/{activeListings.Count}] Querying {listing.ListingId}...");
+
+        // Query Pinecone directly — bypass SemanticSearchService threshold filter
+        var request = new Pinecone.QueryRequest
+        {
+            Id = listing.ListingId,
+            TopK = (uint)(maxK + 1), // +1 for self-match
+            IncludeMetadata = false,
+            IncludeValues = false
+        };
+
+        var response = await pinecone.Query(request);
+
+        var neighbors = response.Matches?
+            .Where(m => m.Id != listing.ListingId)
+            .Take(maxK)
+            .ToList() ?? [];
+
+        Console.Write($" {neighbors.Count} neighbors.");
+
+        if (neighbors.Count == 0)
+        {
+            Console.WriteLine(" (no results)");
+            continue;
+        }
+
+        // Look up neighbor listings and build classify requests per rank
+        var pairsToClassify = new List<(int Rank, float Score, ClassifyPairRequest Request)>();
+
+        for (var i = 0; i < neighbors.Count; i++)
+        {
+            var neighbor = neighbors[i];
+            if (!allListings.TryGetValue(neighbor.Id, out var neighborListing))
+            {
+                continue; // Listing not in database (deleted?)
+            }
+
+            pairsToClassify.Add((
+                Rank: i + 1,
+                Score: neighbor.Score ?? 0f,
+                Request: new ClassifyPairRequest(
+                    listing.Title ?? "", listing.Description ?? "",
+                    neighborListing.Title ?? "", neighborListing.Description ?? "")
+            ));
+        }
+
+        // Classify in batches of 128
+        var allRequests = pairsToClassify.Select(p => p.Request).ToList();
+        var results = await classifier.Classify(allRequests);
+
+        var accepted = 0;
+        for (var i = 0; i < pairsToClassify.Count; i++)
+        {
+            var (rank, score, _) = pairsToClassify[i];
+            var result = results[i];
+
+            var entry = rankResults[rank];
+            if (result.IsComparable)
+            {
+                entry.Accepted++;
+                accepted++;
+            }
+            else
+            {
+                entry.Rejected++;
+            }
+            entry.Scores.Add(score);
+            entry.Confidences.Add(result.Confidence);
+            rankResults[rank] = entry;
+        }
+
+        totalPairs += pairsToClassify.Count;
+        Console.WriteLine($" Classified {pairsToClassify.Count} pairs, {accepted} accepted.");
+    }
+
+    // Print results table
+    Console.WriteLine();
+    Console.WriteLine($"{'=',-60}");
+    Console.WriteLine($"K-ANALYSIS RESULTS ({actualSample} listings, K={maxK})");
+    Console.WriteLine($"{'=',-60}");
+    Console.WriteLine();
+    Console.WriteLine($"{"Rank",-8} {"Accepted",10} {"Rejected",10} {"Accept%",10} {"AvgSim",10} {"AvgConf",10} {"Cumul.Acc",10}");
+    Console.WriteLine($"{new string('-', 8)} {new string('-', 10)} {new string('-', 10)} {new string('-', 10)} {new string('-', 10)} {new string('-', 10)} {new string('-', 10)}");
+
+    var cumulativeAccepted = 0;
+    var lastRankWithAcceptance = 0;
+
+    for (var rank = 1; rank <= maxK; rank++)
+    {
+        var entry = rankResults[rank];
+        var total = entry.Accepted + entry.Rejected;
+        if (total == 0)
+        {
+            break;
+        }
+
+        cumulativeAccepted += entry.Accepted;
+        var acceptPct = 100.0 * entry.Accepted / total;
+        var avgSim = entry.Scores.Count > 0 ? entry.Scores.Average() : 0f;
+        var avgConf = entry.Confidences.Count > 0 ? entry.Confidences.Average() : 0f;
+
+        if (entry.Accepted > 0)
+        {
+            lastRankWithAcceptance = rank;
+        }
+
+        // Print every rank up to 30, then every 10th, then every 50th
+        var shouldPrint = rank <= 30 || rank % 10 == 0 || rank % 50 == 0 || rank == lastRankWithAcceptance;
+        if (shouldPrint || entry.Accepted > 0)
+        {
+            Console.WriteLine($"{rank,-8} {entry.Accepted,10} {entry.Rejected,10} {acceptPct,9:F1}% {avgSim,10:F4} {avgConf,10:F4} {cumulativeAccepted,10}");
+        }
+    }
+
+    // Summary
+    Console.WriteLine();
+    Console.WriteLine($"Total pairs classified: {totalPairs:N0}");
+    Console.WriteLine($"Total accepted:         {cumulativeAccepted:N0}");
+    Console.WriteLine($"Last rank with accept:  {lastRankWithAcceptance}");
+    Console.WriteLine();
+
+    // Bucket summary
+    Console.WriteLine("Bucket Summary:");
+    Console.WriteLine($"{"Bucket",-15} {"Accepted",10} {"Rejected",10} {"Accept%",10}");
+    Console.WriteLine($"{new string('-', 15)} {new string('-', 10)} {new string('-', 10)} {new string('-', 10)}");
+
+    var buckets = new[] { (1, 10), (11, 20), (21, 30), (31, 50), (51, 100), (101, 200), (201, 300), (301, 500) };
+    foreach (var (lo, hi) in buckets)
+    {
+        var bucketAcc = 0;
+        var bucketRej = 0;
+        for (var r = lo; r <= hi; r++)
+        {
+            bucketAcc += rankResults[r].Accepted;
+            bucketRej += rankResults[r].Rejected;
+        }
+        var bucketTotal = bucketAcc + bucketRej;
+        if (bucketTotal == 0)
+        {
+            break;
+        }
+        var pct = 100.0 * bucketAcc / bucketTotal;
+        Console.WriteLine($"{"K=" + lo + "-" + hi,-15} {bucketAcc,10} {bucketRej,10} {pct,9:F1}%");
+    }
 }
 
 host.Run();

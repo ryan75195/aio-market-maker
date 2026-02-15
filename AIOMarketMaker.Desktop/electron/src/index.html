@@ -77,38 +77,54 @@
         <div v-if="currentView === 'opportunities'" class="view">
           <div class="view-header">
             <h1>Opportunities</h1>
-            <span class="count-badge">{{ opportunities.length }} active listings</span>
+            <span class="count-badge">{{ opportunityTotalCount }} active listings</span>
             <button class="btn" @click="loadOpportunities">Refresh</button>
+          </div>
+
+          <!-- Job Filter Dropdown -->
+          <div v-if="jobs.length > 0" class="filter-dropdown-wrapper">
+            <button class="btn filter-dropdown-btn" @click="showJobDropdown = !showJobDropdown">
+              {{ jobFilterLabel }} <span class="dropdown-caret">&#9660;</span>
+            </button>
+            <div v-if="showJobDropdown" class="dropdown-backdrop" @click="showJobDropdown = false"></div>
+            <div v-if="showJobDropdown" class="dropdown-menu">
+              <label class="dropdown-item" @click.prevent="clearJobFilter">
+                <input type="checkbox" :checked="opportunityJobFilter.length === 0" readonly> All
+              </label>
+              <label v-for="job in jobs" :key="job.id" class="dropdown-item" @click.prevent="toggleJobFilter(job.id)">
+                <input type="checkbox" :checked="isJobFiltered(job.id)" readonly> {{ job.searchTerm }}
+              </label>
+            </div>
           </div>
 
           <table class="data-table">
             <thead>
               <tr>
-                <th>Image</th>
-                <th>Title</th>
-                <th>Listed Price</th>
-                <th>Avg Sold Price</th>
-                <th>Potential Profit</th>
-                <th>Est. Time to Sell</th>
-                <th>Condition</th>
+                <th>Listing ID</th>
+                <th class="sortable" @click="sortOpportunities('title')">Title{{ sortIndicator('title') }}</th>
+                <th class="sortable" @click="sortOpportunities('searchTerm')">Job{{ sortIndicator('searchTerm') }}</th>
+                <th class="sortable" @click="sortOpportunities('price')">Listed Price{{ sortIndicator('price') }}</th>
+                <th class="sortable" @click="sortOpportunities('averageSoldPrice')">Avg Sold{{ sortIndicator('averageSoldPrice') }}</th>
+                <th class="sortable" @click="sortOpportunities('similarSoldCount')">Comps{{ sortIndicator('similarSoldCount') }}</th>
+                <th class="sortable" @click="sortOpportunities('potentialProfit')">Profit{{ sortIndicator('potentialProfit') }}</th>
+                <th class="sortable" @click="sortOpportunities('estimatedDaysToSell')">Est. Days to Sell{{ sortIndicator('estimatedDaysToSell') }}</th>
+                <th class="sortable" @click="sortOpportunities('condition')">Condition{{ sortIndicator('condition') }}</th>
                 <th>Actions</th>
               </tr>
             </thead>
             <tbody>
               <tr v-for="listing in opportunities" :key="listing.id">
-                <td class="image-cell">
-                  <img v-if="getFirstImage(listing.firstImage)" :src="getFirstImage(listing.firstImage)" class="listing-thumb" />
-                  <span v-else class="no-image">-</span>
-                </td>
+                <td>{{ listing.listingId || '-' }}</td>
                 <td class="title-cell" :title="listing.title">{{ truncate(listing.title, 50) }}</td>
+                <td>{{ listing.searchTerm || '-' }}</td>
                 <td class="price-cell">{{ formatPrice(listing.price, listing.currency) }}</td>
                 <td class="price-cell">
                   <span v-if="listing.averageSoldPrice != null">
                     {{ formatPrice(listing.averageSoldPrice, listing.currency) }}
-                    <small>({{ listing.similarSoldCount }} sold)</small>
                   </span>
                   <span v-else>-</span>
                 </td>
+                <td class="number">{{ listing.similarSoldCount || '-' }}</td>
                 <td class="price-cell">
                   <span v-if="listing.potentialProfit != null"
                         :style="{ color: listing.potentialProfit >= 0 ? '#22c55e' : '#ef4444' }">
@@ -117,7 +133,7 @@
                   <span v-else>-</span>
                 </td>
                 <td>
-                  <span v-if="listing.estimatedDaysToSell != null">~{{ listing.estimatedDaysToSell }} days</span>
+                  <span v-if="listing.estimatedDaysToSell != null">{{ listing.estimatedDaysToSell }}d</span>
                   <span v-else>-</span>
                 </td>
                 <td>{{ listing.condition || '-' }}</td>
@@ -126,10 +142,21 @@
                 </td>
               </tr>
               <tr v-if="opportunities.length === 0">
-                <td colspan="8" class="empty">No active listings found</td>
+                <td colspan="10" class="empty">No active listings found</td>
               </tr>
             </tbody>
           </table>
+
+          <!-- Pagination -->
+          <div v-if="opportunityTotalPages > 1" class="pagination">
+            <button class="page-btn" :disabled="opportunityPage <= 1" @click="goToPage(opportunityPage - 1)">Prev</button>
+            <template v-for="p in opportunityPageRange" :key="p">
+              <span v-if="p === '...'" class="page-ellipsis">...</span>
+              <button v-else class="page-btn" :class="{ active: p === opportunityPage }" @click="goToPage(p)">{{ p }}</button>
+            </template>
+            <button class="page-btn" :disabled="opportunityPage >= opportunityTotalPages" @click="goToPage(opportunityPage + 1)">Next</button>
+            <span class="page-info">Page {{ opportunityPage }} of {{ opportunityTotalPages }}</span>
+          </div>
         </div>
 
         <!-- Operations View -->
@@ -279,6 +306,16 @@
               </tr>
             </tbody>
           </table>
+
+          <div v-if="historyTotalPages > 1" class="pagination">
+            <button class="page-btn" :disabled="historyPage <= 1" @click="goToHistoryPage(historyPage - 1)">Prev</button>
+            <template v-for="p in historyPageRange" :key="p">
+              <span v-if="p === '...'" class="page-ellipsis">...</span>
+              <button v-else class="page-btn" :class="{ active: p === historyPage }" @click="goToHistoryPage(p)">{{ p }}</button>
+            </template>
+            <button class="page-btn" :disabled="historyPage >= historyTotalPages" @click="goToHistoryPage(historyPage + 1)">Next</button>
+            <span class="page-info">Page {{ historyPage }} of {{ historyTotalPages }}</span>
+          </div>
         </div>
 
         <!-- Settings View -->
@@ -346,6 +383,38 @@
                   </label>
                   <input v-model.number="settings.scraping.defaultLookbackDays" type="number" placeholder="180" :disabled="!settings.scraping.limitLookbackEnabled">
                   <span class="hint">When disabled, uses days since last run</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Opportunities -->
+            <div class="settings-section">
+              <h3 class="section-header" @click="toggleSection('opportunities')">
+                <span class="collapse-icon">{{ collapsedSections.opportunities ? '▶' : '▼' }}</span>
+                Opportunities
+              </h3>
+              <div class="section-content" v-show="!collapsedSections.opportunities">
+                <div class="form-group">
+                  <label>Min Comparable Sales</label>
+                  <input v-model.number="settings.opportunities.minComps" type="number" min="0" max="20" step="1" placeholder="3">
+                  <span class="hint">Only show listings with at least this many comparable sold items (0 = show all)</span>
+                </div>
+                <div class="form-group">
+                  <label>Price Band Multiplier</label>
+                  <input v-model.number="settings.opportunities.priceBandMultiplier" type="number" min="0" max="10" step="0.5" placeholder="2.0">
+                  <span class="hint">Exclude comps outside 1/Nx to Nx of listed price (0 = no filtering)</span>
+                </div>
+                <div class="form-group">
+                  <label>Fee Percent</label>
+                  <input v-model.number="settings.opportunities.feePercent" type="number" min="0" max="30" step="0.25" placeholder="13.25">
+                  <span class="hint">eBay + PayPal fees deducted from profit (0 = raw profit)</span>
+                </div>
+                <div class="form-group">
+                  <label>
+                    <input type="checkbox" v-model="settings.opportunities.matchCondition">
+                    Match Condition
+                  </label>
+                  <span class="hint">Only compare against sold items with the same condition (New, Used, etc.)</span>
                 </div>
               </div>
             </div>

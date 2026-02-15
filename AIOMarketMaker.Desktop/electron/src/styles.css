@@ -500,6 +500,125 @@ body {
   font-weight: normal;
 }
 
+/* Sortable column headers */
+.data-table th.sortable {
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.data-table th.sortable:hover {
+  background: #3a3a3a;
+  color: #e0e0e0;
+}
+
+/* Job filter dropdown */
+.filter-dropdown-wrapper {
+  position: relative;
+  margin-bottom: 16px;
+}
+
+.filter-dropdown-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.dropdown-caret {
+  font-size: 10px;
+  color: #808080;
+}
+
+.dropdown-backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 49;
+}
+
+.dropdown-menu {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  margin-top: 4px;
+  background: #2d2d2d;
+  border: 1px solid #4c4c4c;
+  border-radius: 6px;
+  padding: 6px 0;
+  min-width: 200px;
+  z-index: 50;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+.dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  font-size: 13px;
+  color: #e0e0e0;
+  cursor: pointer;
+  user-select: none;
+}
+
+.dropdown-item:hover {
+  background: #3c3c3c;
+}
+
+.dropdown-item input[type="checkbox"] {
+  margin: 0;
+  pointer-events: none;
+}
+
+/* Pagination */
+.pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 16px;
+  padding: 12px 0;
+}
+
+.page-btn {
+  background: #3c3c3c;
+  border: none;
+  color: #b0b0b0;
+  padding: 6px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 13px;
+  transition: background 0.2s;
+}
+
+.page-btn:hover:not(:disabled) {
+  background: #4c4c4c;
+  color: #e0e0e0;
+}
+
+.page-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.page-btn.active {
+  background: #0e639c;
+  color: #fff;
+}
+
+.page-ellipsis {
+  color: #808080;
+  padding: 0 4px;
+}
+
+.page-info {
+  color: #808080;
+  font-size: 13px;
+  margin-left: 12px;
+}
+
 /* Opportunities */
 .count-badge {
   background: #3c3c3c;
