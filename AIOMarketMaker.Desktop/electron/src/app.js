@@ -8,7 +8,18 @@ createApp({
       configError: null,
       jobs: [],
       opportunities: [],
+      opportunityPage: 1,
+      opportunityPageSize: 50,
+      opportunitySortBy: 'potentialProfit',
+      opportunitySortDir: 'desc',
+      opportunityJobFilter: [],
+      opportunityTotalCount: 0,
+      opportunityTotalPages: 0,
       history: [],
+      historyPage: 1,
+      historyPageSize: 50,
+      historyTotalCount: 0,
+      historyTotalPages: 0,
       expandedRuns: {},
       runIssues: {},
       loading: false,
@@ -36,6 +47,12 @@ createApp({
           limitActiveEnabled: true,
           limitLookbackEnabled: false
         },
+        opportunities: {
+          minComps: 3,
+          priceBandMultiplier: 2.0,
+          feePercent: 13.25,
+          matchCondition: true
+        },
         storage: { connectionString: '' },
         openAi: { apiKey: '', model: '' },
         pinecone: { apiKey: '', indexName: '' }
@@ -43,20 +60,69 @@ createApp({
       collapsedSections: {
         api: true,
         scraping: true,
+        opportunities: true,
         storage: true,
         openAi: true,
         pinecone: true
       },
-      savingSettings: false
+      savingSettings: false,
+      showJobDropdown: false
     };
   },
 
   computed: {
+    jobFilterLabel() {
+      if (this.opportunityJobFilter.length === 0) {
+        return 'Filter: All';
+      }
+      if (this.opportunityJobFilter.length === 1) {
+        const job = this.jobs.find(j => j.id === this.opportunityJobFilter[0]);
+        return `Filter: ${job ? job.searchTerm : 'Unknown'}`;
+      }
+      return `Filter: ${this.opportunityJobFilter.length} jobs`;
+    },
+
     apiTarget() {
       if (!this.config?.marketMakerApi?.baseUrl) return 'Not configured';
       const url = this.config.marketMakerApi.baseUrl;
       if (url.includes('localhost') || url.includes('127.0.0.1')) return 'Local';
       return 'Production';
+    },
+
+    opportunityPageRange() {
+      const total = this.opportunityTotalPages;
+      const current = this.opportunityPage;
+      if (total <= 7) {
+        return Array.from({ length: total }, (_, i) => i + 1);
+      }
+      const pages = [1];
+      const start = Math.max(2, current - 1);
+      const end = Math.min(total - 1, current + 1);
+      if (start > 2) { pages.push('...'); }
+      for (let i = start; i <= end; i++) {
+        pages.push(i);
+      }
+      if (end < total - 1) { pages.push('...'); }
+      pages.push(total);
+      return pages;
+    },
+
+    historyPageRange() {
+      const total = this.historyTotalPages;
+      const current = this.historyPage;
+      if (total <= 7) {
+        return Array.from({ length: total }, (_, i) => i + 1);
+      }
+      const pages = [1];
+      const start = Math.max(2, current - 1);
+      const end = Math.min(total - 1, current + 1);
+      if (start > 2) { pages.push('...'); }
+      for (let i = start; i <= end; i++) {
+        pages.push(i);
+      }
+      if (end < total - 1) { pages.push('...'); }
+      pages.push(total);
+      return pages;
     },
 
     activeRuns() {
@@ -221,20 +287,101 @@ createApp({
 
     async loadHistory() {
       try {
-        const data = await this.apiCall('/history');
-        this.history = this.toCamelCase(data);
+        const params = new URLSearchParams({
+          page: this.historyPage,
+          pageSize: this.historyPageSize
+        });
+        const data = await this.apiCall(`/history?${params}`);
+        const result = this.toCamelCase(data);
+        this.history = result.items || [];
+        this.historyTotalCount = result.totalCount || 0;
+        this.historyTotalPages = result.totalPages || 0;
       } catch (err) {
         this.showToast(`Failed to load history: ${err.message}`, 'error');
       }
     },
 
+    goToHistoryPage(page) {
+      if (page < 1 || page > this.historyTotalPages) { return; }
+      this.historyPage = page;
+      this.loadHistory();
+    },
+
     async loadOpportunities() {
       try {
-        const data = await this.apiCall('/listings/active');
-        this.opportunities = this.toCamelCase(data);
+        const opp = this.settings?.opportunities || this.config?.opportunities || {};
+        const params = new URLSearchParams({
+          page: this.opportunityPage,
+          pageSize: this.opportunityPageSize,
+          sortBy: this.opportunitySortBy,
+          sortDir: this.opportunitySortDir
+        });
+        if (this.opportunityJobFilter.length > 0) {
+          params.set('jobIds', this.opportunityJobFilter.join(','));
+        }
+        if (opp.minComps > 0) {
+          params.set('minComps', opp.minComps);
+        }
+        if (opp.priceBandMultiplier > 0) {
+          params.set('priceBand', opp.priceBandMultiplier);
+        }
+        if (opp.feePercent > 0) {
+          params.set('feePercent', opp.feePercent);
+        }
+        if (opp.matchCondition) {
+          params.set('matchCondition', 'true');
+        }
+        const data = await this.apiCall(`/listings/active?${params.toString()}`);
+        const result = this.toCamelCase(data);
+        this.opportunities = result.items;
+        this.opportunityTotalCount = result.totalCount;
+        this.opportunityTotalPages = result.totalPages;
       } catch (err) {
         this.showToast(`Failed to load opportunities: ${err.message}`, 'error');
       }
+    },
+
+    sortOpportunities(column) {
+      if (this.opportunitySortBy === column) {
+        this.opportunitySortDir = this.opportunitySortDir === 'asc' ? 'desc' : 'asc';
+      } else {
+        this.opportunitySortBy = column;
+        this.opportunitySortDir = 'desc';
+      }
+      this.opportunityPage = 1;
+      this.loadOpportunities();
+    },
+
+    sortIndicator(column) {
+      if (this.opportunitySortBy !== column) { return ''; }
+      return this.opportunitySortDir === 'asc' ? ' \u25B2' : ' \u25BC';
+    },
+
+    isJobFiltered(jobId) {
+      return this.opportunityJobFilter.includes(jobId);
+    },
+
+    toggleJobFilter(jobId) {
+      const idx = this.opportunityJobFilter.indexOf(jobId);
+      if (idx >= 0) {
+        this.opportunityJobFilter.splice(idx, 1);
+      } else {
+        this.opportunityJobFilter.push(jobId);
+      }
+      this.opportunityPage = 1;
+      this.loadOpportunities();
+    },
+
+    clearJobFilter() {
+      this.opportunityJobFilter = [];
+      this.opportunityPage = 1;
+      this.loadOpportunities();
+    },
+
+    goToPage(page) {
+      if (page < 1 || page > this.opportunityTotalPages) { return; }
+      this.opportunityPage = page;
+      this.loadOpportunities();
     },
 
     getFirstImage(imagesJson) {
