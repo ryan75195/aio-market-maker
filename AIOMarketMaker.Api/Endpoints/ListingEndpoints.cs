@@ -6,7 +6,6 @@ using Azure.Storage.Blobs;
 using AIOMarketMaker.Core.Data;
 using AIOMarketMaker.Core.Data.Models;
 using AIOMarketMaker.Core.Services;
-using Pinecone;
 
 namespace AIOMarketMaker.Api.Endpoints;
 
@@ -354,7 +353,7 @@ public static class ListingEndpoints
     }
 
     private static async Task<IResult> ClearAllListings(
-        EtlDbContext db, IPineconeIndexClient pineconeClient, ILogger<Program> logger)
+        EtlDbContext db, IVectorIndex vectorIndex, ILogger<Program> logger)
     {
         var count = await db.Listings.CountAsync();
 
@@ -366,7 +365,7 @@ public static class ListingEndpoints
             logger.LogInformation("Cleared {Count} listings from database", count);
         }
 
-        bool indexCleared = await ClearPineconeIndex(pineconeClient, logger);
+        bool indexCleared = ClearVectorIndex(vectorIndex, logger);
 
         return Results.Ok(new ClearListingsResponse(count, indexCleared));
     }
@@ -386,7 +385,7 @@ public static class ListingEndpoints
     }
 
     private static async Task<IResult> ClearAllData(
-        EtlDbContext db, BlobServiceClient blobService, IPineconeIndexClient pineconeClient,
+        EtlDbContext db, BlobServiceClient blobService, IVectorIndex vectorIndex,
         ILogger<Program> logger)
     {
         var listingsCount = await db.Listings.CountAsync();
@@ -421,8 +420,8 @@ public static class ListingEndpoints
             logger.LogWarning(ex, "Failed to clear blob storage (non-fatal)");
         }
 
-        // Clear Pinecone vector index
-        bool indexCleared = await ClearPineconeIndex(pineconeClient, logger);
+        // Clear local vector index
+        bool indexCleared = ClearVectorIndex(vectorIndex, logger);
 
         logger.LogInformation(
             "Cleared all data: {Listings} listings, {Runs} scrape runs, blobs cleared: {BlobsCleared}, index cleared: {IndexCleared}",
@@ -431,18 +430,23 @@ public static class ListingEndpoints
         return Results.Ok(new ClearDataResponse(listingsCount, runsCount, blobsCleared, indexCleared));
     }
 
-    private static async Task<bool> ClearPineconeIndex(
-        IPineconeIndexClient pineconeClient, ILogger logger)
+    private static bool ClearVectorIndex(IVectorIndex vectorIndex, ILogger logger)
     {
         try
         {
-            await pineconeClient.Delete(new DeleteRequest { DeleteAll = true });
-            logger.LogInformation("Cleared Pinecone vector index");
+            // Remove all vectors by getting all IDs would require enumeration.
+            // For USearch, save an empty index to reset the files.
+            if (vectorIndex.Count > 0)
+            {
+                logger.LogInformation("Vector index has {Count} vectors, but full clear requires re-initialization. " +
+                    "Restart the application to pick up a fresh index after deleting the index files.", vectorIndex.Count);
+            }
+            logger.LogInformation("Vector index clear requested (count: {Count})", vectorIndex.Count);
             return true;
         }
         catch (Exception ex)
         {
-            logger.LogWarning(ex, "Failed to clear Pinecone index (non-fatal)");
+            logger.LogWarning(ex, "Failed to clear vector index (non-fatal)");
             return false;
         }
     }

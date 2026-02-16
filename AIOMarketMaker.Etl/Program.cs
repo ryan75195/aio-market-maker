@@ -150,31 +150,63 @@ var host = new HostBuilder()
         services.AddSingleton(clusteringConfig);
         services.AddSingleton<IClusteringService, ClusteringService>();
 
-        // Semantic search service (Pinecone - required)
-        var pineconeApiKey = configuration.GetValue<string>("Pinecone:ApiKey")
-            ?? configuration.GetValue<string>("Values:Pinecone:ApiKey")
-            ?? throw new InvalidOperationException("Pinecone:ApiKey is required. Add it to local.settings.json.");
-        var pineconeConfig = new PineconeConfig(
-            ApiKey: pineconeApiKey,
-            IndexName: configuration.GetValue<string>("Pinecone:IndexName")
-                ?? configuration.GetValue<string>("Values:Pinecone:IndexName")
-                ?? "arbitrage",
-            TopK: configuration.GetValue<int?>("Pinecone:TopK")
-                ?? configuration.GetValue<int?>("Values:Pinecone:TopK")
+        // Vector index (local USearch)
+        var vectorIndexConfig = new VectorIndexConfig(
+            IndexPath: configuration.GetValue<string>("VectorIndex:IndexPath")
+                ?? configuration.GetValue<string>("Values:VectorIndex:IndexPath")
+                ?? "./data/vectors.usearch",
+            IdMapPath: configuration.GetValue<string>("VectorIndex:IdMapPath")
+                ?? configuration.GetValue<string>("Values:VectorIndex:IdMapPath")
+                ?? "./data/vectors-idmap.json",
+            TopK: configuration.GetValue<int?>("VectorIndex:TopK")
+                ?? configuration.GetValue<int?>("Values:VectorIndex:TopK")
                 ?? 30,
-            SimilarityThreshold: configuration.GetValue<float?>("Pinecone:SimilarityThreshold")
-                ?? configuration.GetValue<float?>("Values:Pinecone:SimilarityThreshold")
-                ?? 0.80f);
-        services.AddSingleton(pineconeConfig);
-        services.AddSingleton<IPineconeIndexClient>(sp =>
+            SimilarityThreshold: configuration.GetValue<float?>("VectorIndex:SimilarityThreshold")
+                ?? configuration.GetValue<float?>("Values:VectorIndex:SimilarityThreshold")
+                ?? 0.80f,
+            Dimensions: configuration.GetValue<int?>("VectorIndex:Dimensions")
+                ?? configuration.GetValue<int?>("Values:VectorIndex:Dimensions")
+                ?? 3072,
+            Connectivity: configuration.GetValue<int?>("VectorIndex:Connectivity")
+                ?? configuration.GetValue<int?>("Values:VectorIndex:Connectivity")
+                ?? 16,
+            ExpansionAdd: configuration.GetValue<int?>("VectorIndex:ExpansionAdd")
+                ?? configuration.GetValue<int?>("Values:VectorIndex:ExpansionAdd")
+                ?? 128,
+            ExpansionSearch: configuration.GetValue<int?>("VectorIndex:ExpansionSearch")
+                ?? configuration.GetValue<int?>("Values:VectorIndex:ExpansionSearch")
+                ?? 64);
+        services.AddSingleton(vectorIndexConfig);
+        services.AddSingleton<IVectorIndex>(sp =>
         {
-            var config = sp.GetRequiredService<PineconeConfig>();
-            return new PineconeIndexClientWrapper(config.ApiKey, config.IndexName);
+            var config = sp.GetRequiredService<VectorIndexConfig>();
+            var index = new USearchVectorIndex(config);
+            if (File.Exists(config.IndexPath) && File.Exists(config.IdMapPath))
+            {
+                index.Load();
+                sp.GetRequiredService<ILogger<USearchVectorIndex>>()
+                    .LogInformation("Loaded vector index with {Count} vectors from {Path}",
+                        index.Count, config.IndexPath);
+            }
+            return index;
         });
         services.AddSingleton<ISemanticSearchService, SemanticSearchService>();
 
         // Listing indexing service
         services.AddSingleton<IListingIndexingService, ListingIndexingService>();
+
+        // TEMPORARY: Keep IPineconeIndexClient for --validate and --k-analysis (removed in Task 6)
+        var pineconeApiKey = configuration.GetValue<string>("Pinecone:ApiKey")
+            ?? configuration.GetValue<string>("Values:Pinecone:ApiKey")
+            ?? "";
+        if (!string.IsNullOrEmpty(pineconeApiKey))
+        {
+            var pineconeIndexName = configuration.GetValue<string>("Pinecone:IndexName")
+                ?? configuration.GetValue<string>("Values:Pinecone:IndexName")
+                ?? "arbitrage";
+            services.AddSingleton<IPineconeIndexClient>(sp =>
+                new PineconeIndexClientWrapper(pineconeApiKey, pineconeIndexName));
+        }
 
         // Pricing analysis service
         services.AddSingleton<IPricingAnalysisService, PricingAnalysisService>();
