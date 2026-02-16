@@ -27,7 +27,7 @@ createApp({
       showJobsPanel: false,
       jobSearch: '',
       jobPage: 1,
-      jobSortBy: 'lastRunUtc',
+      jobSortBy: 'id',
       jobSortDir: 'desc',
       windowHeight: window.innerHeight,
       loading: false,
