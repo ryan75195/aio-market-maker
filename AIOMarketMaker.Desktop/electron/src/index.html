@@ -205,6 +205,11 @@
 
             <!-- Edit Jobs View -->
             <template v-if="showJobsPanel">
+              <div class="header-actions" style="margin-bottom: 15px;">
+                <button class="btn primary small" @click="showJobForm = true">+ New Job</button>
+                <span class="count-badge">{{ jobs.length }} jobs</span>
+              </div>
+
               <table class="data-table">
                 <thead>
                   <tr>
@@ -215,7 +220,7 @@
                   </tr>
                 </thead>
                 <tbody>
-                  <tr v-for="job in jobs" :key="job.id">
+                  <tr v-for="job in paginatedJobs" :key="job.id">
                     <td>{{ job.searchTerm }}</td>
                     <td>{{ job.filterInstructions || '-' }}</td>
                     <td>
@@ -232,14 +237,17 @@
                     <td colspan="4" class="empty">No jobs configured</td>
                   </tr>
                 </tbody>
-                <tfoot>
-                  <tr>
-                    <td colspan="4">
-                      <button class="btn small primary" @click="showJobForm = true">+ New Job</button>
-                    </td>
-                  </tr>
-                </tfoot>
               </table>
+
+              <div v-if="jobTotalPages > 1" class="pagination">
+                <button class="page-btn" :disabled="jobPage <= 1" @click="jobPage--">Prev</button>
+                <template v-for="p in jobPageRange" :key="p">
+                  <span v-if="p === '...'" class="page-ellipsis">...</span>
+                  <button v-else class="page-btn" :class="{ active: p === jobPage }" @click="jobPage = p">{{ p }}</button>
+                </template>
+                <button class="page-btn" :disabled="jobPage >= jobTotalPages" @click="jobPage++">Next</button>
+                <span class="page-info">Page {{ jobPage }} of {{ jobTotalPages }}</span>
+              </div>
             </template>
 
             <!-- Batch list content (hidden when editing jobs) -->
