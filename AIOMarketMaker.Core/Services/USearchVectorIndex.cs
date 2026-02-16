@@ -7,7 +7,8 @@ namespace AIOMarketMaker.Core.Services;
 public class USearchVectorIndex : IVectorIndex, IDisposable
 {
     private readonly VectorIndexConfig _config;
-    private readonly object _lock = new();
+    private readonly ReaderWriterLockSlim _rwLock = new();
+    private bool _disposed;
     private USearchIndex _index;
     private ConcurrentDictionary<string, ulong> _idToKey = new();
     private ConcurrentDictionary<ulong, string> _keyToId = new();
@@ -23,7 +24,8 @@ public class USearchVectorIndex : IVectorIndex, IDisposable
 
     public void Upsert(string id, float[] vector)
     {
-        lock (_lock)
+        _rwLock.EnterWriteLock();
+        try
         {
             if (_idToKey.TryGetValue(id, out var existingKey))
             {
@@ -38,6 +40,10 @@ public class USearchVectorIndex : IVectorIndex, IDisposable
                 _index.Add(key, vector);
             }
         }
+        finally
+        {
+            _rwLock.ExitWriteLock();
+        }
     }
 
     public void UpsertBatch(IEnumerable<(string Id, float[] Vector)> items)
@@ -50,47 +56,45 @@ public class USearchVectorIndex : IVectorIndex, IDisposable
 
     public IEnumerable<VectorSearchHit> Search(float[] queryVector, int topK)
     {
-        if (_idToKey.IsEmpty)
+        _rwLock.EnterReadLock();
+        try
         {
-            return Enumerable.Empty<VectorSearchHit>();
+            return SearchCore(queryVector, topK);
         }
-
-        var effectiveTopK = Math.Min(topK, (int)_idToKey.Count);
-
-        int matchCount = _index.Search(queryVector, effectiveTopK, out var keys, out var distances);
-
-        var results = new List<VectorSearchHit>(matchCount);
-        for (var i = 0; i < matchCount; i++)
+        finally
         {
-            if (_keyToId.TryGetValue(keys[i], out var id))
-            {
-                var similarity = 1f - distances[i];
-                results.Add(new VectorSearchHit(id, similarity));
-            }
+            _rwLock.ExitReadLock();
         }
-
-        return results;
     }
 
     public IEnumerable<VectorSearchHit> SearchById(string id, int topK)
     {
-        if (!_idToKey.TryGetValue(id, out var key))
+        _rwLock.EnterReadLock();
+        try
         {
-            return Enumerable.Empty<VectorSearchHit>();
-        }
+            if (!_idToKey.TryGetValue(id, out var key))
+            {
+                return Enumerable.Empty<VectorSearchHit>();
+            }
 
-        var found = _index.Get(key, out float[] vector);
-        if (found == 0)
+            var found = _index.Get(key, out float[] vector);
+            if (found == 0)
+            {
+                return Enumerable.Empty<VectorSearchHit>();
+            }
+
+            return SearchCore(vector, topK);
+        }
+        finally
         {
-            return Enumerable.Empty<VectorSearchHit>();
+            _rwLock.ExitReadLock();
         }
-
-        return Search(vector, topK);
     }
 
     public void Remove(IEnumerable<string> ids)
     {
-        lock (_lock)
+        _rwLock.EnterWriteLock();
+        try
         {
             foreach (var id in ids)
             {
@@ -101,16 +105,29 @@ public class USearchVectorIndex : IVectorIndex, IDisposable
                 }
             }
         }
+        finally
+        {
+            _rwLock.ExitWriteLock();
+        }
     }
 
     public bool Contains(string id)
     {
-        return _idToKey.ContainsKey(id);
+        _rwLock.EnterReadLock();
+        try
+        {
+            return _idToKey.ContainsKey(id);
+        }
+        finally
+        {
+            _rwLock.ExitReadLock();
+        }
     }
 
     public void Save()
     {
-        lock (_lock)
+        _rwLock.EnterWriteLock();
+        try
         {
             var indexDir = Path.GetDirectoryName(_config.IndexPath);
             if (!string.IsNullOrEmpty(indexDir))
@@ -124,6 +141,10 @@ public class USearchVectorIndex : IVectorIndex, IDisposable
             var json = JsonSerializer.Serialize(idMap);
             File.WriteAllText(_config.IdMapPath, json);
         }
+        finally
+        {
+            _rwLock.ExitWriteLock();
+        }
     }
 
     public void Load()
@@ -133,7 +154,8 @@ public class USearchVectorIndex : IVectorIndex, IDisposable
             return;
         }
 
-        lock (_lock)
+        _rwLock.EnterWriteLock();
+        try
         {
             _index.Dispose();
             _index = new USearchIndex(_config.IndexPath);
@@ -157,11 +179,44 @@ public class USearchVectorIndex : IVectorIndex, IDisposable
 
             _nextKey = maxKey;
         }
+        finally
+        {
+            _rwLock.ExitWriteLock();
+        }
     }
 
     public void Dispose()
     {
-        _index.Dispose();
+        if (!_disposed)
+        {
+            _index.Dispose();
+            _rwLock.Dispose();
+            _disposed = true;
+        }
+    }
+
+    private IEnumerable<VectorSearchHit> SearchCore(float[] queryVector, int topK)
+    {
+        if (_idToKey.IsEmpty)
+        {
+            return Enumerable.Empty<VectorSearchHit>();
+        }
+
+        var effectiveTopK = Math.Min(topK, (int)_idToKey.Count);
+
+        int matchCount = _index.Search(queryVector, effectiveTopK, out var keys, out var distances);
+
+        var results = new List<VectorSearchHit>(matchCount);
+        for (var i = 0; i < matchCount; i++)
+        {
+            if (_keyToId.TryGetValue(keys[i], out var id))
+            {
+                var similarity = 1f - distances[i];
+                results.Add(new VectorSearchHit(id, similarity));
+            }
+        }
+
+        return results;
     }
 
     private USearchIndex CreateNewIndex()
