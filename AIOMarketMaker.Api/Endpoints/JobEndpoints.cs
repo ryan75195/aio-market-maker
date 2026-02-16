@@ -219,7 +219,7 @@ public static class JobEndpoints
     }
 
     private static async Task<IResult> SetJobCategories(
-        int id, IEnumerable<int> categoryIds, EtlDbContext db)
+        int id, int[] categoryIds, EtlDbContext db)
     {
         var job = await db.ScrapeJobs.FindAsync(id);
         if (job == null)

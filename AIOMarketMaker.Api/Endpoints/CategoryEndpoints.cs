@@ -24,11 +24,11 @@ public static class CategoryEndpoints
     private static async Task<IResult> GetCategories(EtlDbContext db)
     {
         var categories = await db.Categories
+            .OrderBy(c => c.Name)
             .Select(c => new CategoryResponse(
                 c.Id, c.Name, c.IsEnabled,
                 c.JobCategories.Count,
                 c.CreatedUtc))
-            .OrderBy(c => c.Name)
             .ToListAsync();
 
         return Results.Ok(categories);
