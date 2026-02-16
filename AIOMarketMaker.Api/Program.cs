@@ -89,19 +89,29 @@ var clusteringConfig = new ClusteringConfig(
 builder.Services.AddSingleton(clusteringConfig);
 builder.Services.AddSingleton<IClusteringService, ClusteringService>();
 
-// Semantic search service (Pinecone)
-var pineconeApiKey = configuration.GetValue<string>("Pinecone:ApiKey")
-    ?? throw new InvalidOperationException("Pinecone:ApiKey is required.");
-var pineconeConfig = new PineconeConfig(
-    ApiKey: pineconeApiKey,
-    IndexName: configuration.GetValue<string>("Pinecone:IndexName") ?? "arbitrage",
-    TopK: configuration.GetValue<int?>("Pinecone:TopK") ?? 30,
-    SimilarityThreshold: configuration.GetValue<float?>("Pinecone:SimilarityThreshold") ?? 0.80f);
-builder.Services.AddSingleton(pineconeConfig);
-builder.Services.AddSingleton<IPineconeIndexClient>(sp =>
+// Vector index (local USearch)
+var vectorIndexConfig = new VectorIndexConfig(
+    IndexPath: configuration.GetValue<string>("VectorIndex:IndexPath") ?? "./data/vectors.usearch",
+    IdMapPath: configuration.GetValue<string>("VectorIndex:IdMapPath") ?? "./data/vectors-idmap.json",
+    TopK: configuration.GetValue<int>("VectorIndex:TopK", 30),
+    SimilarityThreshold: configuration.GetValue<float>("VectorIndex:SimilarityThreshold", 0.80f),
+    Dimensions: configuration.GetValue<int>("VectorIndex:Dimensions", 3072),
+    Connectivity: configuration.GetValue<int>("VectorIndex:Connectivity", 16),
+    ExpansionAdd: configuration.GetValue<int>("VectorIndex:ExpansionAdd", 128),
+    ExpansionSearch: configuration.GetValue<int>("VectorIndex:ExpansionSearch", 64));
+builder.Services.AddSingleton(vectorIndexConfig);
+builder.Services.AddSingleton<IVectorIndex>(sp =>
 {
-    var config = sp.GetRequiredService<PineconeConfig>();
-    return new PineconeIndexClientWrapper(config.ApiKey, config.IndexName);
+    var config = sp.GetRequiredService<VectorIndexConfig>();
+    var index = new USearchVectorIndex(config);
+    if (File.Exists(config.IndexPath) && File.Exists(config.IdMapPath))
+    {
+        index.Load();
+        var logger = sp.GetRequiredService<ILogger<USearchVectorIndex>>();
+        logger.LogInformation("Loaded vector index with {Count} vectors from {Path}",
+            index.Count, config.IndexPath);
+    }
+    return index;
 });
 builder.Services.AddSingleton<ISemanticSearchService, SemanticSearchService>();
 
