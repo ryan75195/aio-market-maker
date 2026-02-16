@@ -63,7 +63,7 @@ public static class ListingEndpoints
         int minComps = 0,
         decimal priceBand = 0,
         decimal feePercent = 0,
-        bool matchCondition = false)
+        bool matchCondition = true)
     {
         page = Math.Max(1, page);
         pageSize = Math.Clamp(pageSize, 1, 200);
@@ -253,6 +253,7 @@ public static class ListingEndpoints
             {priceBandFilter}
             GROUP BY active.Id, active.Price, active.ShippingCost
             HAVING COUNT(*) >= {mc}
+                AND {profitExpr} > 0
         )";
     }
 
