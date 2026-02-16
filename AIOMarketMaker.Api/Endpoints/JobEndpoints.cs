@@ -27,17 +27,21 @@ public static class JobEndpoints
 
     private static async Task<IResult> GetJobs(EtlDbContext db)
     {
+        var lastRunByJob = await db.ScrapeRuns
+            .GroupBy(r => r.JobId)
+            .Select(g => new { JobId = g.Key, LastRun = g.Max(r => r.StartedUtc) })
+            .ToDictionaryAsync(x => x.JobId, x => x.LastRun);
+
         var jobs = await db.ScrapeJobs
-            .Select(j => new JobResponse(
-                j.Id, j.SearchTerm, j.FilterInstructions,
-                j.IsEnabled,
-                db.ScrapeRuns
-                    .Where(r => r.JobId == j.Id)
-                    .Max(r => (DateTime?)r.StartedUtc),
-                j.CreatedUtc))
+            .Select(j => new { j.Id, j.SearchTerm, j.FilterInstructions, j.IsEnabled, j.CreatedUtc })
             .ToListAsync();
 
-        return Results.Ok(jobs);
+        var result = jobs.Select(j => new JobResponse(
+            j.Id, j.SearchTerm, j.FilterInstructions, j.IsEnabled,
+            lastRunByJob.GetValueOrDefault(j.Id),
+            j.CreatedUtc));
+
+        return Results.Ok(result);
     }
 
     private static async Task<IResult> GetJob(int id, EtlDbContext db)
