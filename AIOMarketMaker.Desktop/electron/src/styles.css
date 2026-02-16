@@ -100,6 +100,29 @@ body {
   font-weight: 500;
 }
 
+.header-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.jobs-panel {
+  margin-bottom: 20px;
+  padding: 15px;
+  background: #2d2d2d;
+  border-radius: 8px;
+  border: 1px solid #3c3c3c;
+}
+
+.jobs-panel .data-table {
+  margin-bottom: 0;
+}
+
+.jobs-panel tfoot td {
+  padding-top: 10px;
+  border-top: 1px solid #3c3c3c;
+}
+
 /* Table */
 .data-table {
   width: 100%;
