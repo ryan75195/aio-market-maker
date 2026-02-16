@@ -214,10 +214,10 @@
               <table class="data-table">
                 <thead>
                   <tr>
-                    <th>Search Term</th>
+                    <th class="sortable" @click="sortJobs('searchTerm')">Search Term{{ jobSortIndicator('searchTerm') }}</th>
                     <th>Filter</th>
-                    <th>Last Run</th>
-                    <th>Enabled</th>
+                    <th class="sortable" @click="sortJobs('lastRunUtc')">Last Run{{ jobSortIndicator('lastRunUtc') }}</th>
+                    <th class="sortable" @click="sortJobs('isEnabled')">Enabled{{ jobSortIndicator('isEnabled') }}</th>
                     <th>Actions</th>
                   </tr>
                 </thead>
