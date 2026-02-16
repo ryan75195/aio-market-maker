@@ -396,3 +396,7 @@ logs/
 
 # ONNX model files (too large for git)
 /models/
+
+# Local vector index data (2.5 GB+)
+**/data/vectors.usearch
+**/data/vectors-idmap.json
