@@ -23,7 +23,7 @@ public static class ScrapeEndpoints
         ScrapingConfig scrapingConfig,
         ILogger<Program> logger)
     {
-        var jobs = await db.ScrapeJobs.Where(j => j.IsEnabled)
+        var jobs = await db.ScrapeJobs.WhereEffectivelyEnabled()
             .Select(j => new ScrapeJobConfig(j.Id, j.SearchTerm))
             .ToListAsync();
 

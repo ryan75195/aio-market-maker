@@ -56,7 +56,7 @@ public class NightlyScrapeService : BackgroundService
         var processor = scope.ServiceProvider.GetRequiredService<IScrapeJobProcessor>();
         var db = scope.ServiceProvider.GetRequiredService<EtlDbContext>();
 
-        var jobs = await db.ScrapeJobs.Where(j => j.IsEnabled)
+        var jobs = await db.ScrapeJobs.WhereEffectivelyEnabled()
             .Select(j => new ScrapeJobConfig(j.Id, j.SearchTerm))
             .ToListAsync(ct);
 
