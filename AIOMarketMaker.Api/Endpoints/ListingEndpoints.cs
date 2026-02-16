@@ -434,14 +434,10 @@ public static class ListingEndpoints
     {
         try
         {
-            // Remove all vectors by getting all IDs would require enumeration.
-            // For USearch, save an empty index to reset the files.
-            if (vectorIndex.Count > 0)
-            {
-                logger.LogInformation("Vector index has {Count} vectors, but full clear requires re-initialization. " +
-                    "Restart the application to pick up a fresh index after deleting the index files.", vectorIndex.Count);
-            }
-            logger.LogInformation("Vector index clear requested (count: {Count})", vectorIndex.Count);
+            var count = vectorIndex.Count;
+            vectorIndex.Clear();
+            vectorIndex.Save();
+            logger.LogInformation("Cleared {Count} vectors from local index", count);
             return true;
         }
         catch (Exception ex)
