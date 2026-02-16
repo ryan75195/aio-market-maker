@@ -3,7 +3,7 @@ const { createApp } = Vue;
 createApp({
   data() {
     return {
-      currentView: 'jobs',
+      currentView: 'overview',
       config: null,
       configError: null,
       jobs: [],
@@ -66,7 +66,22 @@ createApp({
         pinecone: true
       },
       savingSettings: false,
-      showJobDropdown: false
+      showJobDropdown: false,
+      overviewData: {
+        totalListings: 0,
+        activeListings: 0,
+        soldListings: 0,
+        endedListings: 0,
+        opportunities: 0,
+        aggregateProfit: 0,
+        lastScrape: null,
+        cumulativeGrowth: [],
+        listingsByJob: [],
+        profitDistribution: { range0to25: 0, range25to50: 0, range50to100: 0, range100plus: 0 },
+        topOpportunities: [],
+        recentRuns: []
+      },
+      overviewCharts: {}
     };
   },
 
@@ -180,6 +195,7 @@ createApp({
     await this.loadConfig();
     if (!this.configError) {
       await this.loadJobs();
+      await this.loadOverview();
     }
     this.startAutoRefresh();
   },
@@ -204,6 +220,171 @@ createApp({
         this.configError = err.message;
         this.showToast('Failed to load config', 'error');
       }
+    },
+
+    async loadOverview() {
+      try {
+        const opp = this.settings?.opportunities || {};
+        const params = new URLSearchParams();
+        if (opp.minComps > 0) {
+          params.set('minComps', opp.minComps);
+        }
+        if (opp.feePercent > 0) {
+          params.set('feePercent', opp.feePercent);
+        }
+        if (opp.matchCondition) {
+          params.set('matchCondition', 'true');
+        }
+        const data = await this.apiCall(`/overview?${params.toString()}`);
+        this.overviewData = this.toCamelCase(data);
+        this.$nextTick(() => this.renderCharts());
+      } catch (err) {
+        this.showToast(`Failed to load overview: ${err.message}`, 'error');
+      }
+    },
+
+    renderCharts() {
+      this.renderCumulativeGrowthChart();
+      this.renderListingsByJobChart();
+      this.renderProfitDistributionChart();
+    },
+
+    renderCumulativeGrowthChart() {
+      const canvas = document.getElementById('cumulativeGrowthChart');
+      if (!canvas) { return; }
+
+      if (this.overviewCharts.cumulativeGrowth) {
+        this.overviewCharts.cumulativeGrowth.destroy();
+      }
+
+      const data = this.overviewData.cumulativeGrowth || [];
+      this.overviewCharts.cumulativeGrowth = new Chart(canvas, {
+        type: 'line',
+        data: {
+          labels: data.map(d => d.date),
+          datasets: [{
+            label: 'Total Listings',
+            data: data.map(d => d.cumulative),
+            borderColor: '#4a9eff',
+            backgroundColor: 'rgba(74, 158, 255, 0.1)',
+            fill: true,
+            tension: 0.3,
+            pointRadius: data.length > 30 ? 0 : 3
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false }
+          },
+          scales: {
+            x: {
+              ticks: { color: '#808080', maxTicksLimit: 10 },
+              grid: { color: '#3c3c3c' }
+            },
+            y: {
+              ticks: { color: '#808080' },
+              grid: { color: '#3c3c3c' },
+              beginAtZero: true
+            }
+          }
+        }
+      });
+    },
+
+    renderListingsByJobChart() {
+      const canvas = document.getElementById('listingsByJobChart');
+      if (!canvas) { return; }
+
+      if (this.overviewCharts.listingsByJob) {
+        this.overviewCharts.listingsByJob.destroy();
+      }
+
+      const data = this.overviewData.listingsByJob || [];
+      const colors = ['#4a9eff', '#22c55e', '#f59e0b', '#ef4444', '#a855f7', '#06b6d4', '#ec4899', '#84cc16'];
+      this.overviewCharts.listingsByJob = new Chart(canvas, {
+        type: 'bar',
+        data: {
+          labels: data.map(d => d.searchTerm),
+          datasets: [{
+            data: data.map(d => d.count),
+            backgroundColor: data.map((_, i) => colors[i % colors.length]),
+            borderRadius: 4
+          }]
+        },
+        options: {
+          indexAxis: 'y',
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false }
+          },
+          scales: {
+            x: {
+              ticks: { color: '#808080' },
+              grid: { color: '#3c3c3c' },
+              beginAtZero: true
+            },
+            y: {
+              ticks: { color: '#e0e0e0' },
+              grid: { display: false }
+            }
+          }
+        }
+      });
+    },
+
+    renderProfitDistributionChart() {
+      const canvas = document.getElementById('profitDistributionChart');
+      if (!canvas) { return; }
+
+      if (this.overviewCharts.profitDistribution) {
+        this.overviewCharts.profitDistribution.destroy();
+      }
+
+      const dist = this.overviewData.profitDistribution || {};
+      this.overviewCharts.profitDistribution = new Chart(canvas, {
+        type: 'bar',
+        data: {
+          labels: ['$0-25', '$25-50', '$50-100', '$100+'],
+          datasets: [{
+            data: [dist.range0to25 || 0, dist.range25to50 || 0, dist.range50to100 || 0, dist.range100plus || 0],
+            backgroundColor: ['#4a9eff', '#22c55e', '#f59e0b', '#ef4444'],
+            borderRadius: 4
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false }
+          },
+          scales: {
+            x: {
+              ticks: { color: '#e0e0e0' },
+              grid: { display: false }
+            },
+            y: {
+              ticks: { color: '#808080' },
+              grid: { color: '#3c3c3c' },
+              beginAtZero: true
+            }
+          }
+        }
+      });
+    },
+
+    timeAgo(dateStr) {
+      if (!dateStr) { return 'Never'; }
+      const diff = this.now - new Date(dateStr).getTime();
+      const minutes = Math.floor(diff / 60000);
+      if (minutes < 1) { return 'Just now'; }
+      if (minutes < 60) { return `${minutes}m ago`; }
+      const hours = Math.floor(minutes / 60);
+      if (hours < 24) { return `${hours}h ago`; }
+      const days = Math.floor(hours / 24);
+      return `${days}d ago`;
     },
 
     async apiCall(endpoint, options = {}) {

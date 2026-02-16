@@ -6,6 +6,7 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://unpkg.com; style-src 'self' 'unsafe-inline'; connect-src *;">
   <title>AIOMarketMaker</title>
   <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+  <script src="https://unpkg.com/chart.js@4/dist/chart.umd.js"></script>
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -14,6 +15,7 @@
       <nav class="sidebar">
         <div class="logo">AIOMarketMaker</div>
         <div class="nav-items">
+          <button :class="{ active: currentView === 'overview' }" @click="currentView = 'overview'; loadOverview()">Overview</button>
           <button :class="{ active: currentView === 'jobs' }" @click="currentView = 'jobs'">Jobs</button>
           <button :class="{ active: currentView === 'opportunities' }" @click="currentView = 'opportunities'; loadOpportunities()">Opportunities</button>
           <button :class="{ active: currentView === 'operations' }" @click="currentView = 'operations'">Operations</button>
@@ -30,6 +32,130 @@
         <!-- Toast notifications -->
         <div v-if="toast" class="toast" :class="toast.type">
           {{ toast.message }}
+        </div>
+
+        <!-- Overview View -->
+        <div v-if="currentView === 'overview'" class="view">
+          <div class="view-header">
+            <h1>Overview</h1>
+            <button class="btn" @click="loadOverview">Refresh</button>
+          </div>
+
+          <!-- KPI Cards -->
+          <div class="kpi-grid">
+            <div class="kpi-card">
+              <div class="kpi-value">{{ overviewData.totalListings.toLocaleString() }}</div>
+              <div class="kpi-label">Total Listings</div>
+              <div class="kpi-detail">{{ overviewData.activeListings }} active / {{ overviewData.soldListings }} sold</div>
+            </div>
+            <div class="kpi-card">
+              <div class="kpi-value">{{ overviewData.activeListings.toLocaleString() }}</div>
+              <div class="kpi-label">Active Listings</div>
+            </div>
+            <div class="kpi-card">
+              <div class="kpi-value">{{ overviewData.opportunities.toLocaleString() }}</div>
+              <div class="kpi-label">Opportunities</div>
+              <div class="kpi-detail">&ge;{{ settings.opportunities.minComps }} comps</div>
+            </div>
+            <div class="kpi-card">
+              <div class="kpi-value profit">{{ formatPrice(overviewData.aggregateProfit, 'GBP') }}</div>
+              <div class="kpi-label">Total Potential Profit</div>
+            </div>
+            <div class="kpi-card">
+              <div v-if="overviewData.lastScrape" class="kpi-value small">{{ timeAgo(overviewData.lastScrape.startedUtc) }}</div>
+              <div v-else class="kpi-value small">Never</div>
+              <div class="kpi-label">Last Scrape</div>
+              <div v-if="overviewData.lastScrape" class="kpi-detail">
+                <span class="status-badge" :class="overviewData.lastScrape.status?.toLowerCase()">{{ overviewData.lastScrape.status }}</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Cumulative Growth Chart -->
+          <div class="chart-section">
+            <h3>Cumulative Listings Over Time</h3>
+            <div class="chart-container">
+              <canvas id="cumulativeGrowthChart"></canvas>
+            </div>
+          </div>
+
+          <!-- Two-column charts -->
+          <div class="chart-row">
+            <div class="chart-section half">
+              <h3>Listings by Job</h3>
+              <div class="chart-container">
+                <canvas id="listingsByJobChart"></canvas>
+              </div>
+            </div>
+            <div class="chart-section half">
+              <h3>Profit Distribution</h3>
+              <div class="chart-container">
+                <canvas id="profitDistributionChart"></canvas>
+              </div>
+            </div>
+          </div>
+
+          <!-- Top Opportunities Table -->
+          <div class="overview-section">
+            <h3>Top 10 Opportunities</h3>
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Title</th>
+                  <th>Price</th>
+                  <th>Avg Sold</th>
+                  <th>Profit</th>
+                  <th>Comps</th>
+                  <th>Condition</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="opp in overviewData.topOpportunities" :key="opp.listingId">
+                  <td class="title-cell" :title="opp.title">{{ truncate(opp.title, 45) }}</td>
+                  <td class="price-cell">{{ formatPrice(opp.price, opp.currency) }}</td>
+                  <td class="price-cell">{{ formatPrice(opp.averageSoldPrice, opp.currency) }}</td>
+                  <td class="price-cell" style="color: #22c55e;">+{{ formatPrice(opp.potentialProfit, opp.currency) }}</td>
+                  <td>{{ opp.similarSoldCount }}</td>
+                  <td>{{ opp.condition || '-' }}</td>
+                  <td><a v-if="opp.url" :href="opp.url" target="_blank" class="btn small">View</a></td>
+                </tr>
+                <tr v-if="overviewData.topOpportunities.length === 0">
+                  <td colspan="7" class="empty">No opportunities found</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Recent Runs Table -->
+          <div class="overview-section">
+            <h3>Recent Scrape Runs</h3>
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Time</th>
+                  <th>Job</th>
+                  <th>Status</th>
+                  <th>+Active</th>
+                  <th>+Sold</th>
+                  <th>Failed</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="run in overviewData.recentRuns" :key="run.id">
+                  <td>{{ timeAgo(run.startedUtc) }}</td>
+                  <td>{{ run.jobSearchTerm || 'All Jobs' }}</td>
+                  <td><span class="status-badge" :class="run.status?.toLowerCase()">{{ run.status }}</span></td>
+                  <td class="number">{{ run.listingsAddedActive }}</td>
+                  <td class="number">{{ run.listingsAddedSold }}</td>
+                  <td class="number" :class="{ 'failed-count': run.listingsFailed > 0 }">{{ run.listingsFailed }}</td>
+                </tr>
+                <tr v-if="overviewData.recentRuns.length === 0">
+                  <td colspan="6" class="empty">No scrape runs yet</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
         </div>
 
         <!-- Jobs View -->
