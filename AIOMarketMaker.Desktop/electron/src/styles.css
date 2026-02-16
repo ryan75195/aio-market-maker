@@ -106,6 +106,29 @@ body {
   align-items: center;
 }
 
+.jobs-toolbar {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 15px;
+}
+
+.search-input {
+  background: #2d2d2d;
+  border: 1px solid #3c3c3c;
+  color: #e0e0e0;
+  padding: 6px 12px;
+  border-radius: 5px;
+  font-size: 13px;
+  flex: 1;
+  max-width: 300px;
+}
+
+.search-input:focus {
+  outline: none;
+  border-color: #4a9eff;
+}
+
 /* Table */
 .data-table {
   width: 100%;
