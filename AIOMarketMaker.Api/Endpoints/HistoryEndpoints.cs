@@ -4,7 +4,7 @@ using AIOMarketMaker.Core.Data;
 namespace AIOMarketMaker.Api.Endpoints;
 
 public record HistoryRunResponse(
-    int Id, string? InstanceId, int? JobId, string? JobSearchTerm,
+    int Id, string? InstanceId, Guid? BatchId, int? JobId, string? JobSearchTerm,
     string? TriggerType, DateTime? StartedUtc, DateTime? CompletedUtc,
     string? Status, int ListingsAddedActive, int ListingsAddedSold,
     int ListingsUpdated, int ListingsSkipped, int ListingsFailed,
@@ -19,7 +19,7 @@ public record HistoryIssueResponse(
 public record IssueCountEntry(int ScrapeRunId, int Count);
 
 public record HistoryRunProjection(
-    int Id, string? InstanceId, int? JobId, string? JobSearchTerm,
+    int Id, string? InstanceId, Guid? BatchId, int? JobId, string? JobSearchTerm,
     string? TriggerType, DateTime? StartedUtc, DateTime? CompletedUtc,
     string? Status, int ListingsAddedActive, int ListingsAddedSold,
     int ListingsUpdated, int ListingsSkipped, int ListingsFailed,
@@ -55,7 +55,7 @@ public static class HistoryEndpoints
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
             .Select(r => new HistoryRunProjection(
-                r.Id, r.InstanceId, r.JobId,
+                r.Id, r.InstanceId, r.BatchId, r.JobId,
                 r.JobId != null
                     ? db.ScrapeJobs.Where(j => j.Id == r.JobId).Select(j => j.SearchTerm).FirstOrDefault()
                     : null,
@@ -76,7 +76,7 @@ public static class HistoryEndpoints
             .ToDictionaryAsync(x => x.ScrapeRunId, x => x.Count);
 
         var runsWithIssues = runs.Select(r => new HistoryRunResponse(
-            r.Id, r.InstanceId, r.JobId, r.JobSearchTerm,
+            r.Id, r.InstanceId, r.BatchId, r.JobId, r.JobSearchTerm,
             r.TriggerType, r.StartedUtc, r.CompletedUtc,
             r.Status, r.ListingsAddedActive, r.ListingsAddedSold,
             r.ListingsUpdated, r.ListingsSkipped, r.ListingsFailed,
