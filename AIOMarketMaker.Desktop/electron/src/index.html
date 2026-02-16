@@ -189,7 +189,7 @@
             <div class="view-header">
               <template v-if="showJobsPanel">
                 <button class="btn" @click="showJobsPanel = false">&larr; Back</button>
-                <h1>Edit Jobs</h1>
+                <h1>Job Overview</h1>
               </template>
               <template v-else>
                 <h1>Index</h1>
@@ -197,17 +197,18 @@
                   <button class="btn primary" @click="startScrape" :disabled="loading">
                     {{ loading ? 'Starting...' : 'Start Scrape' }}
                   </button>
-                  <button class="btn" @click="showJobsPanel = true">Edit Jobs</button>
+                  <button class="btn" @click="showJobsPanel = true">Job Overview</button>
                   <button class="btn" @click="loadHistory">Refresh</button>
                 </div>
               </template>
             </div>
 
-            <!-- Edit Jobs View -->
+            <!-- Job Overview View -->
             <template v-if="showJobsPanel">
-              <div class="header-actions" style="margin-bottom: 15px;">
+              <div class="jobs-toolbar">
                 <button class="btn primary small" @click="showJobForm = true">+ New Job</button>
-                <span class="count-badge">{{ jobs.length }} jobs</span>
+                <input type="text" v-model="jobSearch" @input="jobPage = 1" class="search-input" placeholder="Search jobs...">
+                <span class="count-badge">{{ filteredJobs.length }} of {{ jobs.length }} jobs</span>
               </div>
 
               <table class="data-table">
@@ -233,8 +234,8 @@
                       <button class="btn small danger" @click="deleteJob(job)">Delete</button>
                     </td>
                   </tr>
-                  <tr v-if="jobs.length === 0">
-                    <td colspan="4" class="empty">No jobs configured</td>
+                  <tr v-if="filteredJobs.length === 0">
+                    <td colspan="4" class="empty">{{ jobSearch ? 'No matching jobs' : 'No jobs configured' }}</td>
                   </tr>
                 </tbody>
               </table>

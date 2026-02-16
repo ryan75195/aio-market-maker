@@ -25,8 +25,9 @@ createApp({
       expandedRuns: {},
       runIssues: {},
       showJobsPanel: false,
+      jobSearch: '',
       jobPage: 1,
-      jobPageSize: 10,
+      windowHeight: window.innerHeight,
       loading: false,
       toast: null,
       showJobForm: false,
@@ -146,13 +147,27 @@ createApp({
       return pages;
     },
 
+    filteredJobs() {
+      if (!this.jobSearch) { return this.jobs; }
+      const q = this.jobSearch.toLowerCase();
+      return this.jobs.filter(j =>
+        j.searchTerm?.toLowerCase().includes(q) ||
+        j.filterInstructions?.toLowerCase().includes(q)
+      );
+    },
+
+    jobPageSize() {
+      // ~37px per row, reserve ~200px for header/toolbar/pagination
+      return Math.max(5, Math.floor((this.windowHeight - 200) / 37));
+    },
+
     jobTotalPages() {
-      return Math.ceil(this.jobs.length / this.jobPageSize);
+      return Math.ceil(this.filteredJobs.length / this.jobPageSize);
     },
 
     paginatedJobs() {
       const start = (this.jobPage - 1) * this.jobPageSize;
-      return this.jobs.slice(start, start + this.jobPageSize);
+      return this.filteredJobs.slice(start, start + this.jobPageSize);
     },
 
     jobPageRange() {
@@ -227,6 +242,8 @@ createApp({
   },
 
   async mounted() {
+    this._onResize = () => { this.windowHeight = window.innerHeight; };
+    window.addEventListener('resize', this._onResize);
     await this.loadConfig();
     if (!this.configError) {
       await this.loadJobs();
@@ -236,6 +253,7 @@ createApp({
   },
 
   beforeUnmount() {
+    window.removeEventListener('resize', this._onResize);
     this.stopAutoRefresh();
   },
 
