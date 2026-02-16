@@ -362,6 +362,11 @@ body {
   color: #fff;
 }
 
+.status-badge.partialfailure {
+  background: #f59e0b;
+  color: #000;
+}
+
 /* Trigger badges */
 .trigger-badge {
   display: inline-block;

@@ -15,11 +15,13 @@ createApp({
       opportunityJobFilter: [],
       opportunityTotalCount: 0,
       opportunityTotalPages: 0,
-      history: [],
-      historyPage: 1,
-      historyPageSize: 50,
-      historyTotalCount: 0,
-      historyTotalPages: 0,
+      historyMode: 'batches',
+      batches: [],
+      selectedBatch: null,
+      batchPage: 1,
+      batchPageSize: 20,
+      batchTotalCount: 0,
+      batchTotalPages: 0,
       expandedRuns: {},
       runIssues: {},
       loading: false,
@@ -123,8 +125,8 @@ createApp({
     },
 
     historyPageRange() {
-      const total = this.historyTotalPages;
-      const current = this.historyPage;
+      const total = this.batchTotalPages;
+      const current = this.batchPage;
       if (total <= 7) {
         return Array.from({ length: total }, (_, i) => i + 1);
       }
@@ -142,7 +144,8 @@ createApp({
 
     activeRuns() {
       const statuses = ['Queued', 'Running', 'Indexing', 'Searching', 'Processing'];
-      return this.history.filter(r => statuses.includes(r.status));
+      const allRuns = this.batches.flatMap(b => b.runs || []);
+      return allRuns.filter(r => statuses.includes(r.status));
     },
 
     runStats() {
@@ -153,7 +156,8 @@ createApp({
       const runtimeMs = this.now - earliest;
 
       // Include completed runs from same batch for stable rate calculation
-      const batchRuns = this.history.filter(r => new Date(r.startedUtc).getTime() >= earliest);
+      const allRuns = this.batches.flatMap(b => b.runs || []);
+      const batchRuns = allRuns.filter(r => new Date(r.startedUtc).getTime() >= earliest);
 
       // Split into runs with data vs queued (no listing data yet)
       const startedRuns = batchRuns.filter(r => r.status !== 'Queued');
@@ -469,22 +473,35 @@ createApp({
     async loadHistory() {
       try {
         const params = new URLSearchParams({
-          page: this.historyPage,
-          pageSize: this.historyPageSize
+          page: this.batchPage,
+          pageSize: this.batchPageSize
         });
-        const data = await this.apiCall(`/history?${params}`);
+        const data = await this.apiCall(`/history/batches?${params}`);
         const result = this.toCamelCase(data);
-        this.history = result.items || [];
-        this.historyTotalCount = result.totalCount || 0;
-        this.historyTotalPages = result.totalPages || 0;
+        this.batches = result.items || [];
+        this.batchTotalCount = result.totalCount || 0;
+        this.batchTotalPages = result.totalPages || 0;
       } catch (err) {
         this.showToast(`Failed to load history: ${err.message}`, 'error');
       }
     },
 
+    selectBatch(batch) {
+      this.selectedBatch = batch;
+      this.historyMode = 'runs';
+      this.expandedRuns = {};
+      this.runIssues = {};
+    },
+
+    backToBatches() {
+      this.historyMode = 'batches';
+      this.selectedBatch = null;
+      this.expandedRuns = {};
+    },
+
     goToHistoryPage(page) {
-      if (page < 1 || page > this.historyTotalPages) { return; }
-      this.historyPage = page;
+      if (page < 1 || page > this.batchTotalPages) { return; }
+      this.batchPage = page;
       this.loadHistory();
     },
 
@@ -583,7 +600,7 @@ createApp({
     formatPrice(price, currency) {
       if (price == null) return '-';
       const symbol = currency === 'GBP' ? '\u00A3' : currency === 'USD' ? '$' : (currency || '');
-      return `${symbol}${price.toFixed(2)}`;
+      return `${symbol}${price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
     },
 
     async toggleJob(job) {
@@ -663,6 +680,7 @@ createApp({
         this.showToast(`Scrape started (${runCount} job${runCount !== 1 ? 's' : ''})`, 'success');
 
         // Switch to history view to see progress
+        this.historyMode = 'batches';
         this.currentView = 'history';
         await this.loadHistory();
       } catch (err) {
@@ -763,15 +781,17 @@ createApp({
       this.nowInterval = setInterval(() => { this.now = Date.now(); }, 1000);
       this.refreshInterval = setInterval(() => {
         if (this.currentView === 'history') {
-          // Check for any active status: Queued, Running, Indexing, Searching, Processing
           const activeStatuses = ['Queued', 'Running', 'Indexing', 'Searching', 'Processing'];
-          const hasActive = this.history.some(r => activeStatuses.includes(r.status));
+          const hasActive = this.batches.some(b =>
+            ['Running', 'Queued'].includes(b.status));
           if (hasActive) {
             this.loadHistory();
-            // Also refresh issues for any expanded active runs
-            this.history
-              .filter(r => activeStatuses.includes(r.status) && this.expandedRuns[r.id])
-              .forEach(r => this.loadRunIssues(r.id));
+            // Also refresh issues for any expanded active runs in the selected batch
+            if (this.selectedBatch) {
+              (this.selectedBatch.runs || [])
+                .filter(r => activeStatuses.includes(r.status) && this.expandedRuns[r.id])
+                .forEach(r => this.loadRunIssues(r.id));
+            }
           }
         }
       }, 2000);
