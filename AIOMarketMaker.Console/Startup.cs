@@ -65,17 +65,22 @@ public static class HostHelper
                 services.AddSingleton(clusteringConfig);
                 services.AddSingleton<IClusteringService, ClusteringService>();
 
-                // Semantic search service (Pinecone)
-                var pineconeConfig = new PineconeConfig(
-                    ApiKey: configuration.GetValue<string>("Pinecone:ApiKey") ?? "",
-                    IndexName: configuration.GetValue<string>("Pinecone:IndexName") ?? "arbitrage",
-                    TopK: configuration.GetValue<int>("Pinecone:TopK", 10)
-                );
-                services.AddSingleton(pineconeConfig);
-                services.AddSingleton<IPineconeIndexClient>(sp =>
+                // Vector index (local USearch)
+                var vectorIndexConfig = new VectorIndexConfig(
+                    IndexPath: configuration.GetValue<string>("VectorIndex:IndexPath") ?? "./data/vectors.usearch",
+                    IdMapPath: configuration.GetValue<string>("VectorIndex:IdMapPath") ?? "./data/vectors-idmap.json",
+                    TopK: configuration.GetValue<int>("VectorIndex:TopK", 30),
+                    SimilarityThreshold: configuration.GetValue<float>("VectorIndex:SimilarityThreshold", 0.80f));
+                services.AddSingleton(vectorIndexConfig);
+                services.AddSingleton<IVectorIndex>(sp =>
                 {
-                    var config = sp.GetRequiredService<PineconeConfig>();
-                    return new PineconeIndexClientWrapper(config.ApiKey, config.IndexName);
+                    var config = sp.GetRequiredService<VectorIndexConfig>();
+                    var index = new USearchVectorIndex(config);
+                    if (File.Exists(config.IndexPath) && File.Exists(config.IdMapPath))
+                    {
+                        index.Load();
+                    }
+                    return index;
                 });
                 services.AddSingleton<ISemanticSearchService, SemanticSearchService>();
 

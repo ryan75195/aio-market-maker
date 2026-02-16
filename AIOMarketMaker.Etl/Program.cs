@@ -12,7 +12,7 @@ using AIOMarketMaker.Etl.Services;
 using ScraperWorker.Services;
 using Azure.Data.Tables;
 using Azure.Storage.Blobs;
-using Pinecone;
+using System.Text.Json;
 using Serilog;
 using Serilog.Formatting.Compact;
 
@@ -386,17 +386,20 @@ static async Task ExportVectorsFromPinecone(IHost host, string[] args)
     var pineconeApiKey = configuration.GetValue<string>("Pinecone:ApiKey")
         ?? configuration.GetValue<string>("Values:Pinecone:ApiKey")
         ?? throw new InvalidOperationException("Pinecone:ApiKey is required for export. Add it to local.settings.json.");
-    var pineconeIndexName = configuration.GetValue<string>("Pinecone:IndexName")
-        ?? configuration.GetValue<string>("Values:Pinecone:IndexName")
-        ?? "arbitrage";
+    var pineconeHost = configuration.GetValue<string>("Pinecone:Host")
+        ?? configuration.GetValue<string>("Values:Pinecone:Host")
+        ?? "arbitrage-d207f30.svc.aped-4627-b74a.pinecone.io";
 
-    Console.WriteLine($"Export vectors from Pinecone index '{pineconeIndexName}' to local USearch index");
+    Console.WriteLine($"Export vectors from Pinecone host '{pineconeHost}' to local USearch index");
     Console.WriteLine($"  Index path: {vectorIndexConfig.IndexPath}");
     Console.WriteLine($"  ID map path: {vectorIndexConfig.IdMapPath}");
     Console.WriteLine();
 
-    // Create Pinecone client directly (not via DI — this is a one-time migration)
-    var pinecone = new PineconeIndexClientWrapper(pineconeApiKey, pineconeIndexName);
+    // Create HttpClient for Pinecone REST API (no SDK needed)
+    using var httpClient = new HttpClient();
+    httpClient.DefaultRequestHeaders.Add("Api-Key", pineconeApiKey);
+    httpClient.BaseAddress = new Uri($"https://{pineconeHost}");
+    var jsonOptions = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
 
     // Load all listing IDs from database
     Console.Write("Loading listing IDs from database...");
@@ -422,15 +425,19 @@ static async Task ExportVectorsFromPinecone(IHost host, string[] args)
     foreach (var batch in batches)
     {
         batchNum++;
-        var response = await pinecone.Fetch(new FetchRequest { Ids = batch.ToList() });
+        var queryString = string.Join("&", batch.Select(id => $"ids={Uri.EscapeDataString(id)}"));
+        var httpResponse = await httpClient.GetAsync($"/vectors/fetch?{queryString}");
+        httpResponse.EnsureSuccessStatusCode();
+        var json = await httpResponse.Content.ReadAsStringAsync();
+        var response = JsonSerializer.Deserialize<PineconeFetchResponse>(json, jsonOptions);
 
-        if (response.Vectors != null)
+        if (response?.Vectors != null)
         {
             foreach (var (id, vector) in response.Vectors)
             {
                 if (vector.Values != null)
                 {
-                    localIndex.Upsert(id, vector.Values.Value.ToArray());
+                    localIndex.Upsert(id, vector.Values);
                     exported++;
                 }
                 else
@@ -440,7 +447,7 @@ static async Task ExportVectorsFromPinecone(IHost host, string[] args)
             }
         }
 
-        var batchMissing = batch.Length - (response.Vectors?.Count ?? 0);
+        var batchMissing = batch.Length - (response?.Vectors?.Count ?? 0);
         missing += batchMissing;
 
         if (batchNum % 10 == 0 || batchNum == batchCount)
@@ -655,3 +662,7 @@ static async Task RunKAnalysis(IHost host, string[] args)
 }
 
 host.Run();
+
+// Local types for Pinecone REST API response (no SDK needed)
+record PineconeFetchResponse(Dictionary<string, PineconeVector>? Vectors);
+record PineconeVector(string Id, float[]? Values);

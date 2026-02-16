@@ -111,6 +111,23 @@ public class USearchVectorIndex : IVectorIndex, IDisposable
         }
     }
 
+    public void Clear()
+    {
+        _rwLock.EnterWriteLock();
+        try
+        {
+            _index.Dispose();
+            _index = CreateNewIndex();
+            _idToKey.Clear();
+            _keyToId.Clear();
+            _nextKey = 0;
+        }
+        finally
+        {
+            _rwLock.ExitWriteLock();
+        }
+    }
+
     public bool Contains(string id)
     {
         _rwLock.EnterReadLock();
