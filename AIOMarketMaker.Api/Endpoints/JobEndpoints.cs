@@ -30,7 +30,11 @@ public static class JobEndpoints
         var jobs = await db.ScrapeJobs
             .Select(j => new JobResponse(
                 j.Id, j.SearchTerm, j.FilterInstructions,
-                j.IsEnabled, j.LastRunUtc, j.CreatedUtc))
+                j.IsEnabled,
+                db.ScrapeRuns
+                    .Where(r => r.JobId == j.Id)
+                    .Max(r => (DateTime?)r.StartedUtc),
+                j.CreatedUtc))
             .ToListAsync();
 
         return Results.Ok(jobs);
