@@ -16,8 +16,8 @@
         <div class="logo">AIOMarketMaker</div>
         <div class="nav-items">
           <button :class="{ active: currentView === 'overview' }" @click="currentView = 'overview'; loadOverview()">Overview</button>
-          <button :class="{ active: currentView === 'index' }" @click="currentView = 'index'; historyMode = 'batches'; loadHistory()">Index</button>
           <button :class="{ active: currentView === 'opportunities' }" @click="currentView = 'opportunities'; loadOpportunities()">Opportunities</button>
+          <button :class="{ active: currentView === 'index' }" @click="currentView = 'index'; historyMode = 'batches'; showJobsPanel = false; loadHistory()">Index</button>
           <button :class="{ active: currentView === 'settings' }" @click="currentView = 'settings'">Settings</button>
         </div>
         <div class="config-status">
@@ -187,18 +187,24 @@
           <!-- Batch List Mode -->
           <div v-if="historyMode === 'batches'">
             <div class="view-header">
-              <h1>Index</h1>
-              <div class="header-actions">
-                <button class="btn primary" @click="startScrape" :disabled="loading">
-                  {{ loading ? 'Starting...' : 'Start Scrape' }}
-                </button>
-                <button class="btn" :class="{ active: showJobsPanel }" @click="showJobsPanel = !showJobsPanel">Edit Jobs</button>
-                <button class="btn" @click="loadHistory">Refresh</button>
-              </div>
+              <template v-if="showJobsPanel">
+                <button class="btn" @click="showJobsPanel = false">&larr; Back</button>
+                <h1>Edit Jobs</h1>
+              </template>
+              <template v-else>
+                <h1>Index</h1>
+                <div class="header-actions">
+                  <button class="btn primary" @click="startScrape" :disabled="loading">
+                    {{ loading ? 'Starting...' : 'Start Scrape' }}
+                  </button>
+                  <button class="btn" @click="showJobsPanel = true">Edit Jobs</button>
+                  <button class="btn" @click="loadHistory">Refresh</button>
+                </div>
+              </template>
             </div>
 
-            <!-- Inline Jobs Panel -->
-            <div v-if="showJobsPanel" class="jobs-panel">
+            <!-- Edit Jobs View -->
+            <template v-if="showJobsPanel">
               <table class="data-table">
                 <thead>
                   <tr>
@@ -222,6 +228,9 @@
                       <button class="btn small danger" @click="deleteJob(job)">Delete</button>
                     </td>
                   </tr>
+                  <tr v-if="jobs.length === 0">
+                    <td colspan="4" class="empty">No jobs configured</td>
+                  </tr>
                 </tbody>
                 <tfoot>
                   <tr>
@@ -231,7 +240,10 @@
                   </tr>
                 </tfoot>
               </table>
-            </div>
+            </template>
+
+            <!-- Batch list content (hidden when editing jobs) -->
+            <template v-else>
 
             <div v-if="runStats" class="stats-banner">
               <div class="stat">
@@ -304,6 +316,8 @@
               <button class="page-btn" :disabled="batchPage >= batchTotalPages" @click="goToHistoryPage(batchPage + 1)">Next</button>
               <span class="page-info">Page {{ batchPage }} of {{ batchTotalPages }}</span>
             </div>
+
+            </template>
           </div>
 
           <!-- Run Detail Mode (drill-down into a batch) -->
