@@ -216,6 +216,7 @@
                   <tr>
                     <th>Search Term</th>
                     <th>Filter</th>
+                    <th>Last Run</th>
                     <th>Enabled</th>
                     <th>Actions</th>
                   </tr>
@@ -224,6 +225,7 @@
                   <tr v-for="job in paginatedJobs" :key="job.id">
                     <td>{{ job.searchTerm }}</td>
                     <td>{{ job.filterInstructions || '-' }}</td>
+                    <td>{{ job.lastRunUtc ? timeAgo(job.lastRunUtc) : 'Never' }}</td>
                     <td>
                       <button class="btn small" :class="job.isEnabled ? 'success' : 'muted'" @click="toggleJob(job)">
                         {{ job.isEnabled ? 'Enabled' : 'Disabled' }}
@@ -235,7 +237,7 @@
                     </td>
                   </tr>
                   <tr v-if="filteredJobs.length === 0">
-                    <td colspan="4" class="empty">{{ jobSearch ? 'No matching jobs' : 'No jobs configured' }}</td>
+                    <td colspan="5" class="empty">{{ jobSearch ? 'No matching jobs' : 'No jobs configured' }}</td>
                   </tr>
                 </tbody>
               </table>
