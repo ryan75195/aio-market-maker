@@ -4,9 +4,10 @@ using AIOMarketMaker.Core.Data.Models;
 
 namespace AIOMarketMaker.Api.Endpoints;
 
-public record CreateJobRequest(string? SearchTerm, string? FilterInstructions, bool? IsEnabled);
-public record UpdateJobRequest(string? SearchTerm, string? FilterInstructions, bool? IsEnabled);
-public record JobResponse(int Id, string SearchTerm, string? FilterInstructions, bool IsEnabled, DateTime? LastRunUtc, DateTime CreatedUtc);
+public record CreateJobRequest(string? SearchTerm, string? FilterInstructions, bool? IsEnabled, IEnumerable<int>? CategoryIds);
+public record UpdateJobRequest(string? SearchTerm, string? FilterInstructions, bool? IsEnabled, IEnumerable<int>? CategoryIds);
+public record JobCategoryInfo(int Id, string Name);
+public record JobResponse(int Id, string SearchTerm, string? FilterInstructions, bool IsEnabled, DateTime? LastRunUtc, DateTime CreatedUtc, IEnumerable<JobCategoryInfo> Categories);
 public record JobToggleResponse(int Id, string SearchTerm, bool IsEnabled);
 public record ErrorResponse(string Error);
 public record MessageResponse(string Message);
@@ -21,6 +22,7 @@ public static class JobEndpoints
         group.MapPost("/", CreateJob);
         group.MapPut("/{id:int}", UpdateJob);
         group.MapDelete("/{id:int}", DeleteJob);
+        group.MapPost("/{id:int}/categories", SetJobCategories);
         group.MapPost("/{id:int}/enable", EnableJob);
         group.MapPost("/{id:int}/disable", DisableJob);
     }
@@ -32,6 +34,12 @@ public static class JobEndpoints
             .Select(g => new { JobId = g.Key, LastRun = g.Max(r => r.StartedUtc) })
             .ToDictionaryAsync(x => x.JobId, x => x.LastRun);
 
+        var jobCategories = await db.JobCategories
+            .Include(jc => jc.Category)
+            .GroupBy(jc => jc.JobId)
+            .Select(g => new { JobId = g.Key, Categories = g.Select(jc => new JobCategoryInfo(jc.Category.Id, jc.Category.Name)).ToList() })
+            .ToDictionaryAsync(x => x.JobId, x => x.Categories);
+
         var jobs = await db.ScrapeJobs
             .Select(j => new { j.Id, j.SearchTerm, j.FilterInstructions, j.IsEnabled, j.CreatedUtc })
             .ToListAsync();
@@ -39,7 +47,8 @@ public static class JobEndpoints
         var result = jobs.Select(j => new JobResponse(
             j.Id, j.SearchTerm, j.FilterInstructions, j.IsEnabled,
             lastRunByJob.GetValueOrDefault(j.Id),
-            j.CreatedUtc));
+            j.CreatedUtc,
+            jobCategories.GetValueOrDefault(j.Id, new List<JobCategoryInfo>())));
 
         return Results.Ok(result);
     }
@@ -47,15 +56,20 @@ public static class JobEndpoints
     private static async Task<IResult> GetJob(int id, EtlDbContext db)
     {
         var job = await db.ScrapeJobs.FindAsync(id);
-
         if (job == null)
         {
             return Results.NotFound(new ErrorResponse($"Job {id} not found"));
         }
 
+        var categories = await db.JobCategories
+            .Where(jc => jc.JobId == id)
+            .Include(jc => jc.Category)
+            .Select(jc => new JobCategoryInfo(jc.Category.Id, jc.Category.Name))
+            .ToListAsync();
+
         return Results.Ok(new JobResponse(
             job.Id, job.SearchTerm, job.FilterInstructions,
-            job.IsEnabled, job.LastRunUtc, job.CreatedUtc));
+            job.IsEnabled, job.LastRunUtc, job.CreatedUtc, categories));
     }
 
     private static async Task<IResult> CreateJob(
@@ -77,11 +91,29 @@ public static class JobEndpoints
         db.ScrapeJobs.Add(job);
         await db.SaveChangesAsync();
 
+        if (request.CategoryIds != null)
+        {
+            foreach (var catId in request.CategoryIds.Distinct())
+            {
+                if (await db.Categories.AnyAsync(c => c.Id == catId))
+                {
+                    db.JobCategories.Add(new JobCategory { JobId = job.Id, CategoryId = catId });
+                }
+            }
+            await db.SaveChangesAsync();
+        }
+
+        var categories = await db.JobCategories
+            .Where(jc => jc.JobId == job.Id)
+            .Include(jc => jc.Category)
+            .Select(jc => new JobCategoryInfo(jc.Category.Id, jc.Category.Name))
+            .ToListAsync();
+
         logger.LogInformation("Created scrape job {JobId}: '{SearchTerm}'", job.Id, job.SearchTerm);
 
         return Results.Created($"/api/jobs/{job.Id}", new JobResponse(
             job.Id, job.SearchTerm, job.FilterInstructions,
-            job.IsEnabled, job.LastRunUtc, job.CreatedUtc));
+            job.IsEnabled, job.LastRunUtc, job.CreatedUtc, categories));
     }
 
     private static async Task<IResult> UpdateJob(
@@ -109,13 +141,33 @@ public static class JobEndpoints
             job.IsEnabled = request.IsEnabled.Value;
         }
 
+        if (request.CategoryIds != null)
+        {
+            var existing = await db.JobCategories.Where(jc => jc.JobId == id).ToListAsync();
+            db.JobCategories.RemoveRange(existing);
+
+            foreach (var catId in request.CategoryIds.Distinct())
+            {
+                if (await db.Categories.AnyAsync(c => c.Id == catId))
+                {
+                    db.JobCategories.Add(new JobCategory { JobId = id, CategoryId = catId });
+                }
+            }
+        }
+
         await db.SaveChangesAsync();
 
         logger.LogInformation("Updated scrape job {JobId}", job.Id);
 
+        var categories = await db.JobCategories
+            .Where(jc => jc.JobId == id)
+            .Include(jc => jc.Category)
+            .Select(jc => new JobCategoryInfo(jc.Category.Id, jc.Category.Name))
+            .ToListAsync();
+
         return Results.Ok(new JobResponse(
             job.Id, job.SearchTerm, job.FilterInstructions,
-            job.IsEnabled, job.LastRunUtc, job.CreatedUtc));
+            job.IsEnabled, job.LastRunUtc, job.CreatedUtc, categories));
     }
 
     private static async Task<IResult> DeleteJob(
@@ -164,5 +216,36 @@ public static class JobEndpoints
         await db.SaveChangesAsync();
 
         return Results.Ok(new JobToggleResponse(job.Id, job.SearchTerm, job.IsEnabled));
+    }
+
+    private static async Task<IResult> SetJobCategories(
+        int id, IEnumerable<int> categoryIds, EtlDbContext db)
+    {
+        var job = await db.ScrapeJobs.FindAsync(id);
+        if (job == null)
+        {
+            return Results.NotFound(new ErrorResponse($"Job {id} not found"));
+        }
+
+        var existing = await db.JobCategories.Where(jc => jc.JobId == id).ToListAsync();
+        db.JobCategories.RemoveRange(existing);
+
+        foreach (var catId in categoryIds.Distinct())
+        {
+            if (await db.Categories.AnyAsync(c => c.Id == catId))
+            {
+                db.JobCategories.Add(new JobCategory { JobId = id, CategoryId = catId });
+            }
+        }
+
+        await db.SaveChangesAsync();
+
+        var categories = await db.JobCategories
+            .Where(jc => jc.JobId == id)
+            .Include(jc => jc.Category)
+            .Select(jc => new JobCategoryInfo(jc.Category.Id, jc.Category.Name))
+            .ToListAsync();
+
+        return Results.Ok(categories);
     }
 }
