@@ -27,6 +27,8 @@ createApp({
       showJobsPanel: false,
       jobSearch: '',
       jobPage: 1,
+      jobSortBy: 'lastRunUtc',
+      jobSortDir: 'desc',
       windowHeight: window.innerHeight,
       loading: false,
       toast: null,
@@ -156,10 +158,23 @@ createApp({
           j.filterInstructions?.toLowerCase().includes(q)
         );
       }
+      const dir = this.jobSortDir === 'asc' ? 1 : -1;
+      const key = this.jobSortBy;
       return [...result].sort((a, b) => {
-        const aTime = a.lastRunUtc ? new Date(a.lastRunUtc).getTime() : 0;
-        const bTime = b.lastRunUtc ? new Date(b.lastRunUtc).getTime() : 0;
-        return bTime - aTime;
+        let aVal = a[key];
+        let bVal = b[key];
+        if (key === 'lastRunUtc') {
+          aVal = aVal ? new Date(aVal).getTime() : 0;
+          bVal = bVal ? new Date(bVal).getTime() : 0;
+        } else if (key === 'searchTerm') {
+          aVal = (aVal || '').toLowerCase();
+          bVal = (bVal || '').toLowerCase();
+          return aVal < bVal ? -dir : aVal > bVal ? dir : 0;
+        } else if (key === 'isEnabled') {
+          aVal = aVal ? 1 : 0;
+          bVal = bVal ? 1 : 0;
+        }
+        return (aVal - bVal) * dir;
       });
     },
 
@@ -515,6 +530,21 @@ createApp({
         }, {});
       }
       return obj;
+    },
+
+    sortJobs(column) {
+      if (this.jobSortBy === column) {
+        this.jobSortDir = this.jobSortDir === 'asc' ? 'desc' : 'asc';
+      } else {
+        this.jobSortBy = column;
+        this.jobSortDir = column === 'searchTerm' ? 'asc' : 'desc';
+      }
+      this.jobPage = 1;
+    },
+
+    jobSortIndicator(column) {
+      if (this.jobSortBy !== column) { return ''; }
+      return this.jobSortDir === 'asc' ? ' \u25B2' : ' \u25BC';
     },
 
     async loadJobs() {
