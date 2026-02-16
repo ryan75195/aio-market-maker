@@ -197,7 +197,7 @@
                   <button class="btn primary" @click="startScrape" :disabled="loading">
                     {{ loading ? 'Starting...' : 'Start Scrape' }}
                   </button>
-                  <button class="btn" @click="showJobsPanel = true">Job Overview</button>
+                  <button class="btn" @click="showJobsPanel = true; loadJobs()">Job Overview</button>
                   <button class="btn" @click="loadHistory">Refresh</button>
                 </div>
               </template>
