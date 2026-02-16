@@ -32,4 +32,6 @@ public class ScrapeJob
     /// When this job was created
     /// </summary>
     public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
+
+    public ICollection<JobCategory> JobCategories { get; set; } = new List<JobCategory>();
 }

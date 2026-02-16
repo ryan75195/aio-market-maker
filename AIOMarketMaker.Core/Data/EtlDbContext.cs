@@ -24,6 +24,8 @@ public class EtlDbContext : DbContext
     public DbSet<ScrapeRunIssue> ScrapeRunIssues { get; set; } = null!;
     public DbSet<ListingRelationship> ListingRelationships { get; set; } = null!;
     public DbSet<ListingPrediction> ListingPredictions { get; set; } = null!;
+    public DbSet<Category> Categories { get; set; } = null!;
+    public DbSet<JobCategory> JobCategories { get; set; } = null!;
 
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
     {
@@ -49,6 +51,34 @@ public class EtlDbContext : DbContext
             entity.Property(e => e.CreatedUtc).HasDefaultValueSql(dateDefaultSql);
 
             entity.HasIndex(e => e.IsEnabled);
+        });
+
+        modelBuilder.Entity<Category>(entity =>
+        {
+            entity.ToTable("Categories");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Name).IsRequired().HasMaxLength(100);
+            entity.HasIndex(e => e.Name).IsUnique();
+            entity.Property(e => e.IsEnabled).HasDefaultValue(true);
+            entity.Property(e => e.CreatedUtc).HasDefaultValueSql(dateDefaultSql);
+        });
+
+        modelBuilder.Entity<JobCategory>(entity =>
+        {
+            entity.ToTable("JobCategories");
+            entity.HasKey(e => new { e.JobId, e.CategoryId });
+
+            entity.HasOne(e => e.Job)
+                .WithMany(j => j.JobCategories)
+                .HasForeignKey(e => e.JobId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(e => e.Category)
+                .WithMany(c => c.JobCategories)
+                .HasForeignKey(e => e.CategoryId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasIndex(e => e.CategoryId);
         });
 
         modelBuilder.Entity<Listing>(entity =>

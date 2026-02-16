@@ -395,4 +395,4 @@ publish.zip
 logs/
 
 # ONNX model files (too large for git)
-models/
+/models/
