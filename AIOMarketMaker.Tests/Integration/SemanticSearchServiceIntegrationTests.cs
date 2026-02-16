@@ -8,11 +8,13 @@ namespace AIOMarketMaker.Tests.Integration;
 
 [TestFixture]
 [Category("Integration")]
-[Explicit("Requires valid Pinecone API key and index in local.settings.json")]
+[Explicit("Requires local USearch index and OpenAI API key — run manually")]
 public class SemanticSearchServiceIntegrationTests
 {
     private ISemanticSearchService _service = null!;
     private IEmbeddingService _embeddingService = null!;
+    private IVectorIndex _vectorIndex = null!;
+    private string _tempDir = null!;
 
     [SetUp]
     public void Setup()
@@ -31,11 +33,10 @@ public class SemanticSearchServiceIntegrationTests
             .Build();
 
         var openAiKey = configuration.GetValue<string>("OpenAi:ApiKey");
-        var pineconeKey = configuration.GetValue<string>("Pinecone:ApiKey");
 
-        if (string.IsNullOrEmpty(openAiKey) || string.IsNullOrEmpty(pineconeKey))
+        if (string.IsNullOrEmpty(openAiKey))
         {
-            Assert.Ignore("OpenAi:ApiKey or Pinecone:ApiKey not found in local.settings.json");
+            Assert.Ignore("OpenAi:ApiKey not found in local.settings.json");
         }
 
         var embeddingModel = configuration.GetValue<string>("Embedding:Model") ?? "text-embedding-3-large";
@@ -44,12 +45,40 @@ public class SemanticSearchServiceIntegrationTests
         var embeddingLogger = new Mock<ILogger<EmbeddingService>>();
         _embeddingService = new EmbeddingService(embeddingConfig, embeddingLogger.Object);
 
-        var indexName = configuration.GetValue<string>("Pinecone:IndexName") ?? "arbitrage";
-        var topK = configuration.GetValue<int>("Pinecone:TopK", 10);
-        var pineconeConfig = new PineconeConfig(pineconeKey, indexName, topK);
-        var pineconeClient = new PineconeIndexClientWrapper(pineconeKey, indexName);
+        _tempDir = Path.Combine(Path.GetTempPath(), $"usearch-integ-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(_tempDir);
+
+        var vectorConfig = new VectorIndexConfig(
+            IndexPath: Path.Combine(_tempDir, "test.usearch"),
+            IdMapPath: Path.Combine(_tempDir, "test-idmap.json"),
+            TopK: 10,
+            SimilarityThreshold: 0.0f,
+            Dimensions: embeddingDimensions);
+
+        _vectorIndex = new USearchVectorIndex(vectorConfig);
         var searchLogger = new Mock<ILogger<SemanticSearchService>>();
-        _service = new SemanticSearchService(pineconeConfig, pineconeClient, _embeddingService, searchLogger.Object);
+        _service = new SemanticSearchService(vectorConfig, _vectorIndex, _embeddingService, searchLogger.Object);
+    }
+
+    [TearDown]
+    public void TearDown()
+    {
+        if (_vectorIndex is IDisposable disposable)
+        {
+            disposable.Dispose();
+        }
+
+        if (Directory.Exists(_tempDir))
+        {
+            try
+            {
+                Directory.Delete(_tempDir, recursive: true);
+            }
+            catch
+            {
+                // Best effort cleanup
+            }
+        }
     }
 
     [Test]
@@ -90,21 +119,12 @@ public class SemanticSearchServiceIntegrationTests
             Description = "Brand new PS5 disc edition with extra controller"
         };
 
-        try
-        {
-            var indexResult = await _service.IndexListings(new[] { listing });
-            Assert.That(indexResult.UpsertedCount, Is.EqualTo(1));
+        var indexResult = await _service.IndexListings(new[] { listing });
+        Assert.That(indexResult.UpsertedCount, Is.EqualTo(1));
 
-            await Task.Delay(2000);
-
-            var searchResult = await _service.Search("PS5 console disc version");
-            Assert.That(searchResult.Hits.Any(h => h.ListingId == testListingId), Is.True,
-                "Search should find the indexed listing");
-        }
-        finally
-        {
-            await _service.Delete(new[] { testListingId });
-        }
+        var searchResult = await _service.Search("PS5 console disc version");
+        Assert.That(searchResult.Hits.Any(h => h.ListingId == testListingId), Is.True,
+            "Search should find the indexed listing");
     }
 
     [Test]
@@ -132,23 +152,14 @@ public class SemanticSearchServiceIntegrationTests
             }
         };
 
-        try
-        {
-            var indexResult = await _service.IndexListings(listings);
-            Assert.That(indexResult.UpsertedCount, Is.EqualTo(2));
+        var indexResult = await _service.IndexListings(listings);
+        Assert.That(indexResult.UpsertedCount, Is.EqualTo(2));
 
-            await Task.Delay(2000);
-
-            var similarResult = await _service.FindSimilar(testIds[0]);
-            Assert.That(similarResult.Hits.Any(h => h.ListingId == testIds[1]), Is.True,
-                "Should find similar listing");
-            Assert.That(similarResult.Hits.All(h => h.ListingId != testIds[0]), Is.True,
-                "Should not include self in results");
-        }
-        finally
-        {
-            await _service.Delete(testIds);
-        }
+        var similarResult = await _service.FindSimilar(testIds[0]);
+        Assert.That(similarResult.Hits.Any(h => h.ListingId == testIds[1]), Is.True,
+            "Should find similar listing");
+        Assert.That(similarResult.Hits.All(h => h.ListingId != testIds[0]), Is.True,
+            "Should not include self in results");
     }
 
     [Test]
@@ -162,18 +173,10 @@ public class SemanticSearchServiceIntegrationTests
             Description = "Testing the exists functionality"
         };
 
-        try
-        {
-            await _service.IndexListings(new[] { listing });
-            await Task.Delay(2000);
+        await _service.IndexListings(new[] { listing });
 
-            var exists = await _service.Exists(testListingId);
-            Assert.That(exists, Is.True);
-        }
-        finally
-        {
-            await _service.Delete(new[] { testListingId });
-        }
+        var exists = await _service.Exists(testListingId);
+        Assert.That(exists, Is.True);
     }
 
     [Test]
@@ -183,51 +186,6 @@ public class SemanticSearchServiceIntegrationTests
 
         var exists = await _service.Exists(nonExistentId);
         Assert.That(exists, Is.False);
-    }
-
-    [Test]
-    public async Task Should_only_search_within_filtered_listing_ids()
-    {
-        var includedId = $"test-included-{Guid.NewGuid():N}";
-        var excludedId = $"test-excluded-{Guid.NewGuid():N}";
-
-        var listings = new[]
-        {
-            new Listing
-            {
-                ListingId = includedId,
-                Title = "PlayStation 5 Console",
-                Description = "PS5 gaming console"
-            },
-            new Listing
-            {
-                ListingId = excludedId,
-                Title = "PlayStation 5 Console Similar",
-                Description = "Another PS5 console"
-            }
-        };
-
-        try
-        {
-            await _service.IndexListings(listings);
-            await Task.Delay(2000);
-
-            var result = await _service.Search(
-                "PlayStation 5",
-                filterToListingIds: new[] { includedId });
-
-            Assert.Multiple(() =>
-            {
-                Assert.That(result.Hits.Any(h => h.ListingId == includedId), Is.True,
-                    "Should find included listing");
-                Assert.That(result.Hits.All(h => h.ListingId != excludedId), Is.True,
-                    "Should not find excluded listing");
-            });
-        }
-        finally
-        {
-            await _service.Delete(new[] { includedId, excludedId });
-        }
     }
 
     [Test]

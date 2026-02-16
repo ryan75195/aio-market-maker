@@ -13,7 +13,7 @@ public interface IComparablesEtlService
 
 public record ComparablesEtlResult(
     int ListingsProcessed,
-    int PineconeQueries,
+    int VectorQueries,
     int CandidatePairsFound,
     int CacheHits,
     int LlmCallsRequired,
@@ -23,8 +23,8 @@ public record ComparablesEtlResult(
 
 public class ComparablesEtlService : IComparablesEtlService
 {
-    private const int PineconeTopK = 50;
-    private const int MaxPineconeConcurrency = 10;
+    private const int VectorTopK = 50;
+    private const int MaxSearchConcurrency = 10;
 
     private readonly ISemanticSearchService _searchService;
     private readonly IVariantClassifierClient _classifier;
@@ -79,16 +79,16 @@ public class ComparablesEtlService : IComparablesEtlService
         // Load existing verdicts for cache check
         var existingVerdicts = await LoadExistingVerdicts(ct);
 
-        // Step 2: Pipeline — Pinecone producers → Channel → ONNX batch consumer
+        // Step 2: Pipeline — vector search producers → Channel → ONNX batch consumer
         var channel = Channel.CreateUnbounded<CandidatePair>();
         var seenPairs = new HashSet<(int, int)>();
         var pairsWritten = 0;
         var cacheHits = 0;
 
-        // Producer: query Pinecone for each active listing, write sold-neighbor pairs to channel
+        // Producer: query vector index for each active listing, write sold-neighbor pairs to channel
         var producerTask = Task.Run(async () =>
         {
-            var semaphore = new SemaphoreSlim(MaxPineconeConcurrency);
+            var semaphore = new SemaphoreSlim(MaxSearchConcurrency);
             var queriedCount = 0;
 
             var tasks = activeListings.Select(async listing =>
@@ -98,15 +98,13 @@ public class ComparablesEtlService : IComparablesEtlService
                 {
                     var searchResult = await _searchService.FindSimilar(
                         listing.ListingId,
-                        filterToListingIds: null,
-                        metadataFilter: null,
-                        topK: PineconeTopK,
+                        topK: VectorTopK,
                         ct: ct);
 
                     var count = Interlocked.Increment(ref queriedCount);
                     if (count % 1000 == 0)
                     {
-                        _logger.LogInformation("Pinecone progress: {Count}/{Total}",
+                        _logger.LogInformation("Vector search progress: {Count}/{Total}",
                             count, activeListings.Count);
                     }
 
@@ -159,7 +157,7 @@ public class ComparablesEtlService : IComparablesEtlService
             await producerTask;
             return new ComparablesEtlResult(
                 ListingsProcessed: activeListings.Count,
-                PineconeQueries: activeListings.Count,
+                VectorQueries: activeListings.Count,
                 CandidatePairsFound: pairsWritten,
                 CacheHits: cacheHits,
                 LlmCallsRequired: pairsWritten,
@@ -201,7 +199,7 @@ public class ComparablesEtlService : IComparablesEtlService
 
         return new ComparablesEtlResult(
             ListingsProcessed: activeListings.Count,
-            PineconeQueries: activeListings.Count,
+            VectorQueries: activeListings.Count,
             CandidatePairsFound: pairsWritten,
             CacheHits: cacheHits,
             LlmCallsRequired: pairsWritten,

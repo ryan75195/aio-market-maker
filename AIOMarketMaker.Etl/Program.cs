@@ -226,7 +226,7 @@ if (args.Contains("--comparables"))
     Console.WriteLine(dryRun ? "Dry Run Summary" : "Run Summary");
     Console.WriteLine("===============");
     Console.WriteLine($"Listings processed:     {result.ListingsProcessed}");
-    Console.WriteLine($"Pinecone queries:       {result.PineconeQueries}");
+    Console.WriteLine($"Vector queries:         {result.VectorQueries}");
     Console.WriteLine($"Candidate pairs found:  {result.CandidatePairsFound}");
     Console.WriteLine($"Cache hits:             {result.CacheHits}");
     Console.WriteLine($"ONNX pairs classified:  {result.LlmCallsMade}");
