@@ -157,6 +157,7 @@ app.MapGet("/health", () => Results.Ok(new HealthResponse("healthy")));
 
 app.MapJobEndpoints();
 app.MapHistoryEndpoints();
+app.MapBatchHistoryEndpoints();
 app.MapListingEndpoints();
 app.MapScrapeEndpoints();
 app.MapOverviewEndpoints();
