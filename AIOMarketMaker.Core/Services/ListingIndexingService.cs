@@ -1,5 +1,4 @@
 using Microsoft.Extensions.Logging;
-using Pinecone;
 using AIOMarketMaker.Core.Data.Models;
 
 namespace AIOMarketMaker.Core.Services;
@@ -14,23 +13,22 @@ public record IndexingResult(IndexingAction Action, string? Error = null);
 public enum IndexingAction
 {
     Embedded,
-    MetadataUpdated,
     Skipped
 }
 
 public class ListingIndexingService : IListingIndexingService
 {
     private readonly IEmbeddingService _embeddingService;
-    private readonly IPineconeIndexClient _pinecone;
+    private readonly IVectorIndex _vectorIndex;
     private readonly ILogger<ListingIndexingService> _logger;
 
     public ListingIndexingService(
         IEmbeddingService embeddingService,
-        IPineconeIndexClient pinecone,
+        IVectorIndex vectorIndex,
         ILogger<ListingIndexingService> logger)
     {
         _embeddingService = embeddingService;
-        _pinecone = pinecone;
+        _vectorIndex = vectorIndex;
         _logger = logger;
     }
 
@@ -44,37 +42,16 @@ public class ListingIndexingService : IListingIndexingService
             return new IndexingResult(IndexingAction.Skipped);
         }
 
-        var metadata = BuildMetadata(listing);
-
-        if (embedContent)
+        if (!embedContent)
         {
-            var embedding = await _embeddingService.GetEmbedding(text, ct);
-
-            await _pinecone.Upsert(new UpsertRequest
-            {
-                Vectors = new[]
-                {
-                    new Vector
-                    {
-                        Id = listing.ListingId,
-                        Values = embedding,
-                        Metadata = metadata
-                    }
-                }
-            }, ct);
-
-            _logger.LogInformation("Embedded and indexed listing {ListingId}", listing.ListingId);
-            return new IndexingResult(IndexingAction.Embedded);
+            return new IndexingResult(IndexingAction.Skipped);
         }
 
-        await _pinecone.Update(new UpdateRequest
-        {
-            Id = listing.ListingId,
-            SetMetadata = metadata
-        }, ct);
+        var embedding = await _embeddingService.GetEmbedding(text, ct);
+        _vectorIndex.Upsert(listing.ListingId, embedding);
 
-        _logger.LogInformation("Updated metadata for listing {ListingId}", listing.ListingId);
-        return new IndexingResult(IndexingAction.MetadataUpdated);
+        _logger.LogInformation("Embedded and indexed listing {ListingId}", listing.ListingId);
+        return new IndexingResult(IndexingAction.Embedded);
     }
 
     private static string BuildEmbeddingText(Listing listing)
@@ -92,32 +69,6 @@ public class ListingIndexingService : IListingIndexingService
         }
 
         return string.Join(" ", parts);
-    }
-
-    private static Metadata BuildMetadata(Listing listing)
-    {
-        var metadata = new Metadata
-        {
-            ["listingId"] = listing.ListingId,
-            ["scrapeJobId"] = (double)listing.ScrapeJobId,
-            ["condition"] = listing.Condition ?? "",
-            ["listingStatus"] = listing.ListingStatus ?? "",
-            ["purchaseFormat"] = listing.PurchaseFormat ?? "",
-            ["soldDateUtc"] = "",
-            ["createdUtc"] = listing.CreatedUtc.ToString("O")
-        };
-
-        if (listing.Price.HasValue)
-        {
-            metadata["price"] = (double)listing.Price.Value;
-        }
-
-        if (listing.ShippingCost.HasValue)
-        {
-            metadata["shippingCost"] = (double)listing.ShippingCost.Value;
-        }
-
-        return metadata;
     }
 }
 
