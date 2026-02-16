@@ -214,8 +214,8 @@
               <table class="data-table">
                 <thead>
                   <tr>
+                    <th class="sortable" @click="sortJobs('id')">ID{{ jobSortIndicator('id') }}</th>
                     <th class="sortable" @click="sortJobs('searchTerm')">Search Term{{ jobSortIndicator('searchTerm') }}</th>
-                    <th>Filter</th>
                     <th class="sortable" @click="sortJobs('lastRunUtc')">Last Run{{ jobSortIndicator('lastRunUtc') }}</th>
                     <th class="sortable" @click="sortJobs('isEnabled')">Enabled{{ jobSortIndicator('isEnabled') }}</th>
                     <th>Actions</th>
@@ -223,8 +223,8 @@
                 </thead>
                 <tbody>
                   <tr v-for="job in paginatedJobs" :key="job.id">
+                    <td class="number">{{ job.id }}</td>
                     <td>{{ job.searchTerm }}</td>
-                    <td>{{ job.filterInstructions || '-' }}</td>
                     <td>{{ job.lastRunUtc ? timeAgo(job.lastRunUtc) : 'Never' }}</td>
                     <td>
                       <button class="btn small" :class="job.isEnabled ? 'success' : 'muted'" @click="toggleJob(job)">
