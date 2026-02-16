@@ -98,6 +98,8 @@ public class EtlDbContext : DbContext
 
             entity.HasIndex(e => e.StartedUtc);
             entity.HasIndex(e => e.InstanceId);
+            entity.HasIndex(e => e.BatchId)
+                .HasFilter("[BatchId] IS NOT NULL");
         });
 
         modelBuilder.Entity<ScrapeRunIssue>(entity =>
