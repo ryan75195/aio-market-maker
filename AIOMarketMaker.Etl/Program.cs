@@ -12,6 +12,7 @@ using AIOMarketMaker.Etl.Services;
 using ScraperWorker.Services;
 using Azure.Data.Tables;
 using Azure.Storage.Blobs;
+using Pinecone;
 using Serilog;
 using Serilog.Formatting.Compact;
 
@@ -233,6 +234,12 @@ var host = new HostBuilder()
     .UseSerilog()
     .Build();
 
+if (args.Contains("--export-vectors"))
+{
+    await ExportVectorsFromPinecone(host, args);
+    return;
+}
+
 if (args.Contains("--comparables"))
 {
     using var scope = host.Services.CreateScope();
@@ -366,6 +373,96 @@ static async Task RunValidation(IHost host, string[] args)
 
         Console.WriteLine($"  --- {results.Count(r => r.IsComparable)}/{pairsToClassify.Count} accepted ---");
     }
+}
+
+static async Task ExportVectorsFromPinecone(IHost host, string[] args)
+{
+    using var scope = host.Services.CreateScope();
+    var configuration = scope.ServiceProvider.GetRequiredService<IConfiguration>();
+    var db = scope.ServiceProvider.GetRequiredService<EtlDbContext>();
+    var vectorIndexConfig = scope.ServiceProvider.GetRequiredService<VectorIndexConfig>();
+
+    // Pinecone credentials (required for export)
+    var pineconeApiKey = configuration.GetValue<string>("Pinecone:ApiKey")
+        ?? configuration.GetValue<string>("Values:Pinecone:ApiKey")
+        ?? throw new InvalidOperationException("Pinecone:ApiKey is required for export. Add it to local.settings.json.");
+    var pineconeIndexName = configuration.GetValue<string>("Pinecone:IndexName")
+        ?? configuration.GetValue<string>("Values:Pinecone:IndexName")
+        ?? "arbitrage";
+
+    Console.WriteLine($"Export vectors from Pinecone index '{pineconeIndexName}' to local USearch index");
+    Console.WriteLine($"  Index path: {vectorIndexConfig.IndexPath}");
+    Console.WriteLine($"  ID map path: {vectorIndexConfig.IdMapPath}");
+    Console.WriteLine();
+
+    // Create Pinecone client directly (not via DI — this is a one-time migration)
+    var pinecone = new PineconeIndexClientWrapper(pineconeApiKey, pineconeIndexName);
+
+    // Load all listing IDs from database
+    Console.Write("Loading listing IDs from database...");
+    var listingIds = await db.Listings
+        .AsNoTracking()
+        .Select(l => l.ListingId)
+        .ToListAsync();
+    Console.WriteLine($" {listingIds.Count:N0} listings.");
+
+    // Create the local USearch index
+    using var localIndex = new USearchVectorIndex(vectorIndexConfig);
+
+    var batchSize = 1000; // Pinecone Fetch API limit
+    var exported = 0;
+    var missing = 0;
+    var batches = listingIds.Chunk(batchSize);
+    var batchCount = (int)Math.Ceiling(listingIds.Count / (double)batchSize);
+    var batchNum = 0;
+
+    Console.WriteLine($"Fetching {listingIds.Count:N0} vectors in {batchCount} batches of {batchSize}...");
+    Console.WriteLine();
+
+    foreach (var batch in batches)
+    {
+        batchNum++;
+        var response = await pinecone.Fetch(new FetchRequest { Ids = batch.ToList() });
+
+        if (response.Vectors != null)
+        {
+            foreach (var (id, vector) in response.Vectors)
+            {
+                if (vector.Values != null)
+                {
+                    localIndex.Upsert(id, vector.Values.Value.ToArray());
+                    exported++;
+                }
+                else
+                {
+                    missing++;
+                }
+            }
+        }
+
+        var batchMissing = batch.Length - (response.Vectors?.Count ?? 0);
+        missing += batchMissing;
+
+        if (batchNum % 10 == 0 || batchNum == batchCount)
+        {
+            Console.WriteLine($"  Batch {batchNum}/{batchCount}: {exported:N0} exported, {missing:N0} missing");
+        }
+    }
+
+    Console.WriteLine();
+    Console.WriteLine($"Export complete: {exported:N0} vectors exported, {missing:N0} not found in Pinecone");
+
+    // Save to disk
+    Console.Write($"Saving index to {vectorIndexConfig.IndexPath}...");
+    localIndex.Save();
+    Console.WriteLine(" done.");
+
+    // Report file sizes
+    var indexSize = new FileInfo(vectorIndexConfig.IndexPath).Length;
+    var idMapSize = new FileInfo(vectorIndexConfig.IdMapPath).Length;
+    Console.WriteLine($"  Index file: {indexSize / 1024.0 / 1024.0:F1} MB");
+    Console.WriteLine($"  ID map file: {idMapSize / 1024.0 / 1024.0:F1} MB");
+    Console.WriteLine($"  Total vectors in index: {localIndex.Count:N0}");
 }
 
 static async Task RunKAnalysis(IHost host, string[] args)
