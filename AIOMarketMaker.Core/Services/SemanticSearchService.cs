@@ -1,5 +1,4 @@
 using Microsoft.Extensions.Logging;
-using Pinecone;
 using AIOMarketMaker.Core.Data.Models;
 
 namespace AIOMarketMaker.Core.Services;
@@ -12,14 +11,11 @@ public interface ISemanticSearchService
 
     Task<SemanticSearchResult> Search(
         string queryText,
-        IEnumerable<string>? filterToListingIds = null,
         int? topK = null,
         CancellationToken ct = default);
 
     Task<SemanticSearchResult> FindSimilar(
         string listingId,
-        IEnumerable<string>? filterToListingIds = null,
-        Metadata? metadataFilter = null,
         int? topK = null,
         CancellationToken ct = default);
 
@@ -34,19 +30,19 @@ public interface ISemanticSearchService
 
 public class SemanticSearchService : ISemanticSearchService
 {
-    private readonly IPineconeIndexClient _index;
+    private readonly IVectorIndex _vectorIndex;
     private readonly IEmbeddingService _embeddingService;
-    private readonly PineconeConfig _config;
+    private readonly VectorIndexConfig _config;
     private readonly ILogger<SemanticSearchService> _logger;
 
     public SemanticSearchService(
-        PineconeConfig config,
-        IPineconeIndexClient index,
+        VectorIndexConfig config,
+        IVectorIndex vectorIndex,
         IEmbeddingService embeddingService,
         ILogger<SemanticSearchService> logger)
     {
         _config = config;
-        _index = index;
+        _vectorIndex = vectorIndex;
         _embeddingService = embeddingService;
         _logger = logger;
     }
@@ -61,7 +57,7 @@ public class SemanticSearchService : ISemanticSearchService
             return new IndexResult(0, 0, Array.Empty<string>());
         }
 
-        _logger.LogInformation("Indexing {Count} listings to Pinecone", listingsList.Count);
+        _logger.LogInformation("Indexing {Count} listings to vector index", listingsList.Count);
 
         var errors = new List<string>();
         var upsertedCount = 0;
@@ -86,28 +82,22 @@ public class SemanticSearchService : ISemanticSearchService
 
                 skippedCount += batch.Length - validItems.Count;
 
-                if (validItems.Count == 0) continue;
+                if (validItems.Count == 0)
+                {
+                    continue;
+                }
 
                 var embeddings = await _embeddingService.GetEmbeddings(
                     validItems.Select(x => x.text),
                     ct);
 
-                var vectors = validItems
-                    .Zip(embeddings, (item, embedding) => new Vector
-                    {
-                        Id = item.listing.ListingId,
-                        Values = embedding,
-                        Metadata = new Metadata
-                        {
-                            ["listingId"] = item.listing.ListingId
-                        }
-                    })
-                    .ToList();
+                var items = validItems
+                    .Zip(embeddings, (item, embedding) => (Id: item.listing.ListingId, Vector: embedding));
 
-                await _index.Upsert(new UpsertRequest { Vectors = vectors });
-                upsertedCount += vectors.Count;
+                _vectorIndex.UpsertBatch(items);
+                upsertedCount += validItems.Count;
 
-                _logger.LogDebug("Upserted batch of {Count} vectors", vectors.Count);
+                _logger.LogDebug("Upserted batch of {Count} vectors", validItems.Count);
             }
             catch (OperationCanceledException)
             {
@@ -128,7 +118,6 @@ public class SemanticSearchService : ISemanticSearchService
 
     public async Task<SemanticSearchResult> Search(
         string queryText,
-        IEnumerable<string>? filterToListingIds = null,
         int? topK = null,
         CancellationToken ct = default)
     {
@@ -137,89 +126,65 @@ public class SemanticSearchService : ISemanticSearchService
             throw new ArgumentException("Query text cannot be empty", nameof(queryText));
         }
 
-        var filterIds = filterToListingIds?.ToList();
-        _logger.LogDebug("Searching for: {Query} (filter to {Count} IDs)",
-            queryText, filterIds?.Count ?? -1);
+        _logger.LogDebug("Searching for: {Query}", queryText);
 
         var queryEmbedding = await _embeddingService.GetEmbedding(queryText, ct);
 
         ct.ThrowIfCancellationRequested();
 
-        var request = new QueryRequest
-        {
-            Vector = queryEmbedding,
-            TopK = (uint)(topK ?? _config.TopK),
-            IncludeMetadata = false,
-            IncludeValues = false,
-            Filter = BuildIdFilter(filterIds)
-        };
-
-        var response = await _index.Query(request);
-
-        var hits = response.Matches?
-            .Where(m => m.Score >= _config.SimilarityThreshold)
-            .Select(m => new SemanticSearchHit(m.Id, m.Score ?? 0f))
-            .ToList() ?? [];
+        var hits = _vectorIndex.Search(queryEmbedding, topK ?? _config.TopK)
+            .Where(h => h.Score >= _config.SimilarityThreshold)
+            .Select(h => new SemanticSearchHit(h.Id, h.Score))
+            .ToList();
 
         return new SemanticSearchResult(hits);
     }
 
-    public async Task<SemanticSearchResult> FindSimilar(
+    public Task<SemanticSearchResult> FindSimilar(
         string listingId,
-        IEnumerable<string>? filterToListingIds = null,
-        Metadata? metadataFilter = null,
         int? topK = null,
         CancellationToken ct = default)
     {
-        var filterIds = filterToListingIds?.ToList();
-        _logger.LogDebug("Finding similar to: {ListingId} (filter to {Count} IDs)",
-            listingId, filterIds?.Count ?? -1);
+        _logger.LogDebug("Finding similar to: {ListingId}", listingId);
 
         ct.ThrowIfCancellationRequested();
 
-        var request = new QueryRequest
-        {
-            Id = listingId,
-            TopK = (uint)((topK ?? _config.TopK) + 1),
-            IncludeMetadata = false,
-            IncludeValues = false,
-            Filter = MergeFilters(BuildIdFilter(filterIds), metadataFilter)
-        };
+        var effectiveTopK = topK ?? _config.TopK;
 
-        var response = await _index.Query(request);
+        var hits = _vectorIndex.SearchById(listingId, effectiveTopK + 1)
+            .Where(h => h.Id != listingId)
+            .Where(h => h.Score >= _config.SimilarityThreshold)
+            .Take(effectiveTopK)
+            .Select(h => new SemanticSearchHit(h.Id, h.Score))
+            .ToList();
 
-        var hits = response.Matches?
-            .Where(m => m.Id != listingId)
-            .Where(m => m.Score >= _config.SimilarityThreshold)
-            .Take(topK ?? _config.TopK)
-            .Select(m => new SemanticSearchHit(m.Id, m.Score ?? 0f))
-            .ToList() ?? [];
-
-        return new SemanticSearchResult(hits);
+        return Task.FromResult(new SemanticSearchResult(hits));
     }
 
-    public async Task Delete(
+    public Task Delete(
         IEnumerable<string> listingIds,
         CancellationToken ct = default)
     {
         var ids = listingIds.ToList();
-        if (ids.Count == 0) return;
+        if (ids.Count == 0)
+        {
+            return Task.CompletedTask;
+        }
 
         _logger.LogInformation("Deleting {Count} listings from index", ids.Count);
 
         ct.ThrowIfCancellationRequested();
 
-        await _index.Delete(new DeleteRequest { Ids = ids });
+        _vectorIndex.Remove(ids);
+        return Task.CompletedTask;
     }
 
-    public async Task<bool> Exists(
+    public Task<bool> Exists(
         string listingId,
         CancellationToken ct = default)
     {
         ct.ThrowIfCancellationRequested();
-
-        var response = await _index.Fetch(new FetchRequest { Ids = [listingId] });
-        return response.Vectors?.ContainsKey(listingId) ?? false;
+        return Task.FromResult(_vectorIndex.Contains(listingId));
     }
 
     private static string BuildEmbeddingText(Listing listing)
@@ -227,50 +192,15 @@ public class SemanticSearchService : ISemanticSearchService
         var parts = new List<string>();
 
         if (!string.IsNullOrWhiteSpace(listing.Title))
+        {
             parts.Add(listing.Title);
+        }
 
         if (!string.IsNullOrWhiteSpace(listing.Description))
+        {
             parts.Add(listing.Description);
+        }
 
         return string.Join(" ", parts);
-    }
-
-    private static Metadata? BuildIdFilter(List<string>? listingIds)
-    {
-        if (listingIds == null || listingIds.Count == 0)
-        {
-            return null;
-        }
-
-        return new Metadata
-        {
-            ["listingId"] = new Metadata { ["$in"] = listingIds }
-        };
-    }
-
-    private static Metadata? MergeFilters(Metadata? idFilter, Metadata? metadataFilter)
-    {
-        if (idFilter == null && metadataFilter == null)
-        {
-            return null;
-        }
-
-        if (idFilter == null)
-        {
-            return metadataFilter;
-        }
-
-        if (metadataFilter == null)
-        {
-            return idFilter;
-        }
-
-        // Merge: copy all keys from metadataFilter into idFilter
-        foreach (var kvp in metadataFilter)
-        {
-            idFilter[kvp.Key] = kvp.Value;
-        }
-
-        return idFilter;
     }
 }

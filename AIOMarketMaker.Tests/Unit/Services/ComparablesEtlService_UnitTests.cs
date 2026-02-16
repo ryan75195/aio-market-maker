@@ -29,8 +29,6 @@ public class ComparablesEtlService_UnitTests
         // Default: FindSimilar returns empty results unless explicitly mocked
         _searchMock.Setup(s => s.FindSimilar(
                 It.IsAny<string>(),
-                It.IsAny<IEnumerable<string>?>(),
-                It.IsAny<Pinecone.Metadata?>(),
                 It.IsAny<int?>(),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(new SemanticSearchResult(new List<SemanticSearchHit>()));
@@ -73,15 +71,13 @@ public class ComparablesEtlService_UnitTests
         return listing;
     }
 
-    private void MockPineconeResult(string queryListingId, params (string listingId, double score)[] results)
+    private void MockVectorSearchResult(string queryListingId, params (string listingId, double score)[] results)
     {
         var hits = results.Select(r =>
             new SemanticSearchHit(r.listingId, (float)r.score)).ToList();
 
         _searchMock.Setup(s => s.FindSimilar(
                 queryListingId,
-                It.IsAny<IEnumerable<string>?>(),
-                It.IsAny<Pinecone.Metadata?>(),
                 It.IsAny<int?>(),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(new SemanticSearchResult(hits));
@@ -93,7 +89,7 @@ public class ComparablesEtlService_UnitTests
         var active = SeedListing(1, "iPhone 15 Pro", "Active", 800m);
         var sold = SeedListing(2, "iPhone 15 Pro 256GB", "Sold", 850m);
 
-        MockPineconeResult("1", ("2", 0.92));
+        MockVectorSearchResult("1", ("2", 0.92));
 
         _classifierMock.Setup(c => c.Classify(
                 It.IsAny<IEnumerable<ClassifyPairRequest>>(),
@@ -130,7 +126,7 @@ public class ComparablesEtlService_UnitTests
         });
         _dbContext.SaveChanges();
 
-        MockPineconeResult("1", ("2", 0.92));
+        MockVectorSearchResult("1", ("2", 0.92));
 
         var result = await _service.Run(dryRun: false);
 
@@ -147,7 +143,7 @@ public class ComparablesEtlService_UnitTests
         var active = SeedListing(5, "Samsung Galaxy S24", "Active", 700m);
         var sold = SeedListing(3, "Galaxy S24 Ultra", "Sold", 750m);
 
-        MockPineconeResult("5", ("3", 0.88));
+        MockVectorSearchResult("5", ("3", 0.88));
 
         _classifierMock.Setup(c => c.Classify(
                 It.IsAny<IEnumerable<ClassifyPairRequest>>(),
@@ -173,7 +169,7 @@ public class ComparablesEtlService_UnitTests
         var active = SeedListing(1, "iPhone 15 Pro", "Active", 800m);
         var sold = SeedListing(2, "iPhone 15 Pro 256GB", "Sold", 850m);
 
-        MockPineconeResult("1", ("2", 0.92));
+        MockVectorSearchResult("1", ("2", 0.92));
 
         var result = await _service.Run(dryRun: true);
 
@@ -196,8 +192,8 @@ public class ComparablesEtlService_UnitTests
         var active2 = SeedListing(2, "iPhone 15 Pro Black", "Active", 810m);
         var sold1 = SeedListing(3, "iPhone 15 Pro 256GB", "Sold", 850m);
 
-        // Pinecone returns both active2 and sold1 as neighbors of active1
-        MockPineconeResult("1", ("2", 0.91), ("3", 0.89));
+        // Vector search returns both active2 and sold1 as neighbors of active1
+        MockVectorSearchResult("1", ("2", 0.91), ("3", 0.89));
 
         _classifierMock.Setup(c => c.Classify(
                 It.IsAny<IEnumerable<ClassifyPairRequest>>(),
