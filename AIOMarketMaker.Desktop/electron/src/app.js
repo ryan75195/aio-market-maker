@@ -148,12 +148,19 @@ createApp({
     },
 
     filteredJobs() {
-      if (!this.jobSearch) { return this.jobs; }
-      const q = this.jobSearch.toLowerCase();
-      return this.jobs.filter(j =>
-        j.searchTerm?.toLowerCase().includes(q) ||
-        j.filterInstructions?.toLowerCase().includes(q)
-      );
+      let result = this.jobs;
+      if (this.jobSearch) {
+        const q = this.jobSearch.toLowerCase();
+        result = result.filter(j =>
+          j.searchTerm?.toLowerCase().includes(q) ||
+          j.filterInstructions?.toLowerCase().includes(q)
+        );
+      }
+      return [...result].sort((a, b) => {
+        const aTime = a.lastRunUtc ? new Date(a.lastRunUtc).getTime() : 0;
+        const bTime = b.lastRunUtc ? new Date(b.lastRunUtc).getTime() : 0;
+        return bTime - aTime;
+      });
     },
 
     jobPageSize() {
