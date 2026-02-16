@@ -159,6 +159,7 @@ app.MapJobEndpoints();
 app.MapHistoryEndpoints();
 app.MapListingEndpoints();
 app.MapScrapeEndpoints();
+app.MapOverviewEndpoints();
 
 app.Run();
 
