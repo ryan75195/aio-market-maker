@@ -14,6 +14,12 @@ public class ScrapeRun
     public string? InstanceId { get; set; }
 
     /// <summary>
+    /// Groups runs that were triggered together (e.g., all jobs from a single manual/nightly trigger).
+    /// Null for legacy runs created before batch tracking.
+    /// </summary>
+    public Guid? BatchId { get; set; }
+
+    /// <summary>
     /// How the run was triggered: Manual, Nightly
     /// </summary>
     public string TriggerType { get; set; } = "Manual";

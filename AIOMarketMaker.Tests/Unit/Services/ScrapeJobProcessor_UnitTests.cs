@@ -587,4 +587,27 @@ public class ScrapeJobProcessor_UnitTests
         _indexingServiceMock.Verify(i => i.Index(
             It.IsAny<Listing>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()), Times.Never);
     }
+
+    [Test]
+    public async Task Should_store_batch_id_when_provided_to_CreateRun()
+    {
+        var batchId = Guid.NewGuid();
+        var job = CreateJobConfig();
+
+        var run = await CreateProcessor().CreateRun(job, "Manual", batchId);
+
+        var saved = await _dbContext.ScrapeRuns.FindAsync(run.Id);
+        Assert.That(saved!.BatchId, Is.EqualTo(batchId));
+    }
+
+    [Test]
+    public async Task Should_allow_null_batch_id_in_CreateRun()
+    {
+        var job = CreateJobConfig();
+
+        var run = await CreateProcessor().CreateRun(job, "Manual");
+
+        var saved = await _dbContext.ScrapeRuns.FindAsync(run.Id);
+        Assert.That(saved!.BatchId, Is.Null);
+    }
 }

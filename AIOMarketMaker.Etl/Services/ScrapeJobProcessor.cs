@@ -14,7 +14,7 @@ namespace AIOMarketMaker.Etl.Services;
 
 public interface IScrapeJobProcessor
 {
-    Task<ScrapeRun> CreateRun(ScrapeJobConfig job, string triggerType);
+    Task<ScrapeRun> CreateRun(ScrapeJobConfig job, string triggerType, Guid? batchId = null);
     Task Execute(ScrapeRun run, ScrapeJobConfig job);
 }
 
@@ -58,11 +58,12 @@ public class ScrapeJobProcessor : IScrapeJobProcessor
         _dbWriteGate = dbWriteGate;
     }
 
-    public async Task<ScrapeRun> CreateRun(ScrapeJobConfig job, string triggerType)
+    public async Task<ScrapeRun> CreateRun(ScrapeJobConfig job, string triggerType, Guid? batchId = null)
     {
         var scrapeRun = new ScrapeRun
         {
             JobId = job.Id,
+            BatchId = batchId,
             Status = "Queued",
             CurrentPhase = "Queued",
             TriggerType = triggerType,

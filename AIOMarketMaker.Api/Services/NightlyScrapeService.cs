@@ -63,12 +63,13 @@ public class NightlyScrapeService : BackgroundService
         _logger.LogInformation("Found {Count} enabled jobs for nightly scrape", jobs.Count);
 
         // Create all runs sequentially in one scope so they appear in UI immediately
+        var batchId = Guid.NewGuid();
         var runIds = new List<int>();
         foreach (var job in jobs)
         {
             if (ct.IsCancellationRequested) { break; }
 
-            var run = await processor.CreateRun(job, "Nightly");
+            var run = await processor.CreateRun(job, "Nightly", batchId);
             runIds.Add(run.Id);
         }
 
