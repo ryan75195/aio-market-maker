@@ -412,7 +412,7 @@ static async Task ExportVectorsFromPinecone(IHost host, string[] args)
     // Create the local USearch index
     using var localIndex = new USearchVectorIndex(vectorIndexConfig);
 
-    var batchSize = 1000; // Pinecone Fetch API limit
+    var batchSize = 100; // Keep URL under 8KB (12-char IDs × 100 ≈ 2KB query string)
     var exported = 0;
     var missing = 0;
     var batches = listingIds.Chunk(batchSize);
@@ -450,7 +450,7 @@ static async Task ExportVectorsFromPinecone(IHost host, string[] args)
         var batchMissing = batch.Length - (response?.Vectors?.Count ?? 0);
         missing += batchMissing;
 
-        if (batchNum % 10 == 0 || batchNum == batchCount)
+        if (batchNum % 100 == 0 || batchNum == batchCount)
         {
             Console.WriteLine($"  Batch {batchNum}/{batchCount}: {exported:N0} exported, {missing:N0} missing");
         }
