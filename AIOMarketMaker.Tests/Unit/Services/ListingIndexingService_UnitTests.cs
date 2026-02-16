@@ -3,7 +3,6 @@ using AIOMarketMaker.Core.Services;
 using Microsoft.Extensions.Logging;
 using Moq;
 using NUnit.Framework;
-using Pinecone;
 
 namespace AIOMarketMaker.Tests.Unit.Services;
 
@@ -12,7 +11,7 @@ namespace AIOMarketMaker.Tests.Unit.Services;
 public class ListingIndexingService_UnitTests
 {
     private Mock<IEmbeddingService> _embeddingMock = null!;
-    private Mock<IPineconeIndexClient> _pineconeMock = null!;
+    private Mock<IVectorIndex> _vectorIndexMock = null!;
     private Mock<ILogger<ListingIndexingService>> _loggerMock = null!;
     private ListingIndexingService _service = null!;
 
@@ -20,13 +19,13 @@ public class ListingIndexingService_UnitTests
     public void Setup()
     {
         _embeddingMock = new Mock<IEmbeddingService>();
-        _pineconeMock = new Mock<IPineconeIndexClient>();
+        _vectorIndexMock = new Mock<IVectorIndex>();
         _loggerMock = new Mock<ILogger<ListingIndexingService>>();
-        _service = new ListingIndexingService(_embeddingMock.Object, _pineconeMock.Object, _loggerMock.Object);
+        _service = new ListingIndexingService(_embeddingMock.Object, _vectorIndexMock.Object, _loggerMock.Object);
     }
 
     [Test]
-    public async Task Should_embed_and_upsert_when_new()
+    public async Task Should_embed_and_upsert_when_embed_content_is_true()
     {
         var listing = CreateListing();
         var expectedEmbedding = new float[] { 0.1f, 0.2f, 0.3f };
@@ -34,12 +33,6 @@ public class ListingIndexingService_UnitTests
         _embeddingMock
             .Setup(x => x.GetEmbedding("Test Item Test description", It.IsAny<CancellationToken>()))
             .ReturnsAsync(expectedEmbedding);
-
-        UpsertRequest? capturedRequest = null;
-        _pineconeMock
-            .Setup(x => x.Upsert(It.IsAny<UpsertRequest>(), It.IsAny<CancellationToken>()))
-            .Callback<UpsertRequest, CancellationToken>((req, _) => capturedRequest = req)
-            .Returns(Task.CompletedTask);
 
         var result = await _service.Index(listing, embedContent: true);
 
@@ -53,49 +46,30 @@ public class ListingIndexingService_UnitTests
             x => x.GetEmbedding("Test Item Test description", It.IsAny<CancellationToken>()),
             Times.Once);
 
-        Assert.That(capturedRequest, Is.Not.Null);
-        var vector = capturedRequest!.Vectors.First();
-        Assert.Multiple(() =>
-        {
-            Assert.That(vector.Id, Is.EqualTo("ABC123"));
-            Assert.That(vector.Values?.ToArray(), Is.EqualTo(expectedEmbedding));
-        });
+        _vectorIndexMock.Verify(
+            x => x.Upsert("ABC123", expectedEmbedding),
+            Times.Once);
     }
 
     [Test]
-    public async Task Should_update_metadata_only_when_not_new()
+    public async Task Should_skip_when_embed_content_is_false()
     {
         var listing = CreateListing();
-
-        UpdateRequest? capturedUpdate = null;
-        _pineconeMock
-            .Setup(x => x.Update(It.IsAny<UpdateRequest>(), It.IsAny<CancellationToken>()))
-            .Callback<UpdateRequest, CancellationToken>((req, _) => capturedUpdate = req)
-            .Returns(Task.CompletedTask);
 
         var result = await _service.Index(listing, embedContent: false);
 
         Assert.Multiple(() =>
         {
-            Assert.That(result.Action, Is.EqualTo(IndexingAction.MetadataUpdated));
+            Assert.That(result.Action, Is.EqualTo(IndexingAction.Skipped));
             Assert.That(result.Error, Is.Null);
         });
 
         _embeddingMock.Verify(
             x => x.GetEmbedding(It.IsAny<string>(), It.IsAny<CancellationToken>()),
             Times.Never);
-        _pineconeMock.Verify(
-            x => x.Upsert(It.IsAny<UpsertRequest>(), It.IsAny<CancellationToken>()),
+        _vectorIndexMock.Verify(
+            x => x.Upsert(It.IsAny<string>(), It.IsAny<float[]>()),
             Times.Never);
-
-        Assert.That(capturedUpdate, Is.Not.Null);
-        Assert.Multiple(() =>
-        {
-            Assert.That(capturedUpdate!.Id, Is.EqualTo("ABC123"));
-            Assert.That(capturedUpdate.SetMetadata!["listingId"].AsT0, Is.EqualTo("ABC123"));
-            Assert.That(capturedUpdate.SetMetadata["price"].AsT1, Is.EqualTo(99.99));
-            Assert.That(capturedUpdate.SetMetadata["listingStatus"].AsT0, Is.EqualTo("Active"));
-        });
     }
 
     private static IEnumerable<TestCaseData> SkipCases()
@@ -123,99 +97,9 @@ public class ListingIndexingService_UnitTests
         _embeddingMock.Verify(
             x => x.GetEmbedding(It.IsAny<string>(), It.IsAny<CancellationToken>()),
             Times.Never);
-        _pineconeMock.Verify(
-            x => x.Upsert(It.IsAny<UpsertRequest>(), It.IsAny<CancellationToken>()),
+        _vectorIndexMock.Verify(
+            x => x.Upsert(It.IsAny<string>(), It.IsAny<float[]>()),
             Times.Never);
-        _pineconeMock.Verify(
-            x => x.Update(It.IsAny<UpdateRequest>(), It.IsAny<CancellationToken>()),
-            Times.Never);
-    }
-
-    [Test]
-    public async Task Should_include_all_metadata_fields_in_upsert()
-    {
-        var listing = CreateListing();
-        var expectedEmbedding = new float[] { 0.1f };
-
-        _embeddingMock
-            .Setup(x => x.GetEmbedding(It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(expectedEmbedding);
-
-        Metadata? capturedMetadata = null;
-        _pineconeMock
-            .Setup(x => x.Upsert(It.IsAny<UpsertRequest>(), It.IsAny<CancellationToken>()))
-            .Callback<UpsertRequest, CancellationToken>((req, _) =>
-                capturedMetadata = req.Vectors.First().Metadata)
-            .Returns(Task.CompletedTask);
-
-        await _service.Index(listing, embedContent: true);
-
-        Assert.That(capturedMetadata, Is.Not.Null);
-        Assert.Multiple(() =>
-        {
-            Assert.That(capturedMetadata!["listingId"].AsT0, Is.EqualTo("ABC123"));
-            Assert.That(capturedMetadata["scrapeJobId"].AsT1, Is.EqualTo(1.0));
-            Assert.That(capturedMetadata["condition"].AsT0, Is.EqualTo("NEW"));
-            Assert.That(capturedMetadata["listingStatus"].AsT0, Is.EqualTo("Active"));
-            Assert.That(capturedMetadata["purchaseFormat"].AsT0, Is.EqualTo("BuyItNow"));
-            Assert.That(capturedMetadata["soldDateUtc"].AsT0, Is.EqualTo(""));
-            Assert.That(capturedMetadata["createdUtc"].AsT0, Is.EqualTo("2026-01-15T10:00:00.0000000Z"));
-            Assert.That(capturedMetadata["price"].AsT1, Is.EqualTo(99.99));
-            Assert.That(capturedMetadata["shippingCost"].AsT1, Is.EqualTo(5.0));
-        });
-    }
-
-    [Test]
-    public async Task Should_omit_price_when_null()
-    {
-        var listing = CreateListing(price: null, shippingCost: null);
-
-        _embeddingMock
-            .Setup(x => x.GetEmbedding(It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new float[] { 0.1f });
-
-        Metadata? capturedMetadata = null;
-        _pineconeMock
-            .Setup(x => x.Upsert(It.IsAny<UpsertRequest>(), It.IsAny<CancellationToken>()))
-            .Callback<UpsertRequest, CancellationToken>((req, _) =>
-                capturedMetadata = req.Vectors.First().Metadata)
-            .Returns(Task.CompletedTask);
-
-        await _service.Index(listing, embedContent: true);
-
-        Assert.That(capturedMetadata, Is.Not.Null);
-        Assert.Multiple(() =>
-        {
-            Assert.That(capturedMetadata!.ContainsKey("price"), Is.False);
-            Assert.That(capturedMetadata.ContainsKey("shippingCost"), Is.False);
-        });
-    }
-
-    [Test]
-    public async Task Should_default_null_condition_to_empty_string_in_metadata()
-    {
-        var listing = CreateListing(condition: null, listingStatus: null, purchaseFormat: null);
-
-        _embeddingMock
-            .Setup(x => x.GetEmbedding(It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new float[] { 0.1f });
-
-        Metadata? capturedMetadata = null;
-        _pineconeMock
-            .Setup(x => x.Upsert(It.IsAny<UpsertRequest>(), It.IsAny<CancellationToken>()))
-            .Callback<UpsertRequest, CancellationToken>((req, _) =>
-                capturedMetadata = req.Vectors.First().Metadata)
-            .Returns(Task.CompletedTask);
-
-        await _service.Index(listing, embedContent: true);
-
-        Assert.That(capturedMetadata, Is.Not.Null);
-        Assert.Multiple(() =>
-        {
-            Assert.That(capturedMetadata!["condition"].AsT0, Is.EqualTo(""));
-            Assert.That(capturedMetadata["listingStatus"].AsT0, Is.EqualTo(""));
-            Assert.That(capturedMetadata["purchaseFormat"].AsT0, Is.EqualTo(""));
-        });
     }
 
     private static Listing CreateListing(

@@ -42,7 +42,7 @@ public class ScrapeJobProcessor_UnitTests
 
         _indexingServiceMock
             .Setup(i => i.Index(It.IsAny<Listing>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new IndexingResult(IndexingAction.MetadataUpdated));
+            .ReturnsAsync(new IndexingResult(IndexingAction.Skipped));
 
         // Default: empty search results (stops pagination)
         _webscraperClientMock
@@ -522,7 +522,7 @@ public class ScrapeJobProcessor_UnitTests
     }
 
     [Test]
-    public async Task Should_update_pinecone_metadata_for_changed_listings()
+    public async Task Should_index_changed_listings()
     {
         var run = CreateAndSeedScrapeRun();
         var job = CreateJobConfig();
@@ -556,7 +556,7 @@ public class ScrapeJobProcessor_UnitTests
     }
 
     [Test]
-    public async Task Should_not_update_pinecone_for_unchanged_listings()
+    public async Task Should_not_index_unchanged_listings()
     {
         var run = CreateAndSeedScrapeRun();
         var job = CreateJobConfig();
