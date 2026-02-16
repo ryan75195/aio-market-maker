@@ -19,7 +19,6 @@
     <PackageReference Include="Microsoft.ML.OnnxRuntime.Managed" Version="1.24.1" />
     <PackageReference Include="Microsoft.ML.Tokenizers" Version="2.0.0" />
     <PackageReference Include="OpenAI" Version="2.8.0" />
-    <PackageReference Include="Pinecone.Client" Version="4.0.2" />
   </ItemGroup>
 
   <ItemGroup>

@@ -1,13 +1,5 @@
 namespace AIOMarketMaker.Core.Services;
 
-public record PineconeConfig(
-    string ApiKey,
-    string IndexName,
-    int TopK = 10,
-    float SimilarityThreshold = 0.0f,
-    int UpsertBatchSize = 100
-);
-
 public record VectorIndexConfig(
     string IndexPath,
     string IdMapPath,

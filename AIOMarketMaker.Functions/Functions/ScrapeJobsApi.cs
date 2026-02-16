@@ -8,7 +8,6 @@ using AIOMarketMaker.Core.Data.Models;
 using System.Net;
 using System.Text.Json;
 using AIOMarketMaker.Core.Services;
-using Pinecone;
 
 namespace AIOMarketMaker.Functions.Functions;
 
@@ -38,18 +37,18 @@ public class ScrapeJobsApi
     private readonly EtlDbContext _dbContext;
     private readonly ILogger<ScrapeJobsApi> _logger;
     private readonly BlobServiceClient? _blobService;
-    private readonly IPineconeIndexClient? _pineconeClient;
+    private readonly IVectorIndex? _vectorIndex;
 
     public ScrapeJobsApi(
         EtlDbContext dbContext,
         ILogger<ScrapeJobsApi> logger,
         BlobServiceClient? blobService = null,
-        IPineconeIndexClient? pineconeClient = null)
+        IVectorIndex? vectorIndex = null)
     {
         _dbContext = dbContext;
         _logger = logger;
         _blobService = blobService;
-        _pineconeClient = pineconeClient;
+        _vectorIndex = vectorIndex;
     }
 
     /// <summary>
@@ -427,22 +426,23 @@ public class ScrapeJobsApi
         return response;
     }
 
-    private async Task<bool> ClearPineconeIndex()
+    private bool ClearVectorIndex()
     {
-        if (_pineconeClient == null)
+        if (_vectorIndex == null)
         {
             return false;
         }
 
         try
         {
-            await _pineconeClient.Delete(new DeleteRequest { DeleteAll = true });
-            _logger.LogInformation("Cleared Pinecone vector index");
+            _vectorIndex.Clear();
+            _vectorIndex.Save();
+            _logger.LogInformation("Cleared local vector index");
             return true;
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Failed to clear Pinecone index (non-fatal)");
+            _logger.LogWarning(ex, "Failed to clear vector index (non-fatal)");
             return false;
         }
     }
@@ -564,7 +564,7 @@ public class ScrapeJobsApi
             _logger.LogInformation("Cleared {Count} listings from database", count);
         }
 
-        bool indexCleared = await ClearPineconeIndex();
+        bool indexCleared = ClearVectorIndex();
 
         var response = req.CreateResponse(HttpStatusCode.OK);
         await response.WriteAsJsonAsync(new { deleted = count, indexCleared });
@@ -629,8 +629,8 @@ public class ScrapeJobsApi
             }
         }
 
-        // Clear Pinecone vector index
-        bool indexCleared = await ClearPineconeIndex();
+        // Clear local vector index
+        bool indexCleared = ClearVectorIndex();
 
         _logger.LogInformation(
             "Cleared all data: {Listings} listings, {Runs} scrape runs, blobs cleared: {BlobsCleared}, index cleared: {IndexCleared}",

@@ -9,6 +9,7 @@ public interface IVectorIndex
     IEnumerable<VectorSearchHit> Search(float[] queryVector, int topK);
     IEnumerable<VectorSearchHit> SearchById(string id, int topK);
     void Remove(IEnumerable<string> ids);
+    void Clear();
     bool Contains(string id);
     int Count { get; }
     void Save();

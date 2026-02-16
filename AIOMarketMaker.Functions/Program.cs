@@ -57,13 +57,25 @@ var host = new HostBuilder()
             services.AddSingleton(new BlobServiceClient(blobConnectionString));
         }
 
-        // Pinecone - for clearing vector index on data reset
-        var pineconeApiKey = configuration.GetValue<string>("Pinecone:ApiKey") ?? "";
-        if (!string.IsNullOrEmpty(pineconeApiKey))
+        // Vector index - for clearing on data reset (optional)
+        var vectorIndexPath = configuration.GetValue<string>("VectorIndex:IndexPath");
+        if (!string.IsNullOrEmpty(vectorIndexPath))
         {
-            var indexName = configuration.GetValue<string>("Pinecone:IndexName") ?? "arbitrage";
-            services.AddSingleton<IPineconeIndexClient>(
-                new PineconeIndexClientWrapper(pineconeApiKey, indexName));
+            var vectorIndexConfig = new VectorIndexConfig(
+                IndexPath: vectorIndexPath,
+                IdMapPath: configuration.GetValue<string>("VectorIndex:IdMapPath")
+                    ?? Path.ChangeExtension(vectorIndexPath, ".idmap.json"));
+            services.AddSingleton(vectorIndexConfig);
+            services.AddSingleton<IVectorIndex>(sp =>
+            {
+                var config = sp.GetRequiredService<VectorIndexConfig>();
+                var index = new USearchVectorIndex(config);
+                if (File.Exists(config.IndexPath) && File.Exists(config.IdMapPath))
+                {
+                    index.Load();
+                }
+                return index;
+            });
         }
     })
     .ConfigureLogging(logging =>
