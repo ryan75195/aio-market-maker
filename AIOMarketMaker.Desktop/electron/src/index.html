@@ -197,7 +197,7 @@
                   <button class="btn primary" @click="startScrape" :disabled="loading">
                     {{ loading ? 'Starting...' : 'Start Scrape' }}
                   </button>
-                  <button class="btn" @click="showJobsPanel = true; loadJobs()">Job Overview</button>
+                  <button class="btn" @click="showJobsPanel = true; loadJobs(); loadCategories()">Job Overview</button>
                   <button class="btn" @click="loadHistory">Refresh</button>
                 </div>
               </template>
@@ -206,16 +206,30 @@
             <!-- Job Overview View -->
             <template v-if="showJobsPanel">
               <div class="jobs-toolbar">
-                <button class="btn primary small" @click="showJobForm = true">+ New Job</button>
-                <input type="text" v-model="jobSearch" @input="jobPage = 1" class="search-input" placeholder="Search jobs...">
-                <span class="count-badge">{{ filteredJobs.length }} of {{ jobs.length }} jobs</span>
+                <div class="view-toggle">
+                  <button class="btn small" :class="{ active: jobOverviewMode === 'jobs' }" @click="jobOverviewMode = 'jobs'">Jobs</button>
+                  <button class="btn small" :class="{ active: jobOverviewMode === 'categories' }" @click="jobOverviewMode = 'categories'">Categories</button>
+                </div>
+                <template v-if="jobOverviewMode === 'jobs'">
+                  <button class="btn primary small" @click="showJobForm = true">+ New Job</button>
+                  <input type="text" v-model="jobSearch" @input="jobPage = 1" class="search-input" placeholder="Search jobs...">
+                  <span class="count-badge">{{ filteredJobs.length }} of {{ jobs.length }} jobs</span>
+                </template>
+                <template v-else>
+                  <button class="btn primary small" @click="showNewCategoryForm = true">+ New Category</button>
+                  <input type="text" v-model="categorySearch" class="search-input" placeholder="Search categories...">
+                  <span class="count-badge">{{ filteredCategories.length }} categories</span>
+                </template>
               </div>
 
+              <!-- Job List View -->
+              <template v-if="jobOverviewMode === 'jobs'">
               <table class="data-table">
                 <thead>
                   <tr>
                     <th class="sortable" @click="sortJobs('id')">ID{{ jobSortIndicator('id') }}</th>
                     <th class="sortable" @click="sortJobs('searchTerm')">Search Term{{ jobSortIndicator('searchTerm') }}</th>
+                    <th>Categories</th>
                     <th class="sortable" @click="sortJobs('lastRunUtc')">Last Run{{ jobSortIndicator('lastRunUtc') }}</th>
                     <th class="sortable" @click="sortJobs('isEnabled')">Enabled{{ jobSortIndicator('isEnabled') }}</th>
                     <th>Actions</th>
@@ -225,6 +239,10 @@
                   <tr v-for="job in paginatedJobs" :key="job.id">
                     <td class="number">{{ job.id }}</td>
                     <td>{{ job.searchTerm }}</td>
+                    <td>
+                      <span v-for="cat in job.categories" :key="cat.id" class="tag-pill">{{ cat.name }}</span>
+                      <span v-if="!job.categories || job.categories.length === 0" class="muted-text">-</span>
+                    </td>
                     <td>{{ job.lastRunUtc ? timeAgo(job.lastRunUtc) : 'Never' }}</td>
                     <td>
                       <button class="btn small" :class="job.isEnabled ? 'success' : 'muted'" @click="toggleJob(job)">
@@ -237,7 +255,7 @@
                     </td>
                   </tr>
                   <tr v-if="filteredJobs.length === 0">
-                    <td colspan="5" class="empty">{{ jobSearch ? 'No matching jobs' : 'No jobs configured' }}</td>
+                    <td colspan="6" class="empty">{{ jobSearch ? 'No matching jobs' : 'No jobs configured' }}</td>
                   </tr>
                 </tbody>
               </table>
@@ -251,6 +269,102 @@
                 <button class="page-btn" :disabled="jobPage >= jobTotalPages" @click="jobPage++">Next</button>
                 <span class="page-info">Page {{ jobPage }} of {{ jobTotalPages }}</span>
               </div>
+              </template>
+
+              <!-- Category View -->
+              <template v-if="jobOverviewMode === 'categories'">
+                <!-- New Category inline form -->
+                <div v-if="showNewCategoryForm" class="new-category-form">
+                  <input type="text" v-model="newCategoryName" placeholder="Category name" @keyup.enter="createCategory" autofocus>
+                  <button class="btn primary small" @click="createCategory">Create</button>
+                  <button class="btn small" @click="showNewCategoryForm = false; newCategoryName = ''">Cancel</button>
+                </div>
+
+                <div v-for="cat in filteredCategories" :key="cat.id" class="category-accordion">
+                  <div class="category-header" @click="toggleCategoryExpand(cat.id)">
+                    <span class="expand-icon">{{ expandedCategories[cat.id] ? '\u25BC' : '\u25B6' }}</span>
+                    <span class="category-name">{{ cat.name }}</span>
+                    <span class="count-badge small">{{ cat.jobCount }} jobs</span>
+                    <button class="btn small" :class="cat.isEnabled ? 'success' : 'muted'" @click.stop="toggleCategory(cat)">
+                      {{ cat.isEnabled ? 'Enabled' : 'Disabled' }}
+                    </button>
+                    <button class="btn small" @click.stop="renameCategory(cat)">Rename</button>
+                    <button class="btn small danger" @click.stop="deleteCategory(cat)">Delete</button>
+                  </div>
+                  <div v-if="expandedCategories[cat.id]" class="category-jobs">
+                    <table class="data-table compact">
+                      <thead>
+                        <tr>
+                          <th>ID</th>
+                          <th>Search Term</th>
+                          <th>Enabled</th>
+                          <th></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr v-for="job in jobsInCategory(cat.id)" :key="job.id">
+                          <td class="number">{{ job.id }}</td>
+                          <td>{{ job.searchTerm }}</td>
+                          <td>
+                            <button class="btn small" :class="job.isEnabled ? 'success' : 'muted'" @click="toggleJob(job)">
+                              {{ job.isEnabled ? 'Enabled' : 'Disabled' }}
+                            </button>
+                          </td>
+                          <td>
+                            <button class="btn small danger" @click="removeJobFromCategory(job.id, cat.id)">Remove</button>
+                          </td>
+                        </tr>
+                        <tr v-if="jobsInCategory(cat.id).length === 0">
+                          <td colspan="4" class="empty">No jobs in this category</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                    <div class="add-job-row">
+                      <select @change="addJobToCategory(Number($event.target.value), cat.id); $event.target.value = ''">
+                        <option value="" disabled selected>+ Add job...</option>
+                        <option v-for="j in jobs.filter(j => !(j.categories || []).some(c => c.id === cat.id))" :key="j.id" :value="j.id">
+                          {{ j.searchTerm }}
+                        </option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Uncategorized section -->
+                <div class="category-accordion" v-if="uncategorizedJobs().length > 0">
+                  <div class="category-header" @click="toggleCategoryExpand('uncategorized')">
+                    <span class="expand-icon">{{ expandedCategories['uncategorized'] ? '\u25BC' : '\u25B6' }}</span>
+                    <span class="category-name muted-text">Uncategorized</span>
+                    <span class="count-badge small">{{ uncategorizedJobs().length }} jobs</span>
+                  </div>
+                  <div v-if="expandedCategories['uncategorized']" class="category-jobs">
+                    <table class="data-table compact">
+                      <thead>
+                        <tr>
+                          <th>ID</th>
+                          <th>Search Term</th>
+                          <th>Enabled</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr v-for="job in uncategorizedJobs()" :key="job.id">
+                          <td class="number">{{ job.id }}</td>
+                          <td>{{ job.searchTerm }}</td>
+                          <td>
+                            <button class="btn small" :class="job.isEnabled ? 'success' : 'muted'" @click="toggleJob(job)">
+                              {{ job.isEnabled ? 'Enabled' : 'Disabled' }}
+                            </button>
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                <div v-if="filteredCategories.length === 0 && uncategorizedJobs().length === 0" class="empty-state">
+                  No categories yet. Click "+ New Category" to create one.
+                </div>
+              </template>
             </template>
 
             <!-- Batch list content (hidden when editing jobs) -->
@@ -601,6 +715,14 @@
               <div class="form-group">
                 <label>Filter Instructions (optional)</label>
                 <textarea v-model="jobForm.filterInstructions" placeholder="e.g., Exclude bundles"></textarea>
+              </div>
+              <div class="form-group" v-if="categories.length > 0">
+                <label>Categories</label>
+                <div class="category-checkboxes">
+                  <label v-for="cat in categories" :key="cat.id" class="checkbox-label">
+                    <input type="checkbox" :value="cat.id" v-model="jobForm.categoryIds"> {{ cat.name }}
+                  </label>
+                </div>
               </div>
               <div class="form-group">
                 <label>

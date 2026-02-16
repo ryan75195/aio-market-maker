@@ -25,6 +25,12 @@ createApp({
       expandedRuns: {},
       runIssues: {},
       showJobsPanel: false,
+      jobOverviewMode: 'jobs',
+      categories: [],
+      expandedCategories: {},
+      newCategoryName: '',
+      showNewCategoryForm: false,
+      categorySearch: '',
       jobSearch: '',
       jobPage: 1,
       jobSortBy: 'id',
@@ -37,7 +43,8 @@ createApp({
       jobForm: {
         searchTerm: '',
         filterInstructions: '',
-        isEnabled: true
+        isEnabled: true,
+        categoryIds: []
       },
       // lastInstanceId removed - orchestrations replaced by inline processing
       refreshInterval: null,
@@ -208,6 +215,12 @@ createApp({
       if (end < total - 1) { pages.push('...'); }
       pages.push(total);
       return pages;
+    },
+
+    filteredCategories() {
+      if (!this.categorySearch) { return this.categories; }
+      const q = this.categorySearch.toLowerCase();
+      return this.categories.filter(c => c.name.toLowerCase().includes(q));
     },
 
     activeRuns() {
@@ -556,6 +569,124 @@ createApp({
       }
     },
 
+    async loadCategories() {
+      try {
+        const data = await this.apiCall('/categories');
+        this.categories = this.toCamelCase(data);
+      } catch (err) {
+        this.showToast(`Failed to load categories: ${err.message}`, 'error');
+      }
+    },
+
+    async createCategory() {
+      if (!this.newCategoryName.trim()) { return; }
+      try {
+        const data = await this.apiCall('/categories', {
+          method: 'POST',
+          body: JSON.stringify({ name: this.newCategoryName.trim() })
+        });
+        this.categories.push(this.toCamelCase(data));
+        this.newCategoryName = '';
+        this.showNewCategoryForm = false;
+        this.showToast('Category created', 'success');
+      } catch (err) {
+        this.showToast(`Failed to create category: ${err.message}`, 'error');
+      }
+    },
+
+    async renameCategory(cat) {
+      const newName = prompt('Rename category:', cat.name);
+      if (!newName || newName.trim() === cat.name) { return; }
+      try {
+        const data = await this.apiCall(`/categories/${cat.id}`, {
+          method: 'PUT',
+          body: JSON.stringify({ name: newName.trim() })
+        });
+        const updated = this.toCamelCase(data);
+        const idx = this.categories.findIndex(c => c.id === cat.id);
+        if (idx !== -1) { this.categories[idx] = updated; }
+        this.showToast('Category renamed', 'success');
+      } catch (err) {
+        this.showToast(`Failed to rename: ${err.message}`, 'error');
+      }
+    },
+
+    async deleteCategory(cat) {
+      if (!confirm(`Delete category "${cat.name}"? Jobs will NOT be deleted.`)) { return; }
+      try {
+        await this.apiCall(`/categories/${cat.id}`, { method: 'DELETE' });
+        this.categories = this.categories.filter(c => c.id !== cat.id);
+        this.showToast('Category deleted', 'success');
+        await this.loadJobs();
+      } catch (err) {
+        this.showToast(`Failed to delete: ${err.message}`, 'error');
+      }
+    },
+
+    async toggleCategory(cat) {
+      try {
+        const endpoint = cat.isEnabled ? `/categories/${cat.id}/disable` : `/categories/${cat.id}/enable`;
+        const data = await this.apiCall(endpoint, { method: 'POST' });
+        const updated = this.toCamelCase(data);
+        const idx = this.categories.findIndex(c => c.id === cat.id);
+        if (idx !== -1) { this.categories[idx] = updated; }
+        this.showToast(`Category ${updated.isEnabled ? 'enabled' : 'disabled'}`, 'success');
+      } catch (err) {
+        this.showToast(`Failed to toggle category: ${err.message}`, 'error');
+      }
+    },
+
+    toggleCategoryExpand(catId) {
+      this.expandedCategories[catId] = !this.expandedCategories[catId];
+    },
+
+    jobsInCategory(catId) {
+      return this.jobs.filter(j => j.categories?.some(c => c.id === catId));
+    },
+
+    uncategorizedJobs() {
+      return this.jobs.filter(j => !j.categories || j.categories.length === 0);
+    },
+
+    async removeJobFromCategory(jobId, catId) {
+      const job = this.jobs.find(j => j.id === jobId);
+      if (!job) { return; }
+      const newCatIds = (job.categories || []).filter(c => c.id !== catId).map(c => c.id);
+      try {
+        await this.apiCall(`/jobs/${jobId}/categories`, {
+          method: 'POST',
+          body: JSON.stringify(newCatIds)
+        });
+        job.categories = job.categories.filter(c => c.id !== catId);
+        const cat = this.categories.find(c => c.id === catId);
+        if (cat) { cat.jobCount = Math.max(0, cat.jobCount - 1); }
+        this.showToast('Job removed from category', 'success');
+      } catch (err) {
+        this.showToast(`Failed to remove: ${err.message}`, 'error');
+      }
+    },
+
+    async addJobToCategory(jobId, catId) {
+      const job = this.jobs.find(j => j.id === jobId);
+      if (!job) { return; }
+      const currentCatIds = (job.categories || []).map(c => c.id);
+      if (currentCatIds.includes(catId)) { return; }
+      try {
+        await this.apiCall(`/jobs/${jobId}/categories`, {
+          method: 'POST',
+          body: JSON.stringify([...currentCatIds, catId])
+        });
+        const cat = this.categories.find(c => c.id === catId);
+        if (cat) {
+          job.categories = [...(job.categories || []), { id: cat.id, name: cat.name }];
+          cat.jobCount = (cat.jobCount || 0) + 1;
+        }
+        this.showToast('Job added to category', 'success');
+      } catch (err) {
+        this.showToast(`Failed to add: ${err.message}`, 'error');
+      }
+    },
+
     async loadHistory() {
       try {
         const params = new URLSearchParams({
@@ -705,7 +836,8 @@ createApp({
       this.jobForm = {
         searchTerm: job.searchTerm,
         filterInstructions: job.filterInstructions || '',
-        isEnabled: job.isEnabled
+        isEnabled: job.isEnabled,
+        categoryIds: (job.categories || []).map(c => c.id)
       };
       this.showJobForm = true;
     },
@@ -743,6 +875,8 @@ createApp({
           this.showToast('Job created', 'success');
         }
         this.closeJobForm();
+        await this.loadJobs();
+        await this.loadCategories();
       } catch (err) {
         this.showToast(`Failed to save job: ${err.message}`, 'error');
       }
@@ -751,7 +885,7 @@ createApp({
     closeJobForm() {
       this.showJobForm = false;
       this.editingJob = null;
-      this.jobForm = { searchTerm: '', filterInstructions: '', isEnabled: true };
+      this.jobForm = { searchTerm: '', filterInstructions: '', isEnabled: true, categoryIds: [] };
     },
 
     async startScrape() {
