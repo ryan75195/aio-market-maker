@@ -1,4 +1,3 @@
-using Pinecone;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -195,19 +194,6 @@ var host = new HostBuilder()
         // Listing indexing service
         services.AddSingleton<IListingIndexingService, ListingIndexingService>();
 
-        // TEMPORARY: Keep IPineconeIndexClient for --validate and --k-analysis (removed in Task 6)
-        var pineconeApiKey = configuration.GetValue<string>("Pinecone:ApiKey")
-            ?? configuration.GetValue<string>("Values:Pinecone:ApiKey")
-            ?? "";
-        if (!string.IsNullOrEmpty(pineconeApiKey))
-        {
-            var pineconeIndexName = configuration.GetValue<string>("Pinecone:IndexName")
-                ?? configuration.GetValue<string>("Values:Pinecone:IndexName")
-                ?? "arbitrage";
-            services.AddSingleton<IPineconeIndexClient>(sp =>
-                new PineconeIndexClientWrapper(pineconeApiKey, pineconeIndexName));
-        }
-
         // Pricing analysis service
         services.AddSingleton<IPricingAnalysisService, PricingAnalysisService>();
 
@@ -286,7 +272,7 @@ static async Task RunValidation(IHost host, string[] args)
 
     using var scope = host.Services.CreateScope();
     var db = scope.ServiceProvider.GetRequiredService<EtlDbContext>();
-    var pinecone = scope.ServiceProvider.GetRequiredService<IPineconeIndexClient>();
+    var vectorIndex = scope.ServiceProvider.GetRequiredService<IVectorIndex>();
     var classifier = scope.ServiceProvider.GetRequiredService<IVariantClassifierClient>();
 
     // Load all listings
@@ -333,24 +319,15 @@ static async Task RunValidation(IHost host, string[] args)
         Console.WriteLine($"  Desc: {(listing.Description ?? "")[..Math.Min((listing.Description ?? "").Length, 150)]}");
         Console.WriteLine();
 
-        // Query Pinecone
-        var request = new Pinecone.QueryRequest
-        {
-            Id = listing.ListingId,
-            TopK = (uint)(neighborsPerListing + 1),
-            IncludeMetadata = false,
-            IncludeValues = false
-        };
-
-        var response = await pinecone.Query(request);
-        var neighbors = response.Matches?
-            .Where(m => m.Id != listing.ListingId)
+        // Query vector index
+        var neighbors = vectorIndex.SearchById(listing.ListingId, neighborsPerListing + 1)
+            .Where(h => h.Id != listing.ListingId)
             .Take(neighborsPerListing)
-            .ToList() ?? [];
+            .ToList();
 
         if (neighbors.Count == 0)
         {
-            Console.WriteLine("  (no Pinecone neighbors found)");
+            Console.WriteLine("  (no vector neighbors found)");
             continue;
         }
 
@@ -363,7 +340,7 @@ static async Task RunValidation(IHost host, string[] args)
                 continue;
             }
             pairsToClassify.Add((
-                Score: neighbor.Score ?? 0f,
+                Score: neighbor.Score,
                 Neighbor: neighborListing,
                 Request: new ClassifyPairRequest(
                     listing.Title ?? "", listing.Description ?? "",
@@ -402,10 +379,10 @@ static async Task RunKAnalysis(IHost host, string[] args)
 
     using var scope = host.Services.CreateScope();
     var db = scope.ServiceProvider.GetRequiredService<EtlDbContext>();
-    var pinecone = scope.ServiceProvider.GetRequiredService<IPineconeIndexClient>();
+    var vectorIndex = scope.ServiceProvider.GetRequiredService<IVectorIndex>();
     var classifier = scope.ServiceProvider.GetRequiredService<IVariantClassifierClient>();
 
-    Console.WriteLine($"K-Analysis: sampling {actualSample} active listings, querying Pinecone with K={maxK}");
+    Console.WriteLine($"K-Analysis: sampling {actualSample} active listings, querying vector index with K={maxK}");
     Console.WriteLine();
 
     // Load all listings into lookup dictionary
@@ -446,21 +423,11 @@ static async Task RunKAnalysis(IHost host, string[] args)
         totalQueries++;
         Console.Write($"[{totalQueries}/{activeListings.Count}] Querying {listing.ListingId}...");
 
-        // Query Pinecone directly — bypass SemanticSearchService threshold filter
-        var request = new Pinecone.QueryRequest
-        {
-            Id = listing.ListingId,
-            TopK = (uint)(maxK + 1), // +1 for self-match
-            IncludeMetadata = false,
-            IncludeValues = false
-        };
-
-        var response = await pinecone.Query(request);
-
-        var neighbors = response.Matches?
-            .Where(m => m.Id != listing.ListingId)
+        // Query vector index directly — bypass SemanticSearchService threshold filter
+        var neighbors = vectorIndex.SearchById(listing.ListingId, maxK + 1)
+            .Where(h => h.Id != listing.ListingId)
             .Take(maxK)
-            .ToList() ?? [];
+            .ToList();
 
         Console.Write($" {neighbors.Count} neighbors.");
 
@@ -483,7 +450,7 @@ static async Task RunKAnalysis(IHost host, string[] args)
 
             pairsToClassify.Add((
                 Rank: i + 1,
-                Score: neighbor.Score ?? 0f,
+                Score: neighbor.Score,
                 Request: new ClassifyPairRequest(
                     listing.Title ?? "", listing.Description ?? "",
                     neighborListing.Title ?? "", neighborListing.Description ?? "")
