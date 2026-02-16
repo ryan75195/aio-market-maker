@@ -8,36 +8,34 @@ namespace AIOMarketMaker.Api.Endpoints;
 
 public record OverviewResponse(
     int TotalListings, int ActiveListings, int SoldListings, int EndedListings,
-    int OpportunitiesCount, decimal TotalProfit,
-    IEnumerable<TopOpportunityResponse> TopOpportunities,
+    int Opportunities, decimal AggregateProfit,
     LastScrapeResponse? LastScrape,
     IEnumerable<CumulativeGrowthEntry> CumulativeGrowth,
     IEnumerable<ListingsByJobEntry> ListingsByJob,
     ProfitDistributionResponse ProfitDistribution,
+    IEnumerable<TopOpportunityResponse> TopOpportunities,
     IEnumerable<RecentRunResponse> RecentRuns);
 
 public record LastScrapeResponse(
-    int Id, DateTime? StartedUtc, DateTime? CompletedUtc, string? Status,
-    string? CurrentPhase, int TotalListingsFound, int ListingsProcessed,
-    string? SearchTerm);
+    DateTime StartedUtc, string? Status, string? JobSearchTerm,
+    int ListingsAddedActive, int ListingsAddedSold);
 
-public record CumulativeGrowthEntry(string Date, int CumulativeCount);
+public record CumulativeGrowthEntry(string Date, int Cumulative);
 
 public record ListingsByJobEntry(int JobId, string? SearchTerm, int Count);
 
 public record ProfitDistributionResponse(
-    int Range0To25, int Range25To50, int Range50To100, int Range100Plus);
+    int Range0to25, int Range25to50, int Range50to100, int Range100plus);
 
 public record TopOpportunityResponse(
-    int Id, string ListingId, string? Title, decimal? Price, string? Currency,
-    decimal? ShippingCost, string? Url, string? Condition, string? ListingStatus,
-    string? SearchTerm, decimal? AverageSoldPrice, int SimilarSoldCount,
-    decimal? PotentialProfit);
+    string ListingId, string? Title, decimal? Price, string? Currency,
+    decimal? AverageSoldPrice, decimal? PotentialProfit,
+    int SimilarSoldCount, string? Condition, string? Url);
 
 public record RecentRunResponse(
-    int Id, DateTime? StartedUtc, DateTime? CompletedUtc, string? Status,
-    string? CurrentPhase, int TotalListingsFound, int ListingsProcessed,
-    string? SearchTerm, string? TriggerType);
+    int Id, DateTime? StartedUtc, string? JobSearchTerm,
+    string? Status, int ListingsAddedActive, int ListingsAddedSold,
+    int ListingsFailed);
 
 public static class OverviewEndpoints
 {
@@ -53,8 +51,7 @@ public static class OverviewEndpoints
         bool matchCondition = true)
     {
         var statusCounts = await GetStatusCounts(db);
-        var (opportunitiesCount, totalProfit, topOpportunities, profitDistribution) =
-            await GetOpportunityData(db, minComps, feePercent, matchCondition);
+        var oppData = await GetOpportunityData(db, minComps, feePercent, matchCondition);
         var lastScrape = await GetLastScrape(db);
         var cumulativeGrowth = await GetCumulativeGrowth(db);
         var listingsByJob = await GetListingsByJob(db);
@@ -65,13 +62,13 @@ public static class OverviewEndpoints
             ActiveListings: statusCounts.Active,
             SoldListings: statusCounts.Sold,
             EndedListings: statusCounts.Ended,
-            OpportunitiesCount: opportunitiesCount,
-            TotalProfit: totalProfit,
-            TopOpportunities: topOpportunities,
+            Opportunities: oppData.Opportunities,
+            AggregateProfit: oppData.AggregateProfit,
             LastScrape: lastScrape,
             CumulativeGrowth: cumulativeGrowth,
             ListingsByJob: listingsByJob,
-            ProfitDistribution: profitDistribution,
+            ProfitDistribution: oppData.ProfitDistribution,
+            TopOpportunities: oppData.TopOpportunities,
             RecentRuns: recentRuns);
 
         return Results.Ok(response);
@@ -99,7 +96,7 @@ public static class OverviewEndpoints
     // -- Opportunity data (CTE-based, SQL Server only) --
 
     private record OpportunityData(
-        int OpportunitiesCount, decimal TotalProfit,
+        int Opportunities, decimal AggregateProfit,
         IEnumerable<TopOpportunityResponse> TopOpportunities,
         ProfitDistributionResponse ProfitDistribution);
 
@@ -126,11 +123,11 @@ public static class OverviewEndpoints
         // Count + total profit
         var aggregateSql = $@"
             {cte}
-            SELECT COUNT(*) AS Cnt, ISNULL(SUM(fp.PotentialProfit), 0) AS TotalProfit
+            SELECT COUNT(*) AS Cnt, ISNULL(SUM(fp.PotentialProfit), 0) AS AggProfit
             FROM FilteredPredictions fp";
 
-        int opportunitiesCount = 0;
-        decimal totalProfit = 0m;
+        int opportunities = 0;
+        decimal aggregateProfit = 0m;
 
         await using (var cmd = conn.CreateCommand())
         {
@@ -138,8 +135,8 @@ public static class OverviewEndpoints
             await using var reader = await cmd.ExecuteReaderAsync();
             if (await reader.ReadAsync())
             {
-                opportunitiesCount = reader.GetInt32(0);
-                totalProfit = reader.GetDecimal(1);
+                opportunities = reader.GetInt32(0);
+                aggregateProfit = reader.GetDecimal(1);
             }
         }
 
@@ -147,38 +144,32 @@ public static class OverviewEndpoints
         var topSql = $@"
             {cte}
             SELECT TOP 10
-                l.Id, l.ListingId, l.Title, l.Price, l.Currency,
-                l.ShippingCost, l.Url, l.[Condition], l.ListingStatus,
-                sj.SearchTerm,
-                fp.AverageSoldPrice, fp.SimilarSoldCount, fp.PotentialProfit
+                l.ListingId, l.Title, l.Price, l.Currency,
+                fp.AverageSoldPrice, fp.PotentialProfit, fp.SimilarSoldCount,
+                l.[Condition], l.Url
             FROM FilteredPredictions fp
             INNER JOIN Listings l ON l.Id = fp.ListingId
-            LEFT JOIN ScrapeJobs sj ON sj.Id = l.ScrapeJobId
             ORDER BY fp.PotentialProfit DESC";
 
         var topOpportunities = await ExecuteQuery(db, topSql, reader => new TopOpportunityResponse(
-            reader.GetInt32(0),
-            reader.GetString(1),
-            reader.IsDBNull(2) ? null : reader.GetString(2),
-            reader.IsDBNull(3) ? null : reader.GetDecimal(3),
-            reader.IsDBNull(4) ? null : reader.GetString(4),
+            reader.GetString(0),
+            reader.IsDBNull(1) ? null : reader.GetString(1),
+            reader.IsDBNull(2) ? null : reader.GetDecimal(2),
+            reader.IsDBNull(3) ? null : reader.GetString(3),
+            reader.IsDBNull(4) ? null : reader.GetDecimal(4),
             reader.IsDBNull(5) ? null : reader.GetDecimal(5),
-            reader.IsDBNull(6) ? null : reader.GetString(6),
+            reader.IsDBNull(6) ? 0 : reader.GetInt32(6),
             reader.IsDBNull(7) ? null : reader.GetString(7),
-            reader.IsDBNull(8) ? null : reader.GetString(8),
-            reader.IsDBNull(9) ? null : reader.GetString(9),
-            reader.IsDBNull(10) ? null : reader.GetDecimal(10),
-            reader.IsDBNull(11) ? 0 : reader.GetInt32(11),
-            reader.IsDBNull(12) ? null : reader.GetDecimal(12)));
+            reader.IsDBNull(8) ? null : reader.GetString(8)));
 
         // Profit distribution (4 buckets)
         var distSql = $@"
             {cte}
             SELECT
-                SUM(CASE WHEN fp.PotentialProfit >= 0 AND fp.PotentialProfit < 25 THEN 1 ELSE 0 END) AS Range0To25,
-                SUM(CASE WHEN fp.PotentialProfit >= 25 AND fp.PotentialProfit < 50 THEN 1 ELSE 0 END) AS Range25To50,
-                SUM(CASE WHEN fp.PotentialProfit >= 50 AND fp.PotentialProfit < 100 THEN 1 ELSE 0 END) AS Range50To100,
-                SUM(CASE WHEN fp.PotentialProfit >= 100 THEN 1 ELSE 0 END) AS Range100Plus
+                SUM(CASE WHEN fp.PotentialProfit >= 0 AND fp.PotentialProfit < 25 THEN 1 ELSE 0 END),
+                SUM(CASE WHEN fp.PotentialProfit >= 25 AND fp.PotentialProfit < 50 THEN 1 ELSE 0 END),
+                SUM(CASE WHEN fp.PotentialProfit >= 50 AND fp.PotentialProfit < 100 THEN 1 ELSE 0 END),
+                SUM(CASE WHEN fp.PotentialProfit >= 100 THEN 1 ELSE 0 END)
             FROM FilteredPredictions fp";
 
         var profitDistribution = new ProfitDistributionResponse(0, 0, 0, 0);
@@ -196,7 +187,7 @@ public static class OverviewEndpoints
             }
         }
 
-        return new OpportunityData(opportunitiesCount, totalProfit, topOpportunities, profitDistribution);
+        return new OpportunityData(opportunities, aggregateProfit, topOpportunities, profitDistribution);
     }
 
     // -- Last scrape run --
@@ -222,9 +213,8 @@ public static class OverviewEndpoints
         }
 
         return new LastScrapeResponse(
-            run.Id, run.StartedUtc, run.CompletedUtc, run.Status,
-            run.CurrentPhase, run.TotalListingsFound, run.ListingsProcessed,
-            searchTerm);
+            run.StartedUtc, run.Status, searchTerm,
+            run.ListingsAddedActive, run.ListingsAddedSold);
     }
 
     // -- Cumulative growth by date --
@@ -249,7 +239,7 @@ public static class OverviewEndpoints
             ORDER BY ListingDate";
 
         var dailyCounts = await ExecuteQuery(db, sql, reader => new DailyCount(
-            reader.GetString(0),
+            isSqlite ? reader.GetString(0) : reader.GetDateTime(0).ToString("yyyy-MM-dd"),
             reader.GetInt32(1)));
 
         // Build running sum in C#
@@ -258,7 +248,7 @@ public static class OverviewEndpoints
         foreach (var day in dailyCounts)
         {
             cumulative += day.Count;
-            result.Add(new CumulativeGrowthEntry(day.Date, cumulative));
+            result.Add(new CumulativeGrowthEntry(day.Date, Cumulative: cumulative));
         }
 
         return result;
@@ -309,10 +299,10 @@ public static class OverviewEndpoints
             .ToDictionaryAsync(j => j.Id, j => j.SearchTerm);
 
         return runs.Select(r => new RecentRunResponse(
-            r.Id, r.StartedUtc, r.CompletedUtc, r.Status,
-            r.CurrentPhase, r.TotalListingsFound, r.ListingsProcessed,
+            r.Id, r.StartedUtc,
             r.JobId.HasValue ? jobNames.GetValueOrDefault(r.JobId.Value) : null,
-            r.TriggerType));
+            r.Status, r.ListingsAddedActive, r.ListingsAddedSold,
+            r.ListingsFailed));
     }
 
     // -- SQL helpers (same pattern as ListingEndpoints) --
