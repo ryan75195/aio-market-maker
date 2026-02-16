@@ -16,10 +16,8 @@
         <div class="logo">AIOMarketMaker</div>
         <div class="nav-items">
           <button :class="{ active: currentView === 'overview' }" @click="currentView = 'overview'; loadOverview()">Overview</button>
-          <button :class="{ active: currentView === 'jobs' }" @click="currentView = 'jobs'">Jobs</button>
+          <button :class="{ active: currentView === 'index' }" @click="currentView = 'index'; historyMode = 'batches'; loadHistory()">Index</button>
           <button :class="{ active: currentView === 'opportunities' }" @click="currentView = 'opportunities'; loadOpportunities()">Opportunities</button>
-          <button :class="{ active: currentView === 'operations' }" @click="currentView = 'operations'">Operations</button>
-          <button :class="{ active: currentView === 'history' }" @click="currentView = 'history'; historyMode = 'batches'; loadHistory()">History</button>
           <button :class="{ active: currentView === 'settings' }" @click="currentView = 'settings'">Settings</button>
         </div>
         <div class="config-status">
@@ -95,47 +93,6 @@
             </div>
           </div>
 
-        </div>
-
-        <!-- Jobs View -->
-        <div v-if="currentView === 'jobs'" class="view">
-          <div class="view-header">
-            <h1>Scrape Jobs</h1>
-            <button class="btn primary" @click="showJobForm = true">New Job</button>
-          </div>
-
-          <table class="data-table">
-            <thead>
-              <tr>
-                <th>ID</th>
-                <th>Search Term</th>
-                <th>Filter</th>
-                <th>Enabled</th>
-                <th>Last Run</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="job in jobs" :key="job.id">
-                <td>{{ job.id }}</td>
-                <td>{{ job.searchTerm }}</td>
-                <td>{{ job.filterInstructions || '-' }}</td>
-                <td>
-                  <button class="btn small" :class="job.isEnabled ? 'success' : 'muted'" @click="toggleJob(job)">
-                    {{ job.isEnabled ? 'Enabled' : 'Disabled' }}
-                  </button>
-                </td>
-                <td>{{ formatDate(job.lastRunUtc) }}</td>
-                <td>
-                  <button class="btn small" @click="editJob(job)">Edit</button>
-                  <button class="btn small danger" @click="deleteJob(job)">Delete</button>
-                </td>
-              </tr>
-              <tr v-if="jobs.length === 0">
-                <td colspan="6" class="empty">No jobs configured</td>
-              </tr>
-            </tbody>
-          </table>
         </div>
 
         <!-- Opportunities View -->
@@ -224,41 +181,56 @@
           </div>
         </div>
 
-        <!-- Operations View -->
-        <div v-if="currentView === 'operations'" class="view">
-          <div class="view-header">
-            <h1>Operations</h1>
-          </div>
-
-          <div class="operations-grid">
-            <div class="card">
-              <h3>Start Scrape</h3>
-              <p>Scrape all enabled jobs. Runs inline with description fetching.</p>
-              <button class="btn primary" @click="startScrape" :disabled="loading">
-                {{ loading ? 'Starting...' : 'Start Scrape' }}
-              </button>
-            </div>
-
-            <div class="card">
-              <h3>Clear Data</h3>
-              <p>Remove scrape data from the database.</p>
-              <div class="button-group">
-                <button class="btn danger" @click="clearAllData" :disabled="loading">Reset All Data</button>
-                <button class="btn danger small" @click="clearListings" :disabled="loading">Listings Only</button>
-                <button class="btn danger small" @click="clearHistory" :disabled="loading">History Only</button>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- History View -->
-        <div v-if="currentView === 'history'" class="view">
+        <!-- Index View -->
+        <div v-if="currentView === 'index'" class="view">
 
           <!-- Batch List Mode -->
           <div v-if="historyMode === 'batches'">
             <div class="view-header">
-              <h1>Run History</h1>
-              <button class="btn" @click="loadHistory">Refresh</button>
+              <h1>Index</h1>
+              <div class="header-actions">
+                <button class="btn primary" @click="startScrape" :disabled="loading">
+                  {{ loading ? 'Starting...' : 'Start Scrape' }}
+                </button>
+                <button class="btn" :class="{ active: showJobsPanel }" @click="showJobsPanel = !showJobsPanel">Edit Jobs</button>
+                <button class="btn" @click="loadHistory">Refresh</button>
+              </div>
+            </div>
+
+            <!-- Inline Jobs Panel -->
+            <div v-if="showJobsPanel" class="jobs-panel">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Search Term</th>
+                    <th>Filter</th>
+                    <th>Enabled</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="job in jobs" :key="job.id">
+                    <td>{{ job.searchTerm }}</td>
+                    <td>{{ job.filterInstructions || '-' }}</td>
+                    <td>
+                      <button class="btn small" :class="job.isEnabled ? 'success' : 'muted'" @click="toggleJob(job)">
+                        {{ job.isEnabled ? 'Enabled' : 'Disabled' }}
+                      </button>
+                    </td>
+                    <td>
+                      <button class="btn small" @click="editJob(job)">Edit</button>
+                      <button class="btn small danger" @click="deleteJob(job)">Delete</button>
+                    </td>
+                  </tr>
+                </tbody>
+                <tfoot>
+                  <tr>
+                    <td colspan="4">
+                      <button class="btn small primary" @click="showJobForm = true">+ New Job</button>
+                    </td>
+                  </tr>
+                </tfoot>
+              </table>
             </div>
 
             <div v-if="runStats" class="stats-banner">
@@ -570,6 +542,22 @@
                 <div class="form-group">
                   <label>Index Name</label>
                   <input v-model="settings.pinecone.indexName" placeholder="arbitrage">
+                </div>
+              </div>
+            </div>
+
+            <!-- Data Management -->
+            <div class="settings-section">
+              <h3 class="section-header" @click="toggleSection('data')">
+                <span class="collapse-icon">{{ collapsedSections.data ? '▶' : '▼' }}</span>
+                Data Management
+              </h3>
+              <div class="section-content" v-show="!collapsedSections.data">
+                <p class="hint">Remove scrape data from the database. These actions cannot be undone.</p>
+                <div class="button-group">
+                  <button class="btn danger" @click="clearAllData" :disabled="loading">Reset All Data</button>
+                  <button class="btn danger small" @click="clearListings" :disabled="loading">Listings Only</button>
+                  <button class="btn danger small" @click="clearHistory" :disabled="loading">History Only</button>
                 </div>
               </div>
             </div>

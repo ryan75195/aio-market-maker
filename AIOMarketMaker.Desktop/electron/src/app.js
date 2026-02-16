@@ -24,6 +24,7 @@ createApp({
       batchTotalPages: 0,
       expandedRuns: {},
       runIssues: {},
+      showJobsPanel: false,
       loading: false,
       toast: null,
       showJobForm: false,
@@ -65,7 +66,8 @@ createApp({
         opportunities: true,
         storage: true,
         openAi: true,
-        pinecone: true
+        pinecone: true,
+        data: true
       },
       savingSettings: false,
       showJobDropdown: false,
@@ -681,7 +683,7 @@ createApp({
 
         // Switch to history view to see progress
         this.historyMode = 'batches';
-        this.currentView = 'history';
+        this.currentView = 'index';
         await this.loadHistory();
       } catch (err) {
         this.showToast(`Failed to start scrape: ${err.message}`, 'error');
@@ -699,7 +701,7 @@ createApp({
         const result = this.toCamelCase(data);
         const indexMsg = result.indexCleared ? ', vector index cleared' : '';
         this.showToast(`Cleared ${result.deletedListings} listings and ${result.deletedRuns} history records${indexMsg}`, 'success');
-        if (this.currentView === 'history') {
+        if (this.currentView === 'index') {
           await this.loadHistory();
         } else if (this.currentView === 'opportunities') {
           await this.loadOpportunities();
@@ -740,7 +742,7 @@ createApp({
         const result = this.toCamelCase(data);
         this.showToast(`Cleared ${result.deleted} history records`, 'success');
         // Refresh history if on that view
-        if (this.currentView === 'history') {
+        if (this.currentView === 'index') {
           await this.loadHistory();
         }
       } catch (err) {
@@ -780,7 +782,7 @@ createApp({
     startAutoRefresh() {
       this.nowInterval = setInterval(() => { this.now = Date.now(); }, 1000);
       this.refreshInterval = setInterval(() => {
-        if (this.currentView === 'history') {
+        if (this.currentView === 'index') {
           const activeStatuses = ['Queued', 'Running', 'Indexing', 'Searching', 'Processing'];
           const hasActive = this.batches.some(b =>
             ['Running', 'Queued'].includes(b.status));
