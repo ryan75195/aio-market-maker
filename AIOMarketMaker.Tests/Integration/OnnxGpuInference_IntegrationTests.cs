@@ -1,4 +1,5 @@
 using AIOMarketMaker.Core.Services;
+using AIOMarketMaker.ML.Services;
 using Microsoft.Extensions.Logging;
 using Microsoft.ML.OnnxRuntime;
 using Moq;
@@ -12,7 +13,7 @@ namespace AIOMarketMaker.Tests.Integration;
 [Explicit("Requires ONNX model files and CUDA Toolkit 12.x")]
 public class OnnxGpuInference_IntegrationTests
 {
-    private const string ModelDir = "E:/Dev/ml-training/variant-classifier/model_v8_onnx";
+    private const string ModelDir = "E:/Dev/ml-training/variant-classifier/v8/onnx";
 
     [Test]
     public void Should_load_cuda_execution_provider()

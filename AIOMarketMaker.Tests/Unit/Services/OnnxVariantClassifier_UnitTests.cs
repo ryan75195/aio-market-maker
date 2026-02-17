@@ -1,4 +1,5 @@
 using AIOMarketMaker.Core.Services;
+using AIOMarketMaker.ML.Services;
 using Microsoft.Extensions.Logging;
 using Moq;
 using NUnit.Framework;

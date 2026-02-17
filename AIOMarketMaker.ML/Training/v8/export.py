@@ -1,5 +1,5 @@
 """
-Export the v7 RoBERTa-large variant classifier to ONNX format.
+Export the v8 RoBERTa-large variant classifier to ONNX format.
 
 Usage:
     py -3.12 export_onnx.py
@@ -18,8 +18,8 @@ from pathlib import Path
 import torch
 from transformers import AutoModelForSequenceClassification, AutoTokenizer
 
-MODEL_DIR = Path("E:/Dev/ml-training/variant-classifier/model_v7")
-OUTPUT_DIR = Path("E:/Dev/ml-training/variant-classifier/model_v7_onnx")
+MODEL_DIR = Path("E:/Dev/ml-training/variant-classifier/v8/pytorch")
+OUTPUT_DIR = Path("E:/Dev/ml-training/variant-classifier/v8/onnx")
 
 
 def main():

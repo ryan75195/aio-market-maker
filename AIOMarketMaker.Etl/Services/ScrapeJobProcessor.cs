@@ -314,7 +314,7 @@ public class ScrapeJobProcessor : IScrapeJobProcessor
                     try
                     {
                         var descriptionUrl = _urlBuilder.BuildDescriptionUrl(summary.ListingId!);
-                        html = await _webscraperClient.GetPageHtmlAsync(descriptionUrl);
+                        html = await _webscraperClient.GetPageHtmlAsync(descriptionUrl, requiresBrowser: false);
                     }
                     catch (Exception ex)
                     {

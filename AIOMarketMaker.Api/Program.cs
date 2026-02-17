@@ -3,6 +3,7 @@ using AIOMarketMaker.Api.Endpoints;
 using AIOMarketMaker.Core.Data;
 using AIOMarketMaker.Core.Data.Migrations;
 using AIOMarketMaker.Core.Services;
+using AIOMarketMaker.ML.Services;
 using AIOMarketMaker.Core.Parsers;
 using ScraperWorker.Services;
 using Azure.Data.Tables;

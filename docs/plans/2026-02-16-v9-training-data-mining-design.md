@@ -158,9 +158,9 @@ Once data is assembled:
 
 ## Files
 
-- v9 correction scripts: `experiments/variant-classifier/v9/append_*.py`
-- v9 CSV: `experiments/variant-classifier/v9/labeled_pairs_v9.csv` (486 pairs)
-- v8 training script: `experiments/variant-classifier/v8/train_v8.py`
-- v8 dataset: `experiments/variant-classifier/v8/labeled_pairs_v8.csv` (143K pairs)
-- v8 model: `E:/Dev/ml-training/variant-classifier/model_v8/`
-- v8 ONNX: `E:/Dev/ml-training/variant-classifier/model_v8_onnx/`
+- v9 augment scripts: `AIOMarketMaker.ML/Training/v9/augment/`
+- v9 CSV: `AIOMarketMaker.ML/Training/data/labeled_pairs_v9.csv` (486 pairs)
+- v8 training script: `AIOMarketMaker.ML/Training/v8/train.py`
+- v8 dataset: `AIOMarketMaker.ML/Training/data/labeled_pairs_v8.csv` (143K pairs)
+- v8 model: `E:/Dev/ml-training/variant-classifier/v8/pytorch/`
+- v8 ONNX: `E:/Dev/ml-training/variant-classifier/v8/onnx/`

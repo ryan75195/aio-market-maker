@@ -64,7 +64,7 @@ Default config in `appsettings.json`:
 }
 ```
 
-Paths can be absolute (e.g., `E:/Dev/ml-training/variant-classifier/model_v6_onnx/model.onnx`) if the model is stored on a different drive.
+Paths can be absolute (e.g., `E:/Dev/ml-training/variant-classifier/v8/onnx/model.onnx`) if the model is stored on a different drive.
 
 ## Verification
 
@@ -101,7 +101,7 @@ Tests verify: CUDA provider loading, classifier GPU usage, single-pair latency (
 
 ## NuGet Package Architecture
 
-- `Microsoft.ML.OnnxRuntime.Managed` in Core.csproj -- managed API only (tiny), no native DLLs
+- `Microsoft.ML.OnnxRuntime.Managed` in ML.csproj -- managed API only (tiny), no native DLLs
 - `Microsoft.ML.OnnxRuntime.Gpu` in Api.csproj / Etl.csproj / Tests.csproj -- CUDA native DLLs
 
 OnnxRuntime.Gpu includes `onnxruntime_providers_cuda.dll` but it depends on system-installed CUDA libraries (cuBLAS, cuDNN, cuFFT, etc.). These must be in the same directory as the test/app assembly or on PATH.

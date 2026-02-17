@@ -1,4 +1,5 @@
 using AIOMarketMaker.Core.Services;
+using AIOMarketMaker.ML.Services;
 using Microsoft.Extensions.Logging;
 using Moq;
 using NUnit.Framework;
@@ -8,10 +9,10 @@ namespace AIOMarketMaker.Tests.Integration;
 
 [TestFixture]
 [Category("Integration")]
-[Explicit("Requires ONNX model files at E:/Dev/ml-training/variant-classifier/model_v8_onnx/")]
+[Explicit("Requires ONNX model files at E:/Dev/ml-training/variant-classifier/v8/onnx/")]
 public class OnnxVariantClassifier_IntegrationTests
 {
-    private const string ModelDir = "E:/Dev/ml-training/variant-classifier/model_v8_onnx";
+    private const string ModelDir = "E:/Dev/ml-training/variant-classifier/v8/onnx";
 
     private static OnnxVariantClassifier _classifier = null!;
 

@@ -5,7 +5,7 @@ OnnxRuntime.Gpu includes onnxruntime_providers_cuda.dll, but it depends on syste
 (cuBLAS, cuDNN, cuFFT, etc.) that must be colocated with the application DLL.
 
 Run after each `dotnet build` or `dotnet test --no-build`:
-    python scripts/copy-cuda-dlls.py
+    python AIOMarketMaker.ML/Scripts/copy-cuda-dlls.py
 
 Prerequisites:
     python -m pip install nvidia-cublas-cu12 nvidia-cuda-runtime-cu12 nvidia-cudnn-cu12 \
@@ -63,8 +63,9 @@ def main():
     print(f"Found {len(dlls)} CUDA DLLs in {nv_dir}")
 
     # Project bin directories that use OnnxRuntime.Gpu
+    # Script is at AIOMarketMaker.ML/Scripts/ — go up 2 levels to reach solution dir
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    solution_dir = os.path.dirname(script_dir)
+    solution_dir = os.path.dirname(os.path.dirname(script_dir))
 
     targets = [
         os.path.join(solution_dir, "AIOMarketMaker.Tests", "bin", "Debug", "net8.0"),

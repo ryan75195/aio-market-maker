@@ -53,7 +53,7 @@ public class ScrapeJobProcessor_InlineTests
         _webscraperClientMock
             .Setup(w => w.GetPageHtmlAsync(
                 It.IsAny<string>(), It.IsAny<IEnumerable<object>?>(),
-                It.IsAny<string?>(), It.IsAny<TimeSpan?>(), It.IsAny<CancellationToken>()))
+                It.IsAny<string?>(), It.IsAny<TimeSpan?>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync("<html></html>");
 
         // Default: no search results (stops pagination immediately)
@@ -209,7 +209,7 @@ public class ScrapeJobProcessor_InlineTests
                 w => w.GetPageHtmlAsync(
                     It.Is<string>(url => url.Contains(summary.ListingId!)),
                     It.IsAny<IEnumerable<object>?>(),
-                    It.IsAny<string?>(), It.IsAny<TimeSpan?>(), It.IsAny<CancellationToken>()),
+                    It.IsAny<string?>(), It.IsAny<TimeSpan?>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()),
                 Times.AtLeastOnce,
                 $"Description should be fetched for listing {summary.ListingId}");
         }
@@ -278,7 +278,7 @@ public class ScrapeJobProcessor_InlineTests
             .Setup(w => w.GetPageHtmlAsync(
                 It.Is<string>(url => url.Contains("FAIL1")),
                 It.IsAny<IEnumerable<object>?>(),
-                It.IsAny<string?>(), It.IsAny<TimeSpan?>(), It.IsAny<CancellationToken>()))
+                It.IsAny<string?>(), It.IsAny<TimeSpan?>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new HttpRequestException("Connection timeout"));
 
         await CreateProcessor().Execute(run, job);
@@ -304,7 +304,7 @@ public class ScrapeJobProcessor_InlineTests
             .Setup(w => w.GetPageHtmlAsync(
                 It.Is<string>(url => url.Contains("FAIL1")),
                 It.IsAny<IEnumerable<object>?>(),
-                It.IsAny<string?>(), It.IsAny<TimeSpan?>(), It.IsAny<CancellationToken>()))
+                It.IsAny<string?>(), It.IsAny<TimeSpan?>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new HttpRequestException("Timeout"));
 
         await CreateProcessor().Execute(run, job);
@@ -333,7 +333,7 @@ public class ScrapeJobProcessor_InlineTests
             .Setup(w => w.GetPageHtmlAsync(
                 It.Is<string>(url => url.Contains("FAIL1")),
                 It.IsAny<IEnumerable<object>?>(),
-                It.IsAny<string?>(), It.IsAny<TimeSpan?>(), It.IsAny<CancellationToken>()))
+                It.IsAny<string?>(), It.IsAny<TimeSpan?>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new HttpRequestException("Connection refused"));
 
         await CreateProcessor().Execute(run, job);
@@ -365,7 +365,7 @@ public class ScrapeJobProcessor_InlineTests
             .Setup(w => w.GetPageHtmlAsync(
                 It.Is<string>(url => url.Contains("FAIL1") || url.Contains("FAIL2")),
                 It.IsAny<IEnumerable<object>?>(),
-                It.IsAny<string?>(), It.IsAny<TimeSpan?>(), It.IsAny<CancellationToken>()))
+                It.IsAny<string?>(), It.IsAny<TimeSpan?>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new HttpRequestException("Timeout"));
 
         await CreateProcessor().Execute(run, job);
@@ -418,7 +418,7 @@ public class ScrapeJobProcessor_InlineTests
             .Setup(w => w.GetPageHtmlAsync(
                 It.Is<string>(url => url.Contains("INC015")),
                 It.IsAny<IEnumerable<object>?>(),
-                It.IsAny<string?>(), It.IsAny<TimeSpan?>(), It.IsAny<CancellationToken>()))
+                It.IsAny<string?>(), It.IsAny<TimeSpan?>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()))
             .Returns(slowTcs.Task);
 
         // Start Execute — it will block waiting for the slow listing
@@ -519,7 +519,7 @@ public class ScrapeJobProcessor_InlineTests
             w => w.GetPageHtmlAsync(
                 It.Is<string>(url => url.Contains("eBayISAPI")),
                 It.IsAny<IEnumerable<object>?>(),
-                It.IsAny<string?>(), It.IsAny<TimeSpan?>(), It.IsAny<CancellationToken>()),
+                It.IsAny<string?>(), It.IsAny<TimeSpan?>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()),
             Times.Never,
             "No description fetches should occur for terminal listings");
     }
@@ -556,7 +556,7 @@ public class ScrapeJobProcessor_InlineTests
         _webscraperClientMock
             .Setup(w => w.GetPageHtmlAsync(
                 It.IsAny<string>(), It.IsAny<IEnumerable<object>?>(),
-                It.IsAny<string?>(), It.IsAny<TimeSpan?>(), It.IsAny<CancellationToken>()))
+                It.IsAny<string?>(), It.IsAny<TimeSpan?>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new HttpRequestException("Service unavailable"));
 
         await CreateProcessor().Execute(run, job);
@@ -579,7 +579,7 @@ public class ScrapeJobProcessor_InlineTests
         _webscraperClientMock
             .Setup(w => w.GetPageHtmlAsync(
                 It.IsAny<string>(), It.IsAny<IEnumerable<object>?>(),
-                It.IsAny<string?>(), It.IsAny<TimeSpan?>(), It.IsAny<CancellationToken>()))
+                It.IsAny<string?>(), It.IsAny<TimeSpan?>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new InvalidOperationException("Unexpected error"));
 
         // Should not throw
@@ -620,7 +620,7 @@ public class ScrapeJobProcessor_InlineTests
             .Setup(w => w.GetPageHtmlAsync(
                 It.Is<string>(url => url.Contains("NOIDX1")),
                 It.IsAny<IEnumerable<object>?>(),
-                It.IsAny<string?>(), It.IsAny<TimeSpan?>(), It.IsAny<CancellationToken>()))
+                It.IsAny<string?>(), It.IsAny<TimeSpan?>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new HttpRequestException("Failed"));
 
         await CreateProcessor().Execute(run, job);
@@ -691,14 +691,14 @@ public class ScrapeJobProcessor_InlineTests
             .Setup(w => w.GetPageHtmlAsync(
                 It.Is<string>(url => url.Contains("FAIL_A")),
                 It.IsAny<IEnumerable<object>?>(),
-                It.IsAny<string?>(), It.IsAny<TimeSpan?>(), It.IsAny<CancellationToken>()))
+                It.IsAny<string?>(), It.IsAny<TimeSpan?>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new HttpRequestException("Error A"));
 
         _webscraperClientMock
             .Setup(w => w.GetPageHtmlAsync(
                 It.Is<string>(url => url.Contains("FAIL_B")),
                 It.IsAny<IEnumerable<object>?>(),
-                It.IsAny<string?>(), It.IsAny<TimeSpan?>(), It.IsAny<CancellationToken>()))
+                It.IsAny<string?>(), It.IsAny<TimeSpan?>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new HttpRequestException("Error B"));
 
         await CreateProcessor().Execute(run, job);
@@ -733,7 +733,7 @@ public class ScrapeJobProcessor_InlineTests
             .Setup(w => w.GetPageHtmlAsync(
                 It.Is<string>(url => url.Contains("eBayISAPI")),
                 It.IsAny<IEnumerable<object>?>(),
-                It.IsAny<string?>(), It.IsAny<TimeSpan?>(), It.IsAny<CancellationToken>()))
+                It.IsAny<string?>(), It.IsAny<TimeSpan?>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(httpEx);
 
         SetupActiveSearchResults(CreateSummary("DIAG1"));
@@ -761,7 +761,7 @@ public class ScrapeJobProcessor_InlineTests
             .Setup(w => w.GetPageHtmlAsync(
                 It.Is<string>(url => url.Contains("eBayISAPI")),
                 It.IsAny<IEnumerable<object>?>(),
-                It.IsAny<string?>(), It.IsAny<TimeSpan?>(), It.IsAny<CancellationToken>()))
+                It.IsAny<string?>(), It.IsAny<TimeSpan?>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync("<html><body>A real description</body></html>");
 
         _listingParserMock
@@ -797,7 +797,7 @@ public class ScrapeJobProcessor_InlineTests
             .Setup(w => w.GetPageHtmlAsync(
                 It.Is<string>(url => url.Contains("eBayISAPI")),
                 It.IsAny<IEnumerable<object>?>(),
-                It.IsAny<string?>(), It.IsAny<TimeSpan?>(), It.IsAny<CancellationToken>()))
+                It.IsAny<string?>(), It.IsAny<TimeSpan?>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync("<html><body>content</body></html>");
 
         _listingParserMock

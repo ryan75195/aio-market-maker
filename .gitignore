@@ -378,12 +378,8 @@ output.txt
 output_*.txt
 search-test-results.txt
 
-# Experiment data outputs
-experiments/**/*.csv
-experiments/**/*.json
-experiments/**/*.npz
-experiments/**/*.pt
-experiments/**/*.log
+# ML trained models (junction to E: drive, multi-GB)
+AIOMarketMaker.ML/Models/
 
 # Azure Functions deployment artifacts
 temp-publish/
