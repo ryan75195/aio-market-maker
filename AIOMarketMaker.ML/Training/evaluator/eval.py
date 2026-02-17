@@ -21,6 +21,8 @@ os.environ.setdefault("HF_HOME", "E:/DevCaches/huggingface")
 os.environ.setdefault("TORCH_HOME", "E:/DevCaches/torch")
 # RTX 5070 Ti (SM120/Blackwell) is too new for xformers — use PyTorch SDPA instead
 os.environ["XFORMERS_DISABLED"] = "1"
+# Windows path length limit breaks Triton compilation — disable torch.compile
+os.environ["TORCHDYNAMO_DISABLE"] = "1"
 
 import torch
 from sklearn.metrics import (
