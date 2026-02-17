@@ -1,0 +1,6 @@
+# Large training data and artifacts — keep locally, don't commit to git
+*.csv
+*.json
+*.pt
+*.log
+__pycache__/

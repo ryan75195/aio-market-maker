@@ -44,7 +44,7 @@ def parse_args():
     parser.add_argument(
         "--data",
         type=str,
-        default="labeled_pairs_v8.csv",
+        default="labeled_pairs_v7.csv",
         help="Path to labeled pairs CSV",
     )
     parser.add_argument(
@@ -56,7 +56,7 @@ def parse_args():
     parser.add_argument(
         "--output-dir",
         type=str,
-        default="E:/Dev/ml-training/variant-classifier/model_v8",
+        default="E:/Dev/ml-training/variant-classifier/v7/pytorch",
         help="Directory to save model and tokenizer",
     )
     parser.add_argument("--epochs", type=int, default=3, help="Number of training epochs")
@@ -439,18 +439,14 @@ def main():
             "mlp_v4_f1": 0.698,
             "bert_base_v5_f1": 0.871,
             "roberta_v6_f1": 0.903,
-            "roberta_v7_f1": 0.920,
             "this_model_f1": round(test_metrics.get("test_f1_macro", 0), 4),
             "improvement_over_v6": round(
                 test_metrics.get("test_f1_macro", 0) - 0.903, 4
             ),
-            "improvement_over_v7": round(
-                test_metrics.get("test_f1_macro", 0) - 0.920, 4
-            ),
         },
     }
 
-    results_path = os.path.join(args.output_dir, "results_v8.json")
+    results_path = os.path.join(args.output_dir, "results_v7.json")
     with open(results_path, "w") as f:
         json.dump(results, f, indent=2)
     print(f"\nResults saved to {results_path}")
@@ -463,11 +459,9 @@ def main():
     print(f"  Test F1 macro: {test_metrics.get('test_f1_macro', 0):.4f}")
     print(f"  Test accuracy: {test_metrics.get('test_accuracy', 0):.4f}")
     print(f"  V6 baseline:   0.903")
-    print(f"  V7 baseline:   0.920")
-    print(f"  vs V6:         {test_metrics.get('test_f1_macro', 0) - 0.903:+.4f}")
-    print(f"  vs V7:         {test_metrics.get('test_f1_macro', 0) - 0.920:+.4f}")
-    target_met = test_metrics.get("test_f1_macro", 0) >= 0.94
-    print(f"  Target (0.94): {'MET' if target_met else 'NOT MET'}")
+    print(f"  Improvement:   {test_metrics.get('test_f1_macro', 0) - 0.903:+.4f}")
+    target_met = test_metrics.get("test_f1_macro", 0) >= 0.92
+    print(f"  Target (0.92): {'MET' if target_met else 'NOT MET'}")
     print(f"  Training time: {train_time:.0f}s ({train_time/60:.1f}min)")
     print("=" * 60)
 

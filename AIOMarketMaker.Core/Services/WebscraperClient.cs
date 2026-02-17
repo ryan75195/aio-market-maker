@@ -24,6 +24,7 @@ namespace AIOMarketMaker.Core.Services
             IEnumerable<object>? proxies = null,
             string? correlationId = null,
             TimeSpan? timeout = null,
+            bool requiresBrowser = true,
             CancellationToken ct = default);
 
         Task<JobEntity?> GetStatusAsync(string jobId, CancellationToken ct = default);
@@ -124,13 +125,14 @@ namespace AIOMarketMaker.Core.Services
             IEnumerable<object>? proxies = null,
             string? correlationId = null,
             TimeSpan? timeout = null,
+            bool requiresBrowser = true,
             CancellationToken ct = default)
         {
             var startTime = DateTime.UtcNow;
 
             var request = new HttpRequestMessage(HttpMethod.Post, AppendApiKey("process"))
             {
-                Content = JsonContent.Create(new { url })
+                Content = JsonContent.Create(new { url, requiresBrowser })
             };
 
             if (!string.IsNullOrEmpty(correlationId))

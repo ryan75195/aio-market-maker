@@ -10,7 +10,7 @@ import torch
 from pinecone import Pinecone
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
 
-MODEL_PATH = "E:/Dev/ml-training/variant-classifier/model_v5"
+MODEL_PATH = "E:/Dev/ml-training/variant-classifier/v5/pytorch"  # NOTE: v5 model was deleted during cleanup
 PINECONE_INDEX = "arbitrage"
 DB_CONN = (
     r"Driver={ODBC Driver 17 for SQL Server};"

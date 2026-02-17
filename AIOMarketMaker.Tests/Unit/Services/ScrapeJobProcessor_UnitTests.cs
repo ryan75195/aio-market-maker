@@ -48,7 +48,7 @@ public class ScrapeJobProcessor_UnitTests
         _webscraperClientMock
             .Setup(w => w.GetPageHtmlAsync(
                 It.IsAny<string>(), It.IsAny<IEnumerable<object>?>(),
-                It.IsAny<string?>(), It.IsAny<TimeSpan?>(), It.IsAny<CancellationToken>()))
+                It.IsAny<string?>(), It.IsAny<TimeSpan?>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync("<html></html>");
 
         _searchParserMock
@@ -157,7 +157,7 @@ public class ScrapeJobProcessor_UnitTests
             w => w.GetPageHtmlAsync(
                 It.Is<string>(url => url.Contains("ABC123")),
                 It.IsAny<IEnumerable<object>?>(),
-                It.IsAny<string?>(), It.IsAny<TimeSpan?>(), It.IsAny<CancellationToken>()),
+                It.IsAny<string?>(), It.IsAny<TimeSpan?>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()),
             Times.AtLeastOnce);
     }
 
@@ -239,7 +239,7 @@ public class ScrapeJobProcessor_UnitTests
             w => w.GetPageHtmlAsync(
                 It.Is<string>(url => url.Contains("TRANS1")),
                 It.IsAny<IEnumerable<object>?>(),
-                It.IsAny<string?>(), It.IsAny<TimeSpan?>(), It.IsAny<CancellationToken>()),
+                It.IsAny<string?>(), It.IsAny<TimeSpan?>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()),
             Times.AtLeastOnce);
     }
 
@@ -507,7 +507,7 @@ public class ScrapeJobProcessor_UnitTests
         _webscraperClientMock
             .Setup(w => w.GetPageHtmlAsync(
                 It.IsAny<string>(), It.IsAny<IEnumerable<object>?>(),
-                It.IsAny<string?>(), It.IsAny<TimeSpan?>(), It.IsAny<CancellationToken>()))
+                It.IsAny<string?>(), It.IsAny<TimeSpan?>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new HttpRequestException("Connection refused"));
 
         await CreateProcessor().Execute(run, job);
