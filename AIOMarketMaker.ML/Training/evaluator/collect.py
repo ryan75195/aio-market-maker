@@ -63,9 +63,9 @@ def query_tier(conn, where_clause, limit, desc=""):
         lr.ListingIdA, lr.ListingIdB,
         lr.IsComparable, lr.SimilarityScore,
         a.Title AS TitleA,
-        REPLACE(REPLACE(LEFT(ISNULL(a.Description,''), {DESC_LIMIT}), CHAR(10), ' '), CHAR(13), ' ') AS DescA,
+        REPLACE(REPLACE(CAST(LEFT(ISNULL(a.Description,''), {DESC_LIMIT}) AS VARCHAR({DESC_LIMIT})), CHAR(10), ' '), CHAR(13), ' ') AS DescA,
         b.Title AS TitleB,
-        REPLACE(REPLACE(LEFT(ISNULL(b.Description,''), {DESC_LIMIT}), CHAR(10), ' '), CHAR(13), ' ') AS DescB,
+        REPLACE(REPLACE(CAST(LEFT(ISNULL(b.Description,''), {DESC_LIMIT}) AS VARCHAR({DESC_LIMIT})), CHAR(10), ' '), CHAR(13), ' ') AS DescB,
         sj.SearchTerm
     FROM ListingRelationships lr
     INNER JOIN Listings a ON a.Id = lr.ListingIdA
