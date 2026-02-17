@@ -22,6 +22,8 @@ from pathlib import Path
 # Redirect caches to E: drive
 os.environ.setdefault("HF_HOME", "E:/DevCaches/huggingface")
 os.environ.setdefault("TORCH_HOME", "E:/DevCaches/torch")
+# RTX 5070 Ti (SM120/Blackwell) is too new for xformers — use PyTorch SDPA instead
+os.environ["XFORMERS_DISABLED"] = "1"
 
 import torch
 from sklearn.model_selection import train_test_split
