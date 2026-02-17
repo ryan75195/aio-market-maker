@@ -1,7 +1,8 @@
 using AIOMarketMaker.Core.Data;
 using AIOMarketMaker.Core.Data.Models;
 using AIOMarketMaker.Core.Services;
-using AIOMarketMaker.Tests.Utils;
+using Microsoft.Data.Sqlite;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Moq;
 using NUnit.Framework;
@@ -12,7 +13,9 @@ namespace AIOMarketMaker.Tests.Unit.Services;
 [Category("Unit")]
 public class ComparablesEtlService_UnitTests
 {
-    private EtlDbContext _dbContext = null!;
+    private SqliteConnection _connection = null!;
+    private DbContextOptions<EtlDbContext> _contextOptions = null!;
+    private Mock<IDbContextFactory<EtlDbContext>> _dbFactoryMock = null!;
     private Mock<ISemanticSearchService> _searchMock = null!;
     private Mock<IVariantClassifierClient> _classifierMock = null!;
     private Mock<ILogger<ComparablesEtlService>> _loggerMock = null!;
@@ -21,7 +24,24 @@ public class ComparablesEtlService_UnitTests
     [SetUp]
     public void Setup()
     {
-        _dbContext = InMemoryDbContextFactory.Create();
+        _connection = new SqliteConnection("DataSource=:memory:");
+        _connection.Open();
+
+        _contextOptions = new DbContextOptionsBuilder<EtlDbContext>()
+            .UseSqlite(_connection)
+            .Options;
+
+        using (var ctx = new EtlDbContext(_contextOptions))
+        {
+            ctx.Database.EnsureCreated();
+        }
+
+        _dbFactoryMock = new Mock<IDbContextFactory<EtlDbContext>>();
+        _dbFactoryMock.Setup(f => f.CreateDbContext())
+            .Returns(() => new EtlDbContext(_contextOptions));
+        _dbFactoryMock.Setup(f => f.CreateDbContextAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(() => new EtlDbContext(_contextOptions));
+
         _searchMock = new Mock<ISemanticSearchService>();
         _classifierMock = new Mock<IVariantClassifierClient>();
         _loggerMock = new Mock<ILogger<ComparablesEtlService>>();
@@ -36,24 +56,26 @@ public class ComparablesEtlService_UnitTests
         _service = new ComparablesEtlService(
             _searchMock.Object,
             _classifierMock.Object,
-            _dbContext,
+            _dbFactoryMock.Object,
             _loggerMock.Object);
     }
 
     [TearDown]
     public void TearDown()
     {
-        _dbContext.Dispose();
+        _connection.Dispose();
     }
 
     private Listing SeedListing(int id, string title, string status, decimal price = 100m)
     {
-        var job = _dbContext.ScrapeJobs.FirstOrDefault() ?? _dbContext.ScrapeJobs.Add(new ScrapeJob
+        using var dbContext = new EtlDbContext(_contextOptions);
+
+        var job = dbContext.ScrapeJobs.FirstOrDefault() ?? dbContext.ScrapeJobs.Add(new ScrapeJob
         {
             Id = 1,
             SearchTerm = "test"
         }).Entity;
-        _dbContext.SaveChanges();
+        dbContext.SaveChanges();
 
         var listing = new Listing
         {
@@ -66,8 +88,8 @@ public class ComparablesEtlService_UnitTests
             Description = $"Description for {title}",
             ScrapeJobId = job.Id
         };
-        _dbContext.Listings.Add(listing);
-        _dbContext.SaveChanges();
+        dbContext.Listings.Add(listing);
+        dbContext.SaveChanges();
         return listing;
     }
 
@@ -98,7 +120,8 @@ public class ComparablesEtlService_UnitTests
 
         var result = await _service.Run(dryRun: false);
 
-        var verdict = _dbContext.ListingRelationships.SingleOrDefault();
+        using var dbContext = new EtlDbContext(_contextOptions);
+        var verdict = dbContext.ListingRelationships.SingleOrDefault();
         Assert.Multiple(() =>
         {
             Assert.That(verdict, Is.Not.Null);
@@ -116,15 +139,18 @@ public class ComparablesEtlService_UnitTests
         var active = SeedListing(1, "iPhone 15 Pro", "Active", 800m);
         var sold = SeedListing(2, "iPhone 15 Pro 256GB", "Sold", 850m);
 
-        _dbContext.ListingRelationships.Add(new ListingRelationship
+        using (var dbContext = new EtlDbContext(_contextOptions))
         {
-            ListingIdA = 1,
-            ListingIdB = 2,
-            IsComparable = true,
-            Explanation = "Already evaluated",
-            SimilarityScore = 0.92
-        });
-        _dbContext.SaveChanges();
+            dbContext.ListingRelationships.Add(new ListingRelationship
+            {
+                ListingIdA = 1,
+                ListingIdB = 2,
+                IsComparable = true,
+                Explanation = "Already evaluated",
+                SimilarityScore = 0.92
+            });
+            dbContext.SaveChanges();
+        }
 
         MockVectorSearchResult("1", ("2", 0.92));
 
@@ -152,7 +178,8 @@ public class ComparablesEtlService_UnitTests
 
         await _service.Run(dryRun: false);
 
-        var verdict = _dbContext.ListingRelationships.Single();
+        using var dbContext = new EtlDbContext(_contextOptions);
+        var verdict = dbContext.ListingRelationships.Single();
         Assert.Multiple(() =>
         {
             Assert.That(verdict.ListingIdA, Is.EqualTo(3));
@@ -204,7 +231,8 @@ public class ComparablesEtlService_UnitTests
 
         // Should only classify 1 pair (active1 <-> sold1), not active1 <-> active2
         Assert.That(result.LlmCallsMade, Is.EqualTo(1));
-        var verdict = _dbContext.ListingRelationships.Single();
+        using var dbContext = new EtlDbContext(_contextOptions);
+        var verdict = dbContext.ListingRelationships.Single();
         Assert.Multiple(() =>
         {
             Assert.That(verdict.ListingIdA, Is.EqualTo(1));

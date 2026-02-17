@@ -1,6 +1,7 @@
 using AIOMarketMaker.Core.Data.Models;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace AIOMarketMaker.Core.Data;
 
@@ -13,6 +14,7 @@ public class EtlDbContext : DbContext
         _connectionString = connectionString;
     }
 
+    [ActivatorUtilitiesConstructor]
     public EtlDbContext(DbContextOptions<EtlDbContext> options) : base(options)
     {
     }

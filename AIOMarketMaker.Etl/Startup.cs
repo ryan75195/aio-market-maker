@@ -36,6 +36,8 @@ namespace AIOMarketMaker.Etl
                 {
                     // Suppress noisy HttpClient logs
                     logging.AddFilter("System.Net.Http.HttpClient", LogLevel.Warning);
+                    // Suppress verbose EF Core SQL command logging
+                    logging.AddFilter("Microsoft.EntityFrameworkCore.Database.Command", LogLevel.Warning);
                 })
                 .UseSerilog()
                 .ConfigureServices((hostingCtx, services) =>
@@ -62,7 +64,7 @@ namespace AIOMarketMaker.Etl
                     }
 
                     // Register DbContext
-                    services.AddDbContext<EtlDbContext>(options =>
+                    services.AddDbContextFactory<EtlDbContext>(options =>
                         options.UseSqlite(sqliteConnectionString));
 
                     // Azure Storage clients

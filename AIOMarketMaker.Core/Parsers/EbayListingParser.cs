@@ -148,19 +148,12 @@ namespace AIOMarketMaker.Core.Parsers
         public string? ParseDescription(IDocument document)
         {
             var node = document.QuerySelector(".x-item-description-child");
-            if (node == null) {
+            if (node == null)
+            {
                 return null;
             }
 
-            var text = node?.TextContent ?? string.Empty;
-
-            text = text.Replace('\u00A0', ' ');
-
-            text = System.Text.RegularExpressions.Regex
-                .Replace(text, @"\s+", " ")
-                .Trim();
-
-            return text;
+            return DescriptionCleaner.Clean(node.InnerHtml);
         }
 
 

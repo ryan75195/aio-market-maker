@@ -56,7 +56,7 @@ var sqlConnectionString = configuration.GetConnectionString("SqlServer")
     ?? throw new InvalidOperationException("ConnectionStrings:SqlServer is required.");
 var migrationRunner = new MigrationRunner(sqlConnectionString, null, useSqlServer: true);
 migrationRunner.ApplyMigrations();
-builder.Services.AddDbContext<EtlDbContext>(options =>
+builder.Services.AddDbContextFactory<EtlDbContext>(options =>
     options.UseSqlServer(sqlConnectionString));
 
 // Core parsing services
