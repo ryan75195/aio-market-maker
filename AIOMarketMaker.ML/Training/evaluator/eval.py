@@ -5,8 +5,8 @@ Loads the merged model and runs inference on test pairs,
 comparing predictions against GPT ground truth.
 
 Usage:
-    py -3.12 eval.py
-    py -3.12 eval.py --model-dir E:/Dev/ml-training/evaluator/v2/merged
+    py -3.12 -u eval.py
+    py -3.12 -u eval.py --model-dir E:/Dev/ml-training/evaluator/v2/merged --tag v2
 """
 
 import argparse
@@ -19,9 +19,7 @@ from pathlib import Path
 
 os.environ.setdefault("HF_HOME", "E:/DevCaches/huggingface")
 os.environ.setdefault("TORCH_HOME", "E:/DevCaches/torch")
-# RTX 5070 Ti (SM120/Blackwell) is too new for xformers — use PyTorch SDPA instead
 os.environ["XFORMERS_DISABLED"] = "1"
-# Windows path length limit breaks Triton compilation — disable torch.compile
 os.environ["TORCHDYNAMO_DISABLE"] = "1"
 
 import torch
@@ -33,12 +31,13 @@ from sklearn.metrics import (
 DATA_DIR = Path(__file__).parent.parent / "data"
 TEST_CSV = DATA_DIR / "evaluator_test.csv"
 DEFAULT_MODEL_DIR = "E:/Dev/ml-training/evaluator/v1/merged"
-OUTPUT_CSV = DATA_DIR / "benchmarks" / "evaluator_v1_results.csv"
 
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Evaluate evaluator model")
     parser.add_argument("--model-dir", type=str, default=DEFAULT_MODEL_DIR)
+    parser.add_argument("--tag", type=str, default="v1",
+                        help="Version tag for output CSV naming")
     parser.add_argument("--limit", type=int, default=None)
     return parser.parse_args()
 
@@ -48,17 +47,14 @@ def load_model(model_dir):
     try:
         from unsloth import FastLanguageModel
         model, tokenizer = FastLanguageModel.from_pretrained(
-            model_dir,
-            max_seq_length=512,
-            load_in_4bit=True,
-            dtype=torch.bfloat16,
+            model_dir, max_seq_length=512,
+            load_in_4bit=True, dtype=torch.bfloat16,
         )
         FastLanguageModel.for_inference(model)
     except ImportError:
         from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
         bnb_config = BitsAndBytesConfig(
-            load_in_4bit=True,
-            bnb_4bit_compute_dtype=torch.bfloat16,
+            load_in_4bit=True, bnb_4bit_compute_dtype=torch.bfloat16,
         )
         model = AutoModelForCausalLM.from_pretrained(
             model_dir, quantization_config=bnb_config,
@@ -69,7 +65,6 @@ def load_model(model_dir):
 
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
-
     return model, tokenizer
 
 
@@ -91,26 +86,24 @@ def predict(model, tokenizer, row):
 
     messages = [{"role": "user", "content": user_msg}]
     text = tokenizer.apply_chat_template(
-        messages, tokenize=False, add_generation_prompt=True
+        messages, tokenize=False, add_generation_prompt=True,
+        enable_thinking=False,
     )
     inputs = tokenizer(text, return_tensors="pt").to(model.device)
 
-    with torch.no_grad():
+    with torch.inference_mode():
         outputs = model.generate(
-            **inputs, max_new_tokens=256, temperature=0.1,
+            **inputs, max_new_tokens=64, temperature=0.1,
             do_sample=False, pad_token_id=tokenizer.pad_token_id,
         )
 
-    # Decode only the generated tokens (not the prompt)
     generated = outputs[0][inputs["input_ids"].shape[1]:]
     response_text = tokenizer.decode(generated, skip_special_tokens=True).strip()
 
-    # Parse JSON response
     try:
         parsed = json.loads(response_text)
         return parsed.get("verdict", "unknown"), parsed.get("error_type", ""), response_text
     except json.JSONDecodeError:
-        # Try to extract verdict from text
         if "misclassification" in response_text.lower():
             return "misclassification", "", response_text
         elif "correct" in response_text.lower():
@@ -118,22 +111,69 @@ def predict(model, tokenizer, row):
         return "parse_error", "", response_text
 
 
+def save_results(results, output_csv):
+    """Write results CSV (called periodically and at end)."""
+    output_csv.parent.mkdir(parents=True, exist_ok=True)
+    with open(output_csv, "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=results[0].keys())
+        writer.writeheader()
+        writer.writerows(results)
+
+
+def print_metrics(predictions, ground_truth, elapsed, total):
+    """Compute and print all metrics."""
+    y_true = [1 if v == "correct" else 0 for v in ground_truth]
+    y_pred = [1 if v == "correct" else 0 for v in predictions]
+    valid_mask = [p in ("correct", "misclassification") for p in predictions]
+    y_true_valid = [y for y, m in zip(y_true, valid_mask) if m]
+    y_pred_valid = [y for y, m in zip(y_pred, valid_mask) if m]
+    parse_errors = sum(1 for p in predictions if p not in ("correct", "misclassification"))
+
+    print(f"\n{'='*60}", flush=True)
+    print("RESULTS", flush=True)
+    print(f"{'='*60}", flush=True)
+    print(f"Total pairs:      {total}", flush=True)
+    print(f"Valid predictions: {len(y_true_valid)}", flush=True)
+    print(f"Parse errors:     {parse_errors}", flush=True)
+    print(f"Speed:            {elapsed/total*1000:.0f}ms/pair", flush=True)
+    print(flush=True)
+
+    if not y_true_valid:
+        print("No valid predictions to evaluate!", flush=True)
+        return
+
+    print(f"Overall accuracy: {accuracy_score(y_true_valid, y_pred_valid):.1%}", flush=True)
+    print(flush=True)
+    print("Classification report (0=misclassification, 1=correct):", flush=True)
+    print(classification_report(y_true_valid, y_pred_valid,
+                                target_names=["misclassification", "correct"]), flush=True)
+    print("Confusion matrix:", flush=True)
+    print(confusion_matrix(y_true_valid, y_pred_valid), flush=True)
+
+    misclass_precision = precision_score(y_true_valid, y_pred_valid, pos_label=0)
+    misclass_recall = recall_score(y_true_valid, y_pred_valid, pos_label=0)
+    misclass_f1 = f1_score(y_true_valid, y_pred_valid, pos_label=0)
+    print(f"\nMisclassification detection:", flush=True)
+    print(f"  Precision: {misclass_precision:.3f} (of flagged, how many truly wrong)", flush=True)
+    print(f"  Recall:    {misclass_recall:.3f} (of truly wrong, how many caught)", flush=True)
+    print(f"  F1:        {misclass_f1:.3f}", flush=True)
+
+
 def main():
     args = parse_args()
+    output_csv = DATA_DIR / "benchmarks" / f"evaluator_{args.tag}_results.csv"
 
-    # Load test data
     with open(TEST_CSV, newline="", encoding="utf-8") as f:
         rows = list(csv.DictReader(f))
     if args.limit:
         rows = rows[:args.limit]
 
-    print(f"Evaluating {len(rows)} test pairs")
-    print(f"Model: {args.model_dir}")
+    print(f"Evaluating {len(rows)} test pairs", flush=True)
+    print(f"Model: {args.model_dir}", flush=True)
+    print(f"Output: {output_csv}", flush=True)
 
-    # Load model
     model, tokenizer = load_model(args.model_dir)
 
-    # Run inference
     predictions = []
     ground_truth = []
     results = []
@@ -152,55 +192,23 @@ def main():
             "raw_response": raw_response[:500],
         })
 
-        if (i + 1) % 50 == 0:
+        if (i + 1) % 10 == 0:
             elapsed = time.time() - start
             print(f"  {i+1}/{len(rows)} ({elapsed:.0f}s, "
-                  f"{elapsed/(i+1)*1000:.0f}ms/pair)")
+                  f"{elapsed/(i+1)*1000:.0f}ms/pair)", flush=True)
+
+        # Periodic save every 50 pairs
+        if (i + 1) % 50 == 0:
+            save_results(results, output_csv)
 
     elapsed = time.time() - start
-    print(f"\nInference complete: {elapsed:.1f}s ({elapsed/len(rows)*1000:.0f}ms/pair)")
+    print(f"\nInference complete: {elapsed:.1f}s ({elapsed/len(rows)*1000:.0f}ms/pair)",
+          flush=True)
 
-    # Metrics
-    # Binary: correct=1, misclassification=0
-    y_true = [1 if v == "correct" else 0 for v in ground_truth]
-    y_pred = [1 if v == "correct" else 0 for v in predictions]
-    valid_mask = [p in ("correct", "misclassification") for p in predictions]
-    y_true_valid = [y for y, m in zip(y_true, valid_mask) if m]
-    y_pred_valid = [y for y, m in zip(y_pred, valid_mask) if m]
-    parse_errors = sum(1 for p in predictions if p not in ("correct", "misclassification"))
+    print_metrics(predictions, ground_truth, elapsed, len(rows))
 
-    print(f"\n{'='*60}")
-    print("RESULTS")
-    print(f"{'='*60}")
-    print(f"Total pairs:    {len(rows)}")
-    print(f"Valid predictions: {len(y_true_valid)}")
-    print(f"Parse errors:   {parse_errors}")
-    print(f"Speed:          {elapsed/len(rows)*1000:.0f}ms/pair")
-    print()
-    print(f"Overall accuracy: {accuracy_score(y_true_valid, y_pred_valid):.1%}")
-    print()
-    print("Classification report (0=misclassification, 1=correct):")
-    print(classification_report(y_true_valid, y_pred_valid,
-                                target_names=["misclassification", "correct"]))
-    print("Confusion matrix:")
-    print(confusion_matrix(y_true_valid, y_pred_valid))
-
-    # Misclassification-specific metrics (the important ones)
-    misclass_precision = precision_score(y_true_valid, y_pred_valid, pos_label=0)
-    misclass_recall = recall_score(y_true_valid, y_pred_valid, pos_label=0)
-    misclass_f1 = f1_score(y_true_valid, y_pred_valid, pos_label=0)
-    print(f"\nMisclassification detection:")
-    print(f"  Precision: {misclass_precision:.3f} (of flagged pairs, how many were truly wrong)")
-    print(f"  Recall:    {misclass_recall:.3f} (of truly wrong pairs, how many were caught)")
-    print(f"  F1:        {misclass_f1:.3f}")
-
-    # Save results
-    OUTPUT_CSV.parent.mkdir(parents=True, exist_ok=True)
-    with open(OUTPUT_CSV, "w", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=results[0].keys())
-        writer.writeheader()
-        writer.writerows(results)
-    print(f"\nFull results saved to {OUTPUT_CSV}")
+    save_results(results, output_csv)
+    print(f"\nFull results saved to {output_csv}", flush=True)
 
 
 if __name__ == "__main__":

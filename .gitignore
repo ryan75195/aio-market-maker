@@ -396,3 +396,9 @@ logs/
 # Local vector index data (2.5 GB+)
 **/data/vectors.usearch
 **/data/vectors-idmap.json
+
+# Unsloth compiled cache (auto-generated)
+unsloth_compiled_cache/
+
+# Local data files
+AIOMarketMaker.Api/data/

@@ -138,13 +138,14 @@ def predict(model, tokenizer, pair):
 
     messages = [{"role": "user", "content": user_msg}]
     text = tokenizer.apply_chat_template(
-        messages, tokenize=False, add_generation_prompt=True
+        messages, tokenize=False, add_generation_prompt=True,
+        enable_thinking=False,
     )
     inputs = tokenizer(text, return_tensors="pt").to(model.device)
 
     with torch.no_grad():
         outputs = model.generate(
-            **inputs, max_new_tokens=256, temperature=0.1,
+            **inputs, max_new_tokens=128, temperature=0.1,
             do_sample=False, pad_token_id=tokenizer.pad_token_id,
         )
 
