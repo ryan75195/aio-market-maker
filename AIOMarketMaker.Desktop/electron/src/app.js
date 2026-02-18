@@ -13,6 +13,7 @@ createApp({
       opportunitySortBy: 'potentialProfit',
       opportunitySortDir: 'desc',
       opportunityJobFilter: [],
+      opportunityCategoryFilter: [],
       opportunityTotalCount: 0,
       opportunityTotalPages: 0,
       historyMode: 'batches',
@@ -83,6 +84,7 @@ createApp({
       },
       savingSettings: false,
       showJobDropdown: false,
+      showCategoryDropdown: false,
       overviewData: {
         totalListings: 0,
         activeListings: 0,
@@ -111,6 +113,41 @@ createApp({
         return `Filter: ${job ? job.searchTerm : 'Unknown'}`;
       }
       return `Filter: ${this.opportunityJobFilter.length} jobs`;
+    },
+
+    categoryFilterLabel() {
+      if (this.opportunityCategoryFilter.length === 0) {
+        return 'Category: All';
+      }
+      if (this.opportunityCategoryFilter.length === 1) {
+        const id = this.opportunityCategoryFilter[0];
+        if (id === -1) { return 'Category: Uncategorised'; }
+        const cat = this.categories.find(c => c.id === id);
+        return `Category: ${cat ? cat.name : 'Unknown'}`;
+      }
+      return `Category: ${this.opportunityCategoryFilter.length} selected`;
+    },
+
+    filteredJobIds() {
+      if (this.opportunityCategoryFilter.length === 0) {
+        return null;
+      }
+      const catIds = this.opportunityCategoryFilter;
+      const matchingJobs = this.jobs.filter(j => {
+        const jobCats = j.categories || [];
+        if (catIds.includes(-1) && jobCats.length === 0) { return true; }
+        return jobCats.some(c => catIds.includes(c.id));
+      });
+      return matchingJobs.map(j => j.id);
+    },
+
+    categoryFilteredJobs() {
+      if (this.opportunityCategoryFilter.length === 0) {
+        return this.jobs;
+      }
+      const ids = this.filteredJobIds;
+      if (!ids) { return this.jobs; }
+      return this.jobs.filter(j => ids.includes(j.id));
     },
 
     apiTarget() {
@@ -282,6 +319,7 @@ createApp({
     await this.loadConfig();
     if (!this.configError) {
       await this.loadJobs();
+      await this.loadCategories();
       await this.loadOverview();
     }
     this.startAutoRefresh();
@@ -731,8 +769,14 @@ createApp({
           sortBy: this.opportunitySortBy,
           sortDir: this.opportunitySortDir
         });
+        let effectiveJobIds = [];
         if (this.opportunityJobFilter.length > 0) {
-          params.set('jobIds', this.opportunityJobFilter.join(','));
+          effectiveJobIds = this.opportunityJobFilter;
+        } else if (this.filteredJobIds) {
+          effectiveJobIds = this.filteredJobIds;
+        }
+        if (effectiveJobIds.length > 0) {
+          params.set('jobIds', effectiveJobIds.join(','));
         }
         if (opp.minComps > 0) {
           params.set('minComps', opp.minComps);
@@ -788,6 +832,29 @@ createApp({
     },
 
     clearJobFilter() {
+      this.opportunityJobFilter = [];
+      this.opportunityPage = 1;
+      this.loadOpportunities();
+    },
+
+    isCategoryFiltered(catId) {
+      return this.opportunityCategoryFilter.includes(catId);
+    },
+
+    toggleCategoryFilter(catId) {
+      const idx = this.opportunityCategoryFilter.indexOf(catId);
+      if (idx >= 0) {
+        this.opportunityCategoryFilter.splice(idx, 1);
+      } else {
+        this.opportunityCategoryFilter.push(catId);
+      }
+      this.opportunityJobFilter = [];
+      this.opportunityPage = 1;
+      this.loadOpportunities();
+    },
+
+    clearCategoryFilter() {
+      this.opportunityCategoryFilter = [];
       this.opportunityJobFilter = [];
       this.opportunityPage = 1;
       this.loadOpportunities();
