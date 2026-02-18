@@ -103,9 +103,28 @@
             <button class="btn" @click="loadOpportunities">Refresh</button>
           </div>
 
-          <!-- Job Filter Dropdown -->
-          <div v-if="jobs.length > 0" class="filter-dropdown-wrapper">
-            <button class="btn filter-dropdown-btn" @click="showJobDropdown = !showJobDropdown">
+          <!-- Category Filter Dropdown -->
+          <div v-if="categories.length > 0" class="filter-dropdown-wrapper">
+            <button class="btn filter-dropdown-btn" @click="showCategoryDropdown = !showCategoryDropdown; showJobDropdown = false">
+              {{ categoryFilterLabel }} <span class="dropdown-caret">&#9660;</span>
+            </button>
+            <div v-if="showCategoryDropdown" class="dropdown-backdrop" @click="showCategoryDropdown = false"></div>
+            <div v-if="showCategoryDropdown" class="dropdown-menu">
+              <label class="dropdown-item" @click.prevent="clearCategoryFilter">
+                <input type="checkbox" :checked="opportunityCategoryFilter.length === 0" readonly> All
+              </label>
+              <label v-for="cat in categories" :key="cat.id" class="dropdown-item" @click.prevent="toggleCategoryFilter(cat.id)">
+                <input type="checkbox" :checked="isCategoryFiltered(cat.id)" readonly> {{ cat.name }}
+              </label>
+              <label class="dropdown-item" @click.prevent="toggleCategoryFilter(-1)">
+                <input type="checkbox" :checked="isCategoryFiltered(-1)" readonly> Uncategorised
+              </label>
+            </div>
+          </div>
+
+          <!-- Job Filter Dropdown (scoped to selected categories) -->
+          <div v-if="categoryFilteredJobs.length > 0" class="filter-dropdown-wrapper">
+            <button class="btn filter-dropdown-btn" @click="showJobDropdown = !showJobDropdown; showCategoryDropdown = false">
               {{ jobFilterLabel }} <span class="dropdown-caret">&#9660;</span>
             </button>
             <div v-if="showJobDropdown" class="dropdown-backdrop" @click="showJobDropdown = false"></div>
@@ -113,7 +132,7 @@
               <label class="dropdown-item" @click.prevent="clearJobFilter">
                 <input type="checkbox" :checked="opportunityJobFilter.length === 0" readonly> All
               </label>
-              <label v-for="job in jobs" :key="job.id" class="dropdown-item" @click.prevent="toggleJobFilter(job.id)">
+              <label v-for="job in categoryFilteredJobs" :key="job.id" class="dropdown-item" @click.prevent="toggleJobFilter(job.id)">
                 <input type="checkbox" :checked="isJobFiltered(job.id)" readonly> {{ job.searchTerm }}
               </label>
             </div>
