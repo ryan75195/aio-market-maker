@@ -103,6 +103,8 @@
             <button class="btn" @click="loadOpportunities">Refresh</button>
           </div>
 
+          <div style="display: flex; gap: 8px; margin-bottom: 12px;">
+
           <!-- Category Filter Dropdown -->
           <div v-if="categories.length > 0" class="filter-dropdown-wrapper">
             <button class="btn filter-dropdown-btn" @click="showCategoryDropdown = !showCategoryDropdown; showJobDropdown = false">
@@ -136,6 +138,8 @@
                 <input type="checkbox" :checked="isJobFiltered(job.id)" readonly> {{ job.searchTerm }}
               </label>
             </div>
+          </div>
+
           </div>
 
           <table class="data-table">
