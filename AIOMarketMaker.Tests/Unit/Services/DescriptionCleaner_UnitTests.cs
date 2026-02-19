@@ -1,6 +1,6 @@
 using AIOMarketMaker.Core.Utils;
 
-namespace AIOMarketMaker.Tests.Unit
+namespace AIOMarketMaker.Tests.Unit.Services
 {
     [TestFixture]
     [Category("Unit")]

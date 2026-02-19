@@ -1,5 +1,6 @@
 using AIOMarketMaker.Core.Services;
 using AIOMarketMaker.Models.Ebay;
+using AIOMarketMaker.Tests.E2E.Infrastructure;
 
 namespace AIOMarketMaker.Tests.E2E;
 

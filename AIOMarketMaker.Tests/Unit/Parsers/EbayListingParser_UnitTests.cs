@@ -8,9 +8,9 @@ using Microsoft.Extensions.DependencyInjection;
 using Moq;
 using System.Text.RegularExpressions;
 
-namespace AIOMarketMaker.Tests.Unit
+namespace AIOMarketMaker.Tests.Unit.Parsers
 {
-    public class ListingParserUnitTests
+    public class EbayListingParser_UnitTests
     {
         private ServiceProvider _provider = null!;
         private IListingParser _serviceUnderTest = null!;

@@ -1,4 +1,5 @@
 using System.Net;
+using AIOMarketMaker.Tests.E2E.Infrastructure;
 
 namespace AIOMarketMaker.Tests.E2E;
 

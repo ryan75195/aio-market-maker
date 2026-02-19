@@ -3,10 +3,10 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Moq;
 
-namespace AIOMarketMaker.Tests.Unit;
+namespace AIOMarketMaker.Tests.Unit.Services;
 
 [TestFixture]
-public class EmbeddingServiceTests
+public class EmbeddingService_UnitTests
 {
     private Mock<ILogger<EmbeddingService>> _mockLogger = null!;
 
