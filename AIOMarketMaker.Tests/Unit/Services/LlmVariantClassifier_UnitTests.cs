@@ -30,7 +30,6 @@ public class LlmVariantClassifier_UnitTests
         return mock;
     }
 
-    #region ParseResponse tests
 
     [Test]
     public void Should_parse_comparable_json_response()
@@ -97,9 +96,6 @@ public class LlmVariantClassifier_UnitTests
         Assert.That(result.IsComparable, Is.EqualTo(expectedComparable));
     }
 
-    #endregion
-
-    #region BuildUserPrompt tests
 
     [Test]
     public void Should_build_prompt_with_titles_and_descriptions()
@@ -132,9 +128,6 @@ public class LlmVariantClassifier_UnitTests
         Assert.That(prompt.Length, Is.LessThan(5000));
     }
 
-    #endregion
-
-    #region Classify integration path tests
 
     [Test]
     public async Task Should_return_empty_results_for_empty_input()
@@ -279,5 +272,4 @@ public class LlmVariantClassifier_UnitTests
             () => classifier.Classify(new[] { SamplePair }, cts.Token));
     }
 
-    #endregion
 }

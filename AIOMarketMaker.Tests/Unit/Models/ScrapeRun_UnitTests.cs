@@ -1,10 +1,10 @@
 using AIOMarketMaker.Core.Data.Models;
 
-namespace AIOMarketMaker.Tests.UnitTests.Models;
+namespace AIOMarketMaker.Tests.Unit.Models;
 
 [TestFixture]
 [Category("Unit")]
-public class ScrapeRunTests
+public class ScrapeRun_UnitTests
 {
     [Test]
     public void Should_have_manual_trigger_type_by_default()

@@ -6,7 +6,7 @@ using AIOMarketMaker.Tests.Utils;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.HttpResults;
 
-namespace AIOMarketMaker.Tests.UnitTests.Endpoints;
+namespace AIOMarketMaker.Tests.Unit.Endpoints;
 
 [TestFixture]
 [Category("Unit")]

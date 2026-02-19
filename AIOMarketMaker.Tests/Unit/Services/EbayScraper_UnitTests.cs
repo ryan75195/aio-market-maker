@@ -9,9 +9,9 @@ using Moq;
 using ScraperWorker.Services;
 using System.Text.RegularExpressions;
 
-namespace AIOMarketMaker.Tests.Unit
+namespace AIOMarketMaker.Tests.Unit.Services
 {
-    public class EbayScraperUnitTests
+    public class EbayScraper_UnitTests
     {
         private ServiceProvider _provider = null!;
         private IEbayScraper _serviceUnderTest = null!;

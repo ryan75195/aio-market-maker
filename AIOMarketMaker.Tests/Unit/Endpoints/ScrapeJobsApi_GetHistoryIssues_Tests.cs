@@ -10,7 +10,7 @@ using Moq;
 using System.Net;
 using System.Text.Json;
 
-namespace AIOMarketMaker.Tests.UnitTests.Functions;
+namespace AIOMarketMaker.Tests.Unit.Endpoints;
 
 [TestFixture]
 [Category("Unit")]

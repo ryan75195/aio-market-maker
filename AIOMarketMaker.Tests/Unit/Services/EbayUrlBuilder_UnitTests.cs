@@ -1,7 +1,7 @@
 using NUnit.Framework;
 using AIOMarketMaker.Core.Services;
 
-namespace AIOMarketMaker.Tests.UnitTests;
+namespace AIOMarketMaker.Tests.Unit.Services;
 
 [TestFixture]
 [Category("Unit")]

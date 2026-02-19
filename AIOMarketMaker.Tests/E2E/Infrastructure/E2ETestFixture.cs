@@ -10,7 +10,7 @@ using Microsoft.Extensions.Logging;
 using ScraperWorker.Services;
 using System.Net.Sockets;
 
-namespace AIOMarketMaker.Tests.E2E;
+namespace AIOMarketMaker.Tests.E2E.Infrastructure;
 
 public abstract class E2ETestFixture
 {

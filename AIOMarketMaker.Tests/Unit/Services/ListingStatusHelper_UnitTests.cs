@@ -1,10 +1,10 @@
 using AIOMarketMaker.Core.Services;
 
-namespace AIOMarketMaker.Tests.UnitTests;
+namespace AIOMarketMaker.Tests.Unit.Services;
 
 [TestFixture]
 [Category("Unit")]
-public class ListingStatusHelperTests
+public class ListingStatusHelper_UnitTests
 {
     [TestCase("Active", "Sold", true, Description = "Active to Sold allowed")]
     [TestCase("Active", "Ended", true, Description = "Active to Ended allowed")]

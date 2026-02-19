@@ -2,10 +2,10 @@ using AIOMarketMaker.Core.Services;
 using Microsoft.Extensions.Logging;
 using Moq;
 
-namespace AIOMarketMaker.Tests.Unit;
+namespace AIOMarketMaker.Tests.Unit.Services;
 
 [TestFixture]
-public class ClusteringServiceTests
+public class ClusteringService_UnitTests
 {
     private Mock<ILogger<ClusteringService>> _mockLogger = null!;
 

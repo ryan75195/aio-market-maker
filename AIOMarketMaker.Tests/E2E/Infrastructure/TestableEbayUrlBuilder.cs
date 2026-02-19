@@ -1,7 +1,7 @@
 using System.Web;
 using AIOMarketMaker.Core.Services;
 
-namespace AIOMarketMaker.Tests.E2E;
+namespace AIOMarketMaker.Tests.E2E.Infrastructure;
 
 public class TestableEbayUrlBuilder : IEbayUrlBuilder
 {

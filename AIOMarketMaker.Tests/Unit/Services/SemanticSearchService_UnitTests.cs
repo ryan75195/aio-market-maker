@@ -3,11 +3,11 @@ using AIOMarketMaker.Core.Services;
 using Microsoft.Extensions.Logging;
 using Moq;
 
-namespace AIOMarketMaker.Tests.Unit;
+namespace AIOMarketMaker.Tests.Unit.Services;
 
 [TestFixture]
 [Category("Unit")]
-public class SemanticSearchServiceTests
+public class SemanticSearchService_UnitTests
 {
     private Mock<IVectorIndex> _mockVectorIndex = null!;
     private Mock<IEmbeddingService> _mockEmbedding = null!;

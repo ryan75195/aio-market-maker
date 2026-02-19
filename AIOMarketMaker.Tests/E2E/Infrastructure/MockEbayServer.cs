@@ -3,7 +3,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 using NUnit.Framework;
 
-namespace AIOMarketMaker.Tests.E2E;
+namespace AIOMarketMaker.Tests.E2E.Infrastructure;
 
 public class MockEbayServer : IDisposable
 {

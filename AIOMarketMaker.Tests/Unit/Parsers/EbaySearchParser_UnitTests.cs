@@ -8,9 +8,9 @@ using Moq;
 using NUnit.Framework;
 using System.Text.RegularExpressions;
 
-namespace AIOMarketMaker.Tests.Unit
+namespace AIOMarketMaker.Tests.Unit.Parsers
 {
-    public class SearchParserUnitTests
+    public class EbaySearchParser_UnitTests
     {
         private ServiceProvider _provider = null!;
         private ISearchParser _serviceUnderTest = null!;

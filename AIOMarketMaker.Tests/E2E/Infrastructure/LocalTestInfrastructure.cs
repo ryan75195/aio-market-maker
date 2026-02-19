@@ -1,7 +1,7 @@
 using System.Diagnostics;
 using System.Net.Sockets;
 
-namespace AIOMarketMaker.Tests.E2E;
+namespace AIOMarketMaker.Tests.E2E.Infrastructure;
 
 /// <summary>
 /// Manages local test infrastructure: Azurite, Azure Functions API, ScraperWorker.

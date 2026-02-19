@@ -6,10 +6,10 @@ using ScraperWorker.Services;
 using System.Net;
 using System.Net.Http.Json;
 
-namespace AIOMarketMaker.Tests.Unit
+namespace AIOMarketMaker.Tests.Unit.Services
 {
     [TestFixture]
-    public class WebscraperClientUnitTests
+    public class WebscraperClient_UnitTests
     {
         private Mock<IJobRepository> _mockJobRepository;
         private Mock<ILogger<WebscraperClient>> _mockLogger;
