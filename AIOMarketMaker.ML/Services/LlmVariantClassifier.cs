@@ -75,12 +75,15 @@ public partial class LlmVariantClassifier : IVariantClassifierClient
                 {
                     throw;
                 }
-                catch (Exception ex) when (attempt < _maxRetries - 1)
+                catch (Exception ex)
                 {
-                    var delay = TimeSpan.FromSeconds(Math.Pow(2, attempt));
-                    _logger.LogWarning("LLM call failed (attempt {Attempt}/{MaxRetries}): {Error}. Retrying in {Delay}s",
-                        attempt + 1, _maxRetries, ex.Message, delay.TotalSeconds);
-                    await Task.Delay(delay, ct);
+                    if (attempt < _maxRetries - 1)
+                    {
+                        var delay = TimeSpan.FromSeconds(Math.Pow(2, attempt));
+                        _logger.LogWarning("LLM call failed (attempt {Attempt}/{MaxRetries}): {Error}. Retrying in {Delay}s",
+                            attempt + 1, _maxRetries, ex.Message, delay.TotalSeconds);
+                        await Task.Delay(delay, ct);
+                    }
                 }
             }
         }
