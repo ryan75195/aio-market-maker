@@ -2,13 +2,10 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using AIOMarketMaker.Core.Services;
 using Microsoft.Extensions.Logging;
-using OpenAI.Chat;
 
 namespace AIOMarketMaker.ML.Services;
 
 public record LlmClassifierConfig(
-    string ApiKey,
-    string Model = "gpt-4o-mini",
     int MaxConcurrency = 50,
     int MaxRetries = 3);
 
@@ -16,20 +13,17 @@ public partial class LlmVariantClassifier : IVariantClassifierClient
 {
     private const int MaxDescriptionLength = 500;
 
-    private readonly ChatClient _client;
+    private readonly IChatClient _client;
     private readonly SemaphoreSlim _semaphore;
     private readonly int _maxRetries;
     private readonly ILogger<LlmVariantClassifier> _logger;
 
-    public LlmVariantClassifier(LlmClassifierConfig config, ILogger<LlmVariantClassifier> logger)
+    public LlmVariantClassifier(IChatClient client, LlmClassifierConfig config, ILogger<LlmVariantClassifier> logger)
     {
-        _client = new ChatClient(config.Model, config.ApiKey);
+        _client = client;
         _semaphore = new SemaphoreSlim(config.MaxConcurrency, config.MaxConcurrency);
         _maxRetries = config.MaxRetries;
         _logger = logger;
-
-        _logger.LogInformation("LLM variant classifier initialized with model {Model}, concurrency {MaxConcurrency}",
-            config.Model, config.MaxConcurrency);
     }
 
     public async Task<IReadOnlyList<PairResult>> Classify(
@@ -61,16 +55,9 @@ public partial class LlmVariantClassifier : IVariantClassifierClient
         return responseText is not null ? ParseResponse(responseText) : new PairResult(false, 0.0f);
     }
 
-    private async Task<string> SendChat(string userPrompt, CancellationToken ct)
+    private Task<string> SendChat(string userPrompt, CancellationToken ct)
     {
-        var messages = new ChatMessage[]
-        {
-            new SystemChatMessage(SystemPrompt),
-            new UserChatMessage(userPrompt)
-        };
-
-        var completion = await _client.CompleteChatAsync(messages, cancellationToken: ct);
-        return completion.Value.Content[0].Text;
+        return _client.CompleteChat(SystemPrompt, userPrompt, ct);
     }
 
     private async Task<string?> WithRetry(Func<Task<string>> action, CancellationToken ct)
