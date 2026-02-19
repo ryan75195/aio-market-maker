@@ -84,11 +84,19 @@ dotnet build AIOMarketMaker.sln
 
 ### Run tests
 ```bash
-# Run all tests
-dotnet test AIOMarketMaker.Tests/AIOMarketMaker.Tests.csproj
+# Run all tests across all projects
+dotnet test AIOMarketMaker.sln
+
+# Run unit tests only (fast, no external deps)
+dotnet test AIOMarketMaker.Tests.Unit/AIOMarketMaker.Tests.Unit.csproj
+
+# Run by project
+dotnet test AIOMarketMaker.Tests.Integration/AIOMarketMaker.Tests.Integration.csproj
+dotnet test AIOMarketMaker.Tests.E2E/AIOMarketMaker.Tests.E2E.csproj
+dotnet test AIOMarketMaker.Tests.Contract/AIOMarketMaker.Tests.Contract.csproj
 
 # Run a specific test
-dotnet test AIOMarketMaker.Tests/AIOMarketMaker.Tests.csproj --filter "FullyQualifiedName~SearchParserUnit"
+dotnet test --filter "FullyQualifiedName~SearchParserUnit"
 ```
 
 ### Run the ETL console app
@@ -232,12 +240,11 @@ The simplified pipeline SHOULD:
 
 ### Test Organization
 ```
-AIOMarketMaker.Tests/
-├── Unit/           # Isolated unit tests with mocks
-├── ContractTests/       # Tests against saved HTML snapshots
-├── Integration/         # End-to-end tests with real services
-├── Utils/               # Test helpers (PageBuilder, Assertions)
-└── Data/                # Test data files
+AIOMarketMaker.Tests.Common/    # Shared utilities + Data/
+AIOMarketMaker.Tests.Unit/      # Fast unit tests, no external deps
+AIOMarketMaker.Tests.Integration/ # Tests with real services
+AIOMarketMaker.Tests.E2E/       # Full system tests + Infrastructure/
+AIOMarketMaker.Tests.Contract/  # HTML structure validation
 ```
 
 ### Contract Tests
