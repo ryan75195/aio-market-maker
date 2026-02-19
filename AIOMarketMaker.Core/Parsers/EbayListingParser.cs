@@ -9,6 +9,10 @@ using Microsoft.Extensions.Logging;
 using AIOMarketMaker.Core.Utils;
 
 [assembly: InternalsVisibleTo("AIOMarketMaker.Tests")]
+[assembly: InternalsVisibleTo("AIOMarketMaker.Tests.Unit")]
+[assembly: InternalsVisibleTo("AIOMarketMaker.Tests.Integration")]
+[assembly: InternalsVisibleTo("AIOMarketMaker.Tests.E2E")]
+[assembly: InternalsVisibleTo("AIOMarketMaker.Tests.Contract")]
 
 namespace AIOMarketMaker.Core.Parsers
 {
