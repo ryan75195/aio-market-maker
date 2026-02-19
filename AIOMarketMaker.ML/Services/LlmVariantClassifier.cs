@@ -42,8 +42,10 @@ public partial class LlmVariantClassifier : IVariantClassifierClient
             return Array.Empty<PairResult>();
         }
 
-        var tasks = pairList.Select((pair, index) => ClassifyOne(pair, index, pairList.Count, ct));
+        _logger.LogInformation("LLM classifier starting {Count} pairs", pairList.Count);
+        var tasks = pairList.Select(pair => ClassifyOne(pair, ct));
         var results = await Task.WhenAll(tasks);
+        _logger.LogInformation("LLM classifier completed {Count} pairs", pairList.Count);
         return results;
     }
 
@@ -52,11 +54,27 @@ public partial class LlmVariantClassifier : IVariantClassifierClient
         return Task.FromResult(true);
     }
 
-    private async Task<PairResult> ClassifyOne(
-        ClassifyPairRequest pair, int index, int total, CancellationToken ct)
+    private async Task<PairResult> ClassifyOne(ClassifyPairRequest pair, CancellationToken ct)
     {
         var userPrompt = BuildUserPrompt(pair);
+        var responseText = await WithRetry(() => SendChat(userPrompt, ct), ct);
+        return responseText is not null ? ParseResponse(responseText) : new PairResult(false, 0.0f);
+    }
 
+    private async Task<string> SendChat(string userPrompt, CancellationToken ct)
+    {
+        var messages = new ChatMessage[]
+        {
+            new SystemChatMessage(SystemPrompt),
+            new UserChatMessage(userPrompt)
+        };
+
+        var completion = await _client.CompleteChatAsync(messages, cancellationToken: ct);
+        return completion.Value.Content[0].Text;
+    }
+
+    private async Task<string?> WithRetry(Func<Task<string>> action, CancellationToken ct)
+    {
         await _semaphore.WaitAsync(ct);
         try
         {
@@ -64,22 +82,7 @@ public partial class LlmVariantClassifier : IVariantClassifierClient
             {
                 try
                 {
-                    var messages = new List<ChatMessage>
-                    {
-                        new SystemChatMessage(SystemPrompt),
-                        new UserChatMessage(userPrompt)
-                    };
-
-                    var completion = await _client.CompleteChatAsync(messages, cancellationToken: ct);
-                    var responseText = completion.Value.Content[0].Text;
-                    var result = ParseResponse(responseText);
-
-                    if ((index + 1) % 100 == 0 || index == total - 1)
-                    {
-                        _logger.LogInformation("LLM classifier progress: {Current}/{Total}", index + 1, total);
-                    }
-
-                    return result;
+                    return await action();
                 }
                 catch (OperationCanceledException)
                 {
@@ -99,8 +102,8 @@ public partial class LlmVariantClassifier : IVariantClassifierClient
             _semaphore.Release();
         }
 
-        _logger.LogError("LLM classifier exhausted retries for pair at index {Index}", index);
-        return new PairResult(false, 0.0f);
+        _logger.LogError("LLM classifier exhausted retries");
+        return null;
     }
 
     public static string BuildUserPrompt(ClassifyPairRequest pair)

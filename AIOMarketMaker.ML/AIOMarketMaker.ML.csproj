@@ -16,6 +16,12 @@
     <ProjectReference Include="..\AIOMarketMaker.Core\AIOMarketMaker.Core.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Compile Update="Services\LlmVariantClassifier.Prompt.cs">
+      <DependentUpon>LlmVariantClassifier.cs</DependentUpon>
+    </Compile>
+  </ItemGroup>
+
   <!-- Python training scripts: visible in IDE, not compiled -->
   <ItemGroup>
     <None Include="Training\**\*.py" />
