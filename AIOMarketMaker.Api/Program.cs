@@ -130,23 +130,6 @@ var classifierConfig = new OnnxClassifierConfig(
 builder.Services.AddSingleton(classifierConfig);
 builder.Services.AddSingleton<IVariantClassifierClient, OnnxVariantClassifier>();
 
-// GPT comparison (fallback for low-confidence pairs)
-var chatModel = configuration.GetValue<string>("OpenAi:ChatModel") ?? "gpt-5-nano";
-var comparisonConfig = new ListingComparisonConfig(openAiKey, chatModel);
-builder.Services.AddSingleton(comparisonConfig);
-builder.Services.AddSingleton<ListingComparisonService>();
-
-// Model-first with GPT fallback (threshold owned by the service, not the classifier)
-var modelFirstConfig = new ModelFirstComparisonConfig(
-    ConfidenceThreshold: configuration.GetValue<float>("VariantClassifier:ConfidenceThreshold", 0.80f),
-    EnableGptFallback: configuration.GetValue<bool>("VariantClassifier:EnableGptFallback", true));
-builder.Services.AddSingleton<IListingComparisonService>(sp =>
-    new ModelFirstComparisonService(
-        sp.GetRequiredService<IVariantClassifierClient>(),
-        sp.GetRequiredService<ListingComparisonService>(),
-        modelFirstConfig,
-        sp.GetRequiredService<ILogger<ModelFirstComparisonService>>()));
-
 // ComparablesEtlService
 builder.Services.AddScoped<IComparablesEtlService, ComparablesEtlService>();
 
