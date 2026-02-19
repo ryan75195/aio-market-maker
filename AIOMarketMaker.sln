@@ -61,6 +61,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AIOMarketMaker.Tests.Integr
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AIOMarketMaker.Tests.E2E", "AIOMarketMaker.Tests.E2E\AIOMarketMaker.Tests.E2E.csproj", "{D758DE2D-174D-4E97-B13B-FB4705B75CA5}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AIOMarketMaker.Tests.Contract", "AIOMarketMaker.Tests.Contract\AIOMarketMaker.Tests.Contract.csproj", "{55D408F3-C888-40E7-9287-D2B62E7D30B2}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -227,6 +229,18 @@ Global
 		{D758DE2D-174D-4E97-B13B-FB4705B75CA5}.Release|x64.Build.0 = Release|Any CPU
 		{D758DE2D-174D-4E97-B13B-FB4705B75CA5}.Release|x86.ActiveCfg = Release|Any CPU
 		{D758DE2D-174D-4E97-B13B-FB4705B75CA5}.Release|x86.Build.0 = Release|Any CPU
+		{55D408F3-C888-40E7-9287-D2B62E7D30B2}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{55D408F3-C888-40E7-9287-D2B62E7D30B2}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{55D408F3-C888-40E7-9287-D2B62E7D30B2}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{55D408F3-C888-40E7-9287-D2B62E7D30B2}.Debug|x64.Build.0 = Debug|Any CPU
+		{55D408F3-C888-40E7-9287-D2B62E7D30B2}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{55D408F3-C888-40E7-9287-D2B62E7D30B2}.Debug|x86.Build.0 = Debug|Any CPU
+		{55D408F3-C888-40E7-9287-D2B62E7D30B2}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{55D408F3-C888-40E7-9287-D2B62E7D30B2}.Release|Any CPU.Build.0 = Release|Any CPU
+		{55D408F3-C888-40E7-9287-D2B62E7D30B2}.Release|x64.ActiveCfg = Release|Any CPU
+		{55D408F3-C888-40E7-9287-D2B62E7D30B2}.Release|x64.Build.0 = Release|Any CPU
+		{55D408F3-C888-40E7-9287-D2B62E7D30B2}.Release|x86.ActiveCfg = Release|Any CPU
+		{55D408F3-C888-40E7-9287-D2B62E7D30B2}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
