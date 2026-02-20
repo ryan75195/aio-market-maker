@@ -63,7 +63,7 @@ public partial class LlmVariantClassifier : IVariantClassifierClient
     private async Task<PairResult> ClassifyOne(ClassifyPairRequest pair, CancellationToken ct)
     {
         var userPrompt = BuildUserPrompt(pair);
-        var response = await WithRetry(() => _client.CompleteChat<ClassifierResponse>(SystemPrompt, userPrompt, ct), ct);
+        var response = await WithRetry(() => _client.CompleteChat<ClassifierResponse>(SystemPromptText, userPrompt, ct), ct);
 
         if (response is null)
         {
