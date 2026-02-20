@@ -1,15 +1,127 @@
+#pragma warning disable OPENAI001 // Batch API is marked experimental in OpenAI SDK v2.x
+
+using System.ClientModel;
 using System.Text;
 using System.Text.Json;
 using AIOMarketMaker.Core.Services;
 using AIOMarketMaker.ML.Utils;
+using Microsoft.Extensions.Logging;
+using OpenAI;
+using OpenAI.Batch;
+using OpenAI.Files;
 
 namespace AIOMarketMaker.ML.Services;
+
+public record BatchStatusResult(
+    string Status,
+    int Completed,
+    int Failed,
+    int Total,
+    bool IsTerminal,
+    string? OutputFileId);
 
 public class BatchLabeler
 {
     private const string Model = "gpt-5-mini";
+    private const string StateFileName = "batch_state.json";
 
     private static readonly string ResponseSchema = JsonSchemaGenerator.Generate<ClassifierResponse>();
+
+    private readonly OpenAIClient _openAiClient = null!;
+    private readonly ILogger<BatchLabeler> _logger = null!;
+
+    /// <summary>
+    /// Constructor for instance methods that call the OpenAI Batch API.
+    /// </summary>
+    public BatchLabeler(string apiKey, ILogger<BatchLabeler> logger)
+    {
+        _openAiClient = new OpenAIClient(apiKey);
+        _logger = logger;
+    }
+
+    /// <summary>
+    /// Uploads a JSONL file to OpenAI and creates a batch job.
+    /// Saves batch_state.json for resumability. Returns the batch ID.
+    /// </summary>
+    public async Task<string> SubmitBatch(string jsonlPath, string workingDir)
+    {
+        var fileClient = _openAiClient.GetOpenAIFileClient();
+        var batchClient = _openAiClient.GetBatchClient();
+
+        _logger.LogInformation("Uploading {Path} to OpenAI Files API...", jsonlPath);
+        var fileResult = await fileClient.UploadFileAsync(jsonlPath, FileUploadPurpose.Batch);
+        var fileId = fileResult.Value.Id;
+        _logger.LogInformation("Uploaded file: {FileId}", fileId);
+
+        _logger.LogInformation("Creating batch job...");
+        var requestBody = BinaryContent.Create(BinaryData.FromObjectAsJson(new
+        {
+            input_file_id = fileId,
+            endpoint = "/v1/chat/completions",
+            completion_window = "24h",
+            metadata = new { description = "v10 training relabel" }
+        }));
+
+        var batchOperation = await batchClient.CreateBatchAsync(requestBody, waitUntilCompleted: false);
+        var batchResponse = batchOperation.GetRawResponse();
+        var batchJson = JsonDocument.Parse(batchResponse.Content);
+        var batchId = batchJson.RootElement.GetProperty("id").GetString()!;
+
+        _logger.LogInformation("Batch created: {BatchId}", batchId);
+
+        // Save state for resumability
+        var statePath = Path.Combine(workingDir, StateFileName);
+        await File.WriteAllTextAsync(statePath, JsonSerializer.Serialize(new { batchId, fileId }));
+
+        return batchId;
+    }
+
+    /// <summary>
+    /// Single non-blocking status check for a batch job. Does NOT poll.
+    /// </summary>
+    public async Task<BatchStatusResult> GetBatchStatus(string batchId)
+    {
+        var batchClient = _openAiClient.GetBatchClient();
+
+        var operation = await CreateBatchOperation.RehydrateAsync(batchClient, batchId);
+        var response = await operation.GetBatchAsync(options: null);
+        var json = JsonDocument.Parse(response.GetRawResponse().Content);
+
+        var root = json.RootElement;
+        var status = root.GetProperty("status").GetString()!;
+
+        var completed = 0;
+        var failed = 0;
+        var total = 0;
+        if (root.TryGetProperty("request_counts", out var counts))
+        {
+            completed = counts.TryGetProperty("completed", out var c) ? c.GetInt32() : 0;
+            failed = counts.TryGetProperty("failed", out var f) ? f.GetInt32() : 0;
+            total = counts.TryGetProperty("total", out var t) ? t.GetInt32() : 0;
+        }
+
+        var isTerminal = status is "completed" or "failed" or "expired" or "cancelled";
+        var outputFileId = root.TryGetProperty("output_file_id", out var ofi) ? ofi.GetString() : null;
+
+        return new BatchStatusResult(status, completed, failed, total, isTerminal, outputFileId);
+    }
+
+    /// <summary>
+    /// Downloads the batch output file to the specified path.
+    /// </summary>
+    public async Task<string> DownloadResults(string outputFileId, string outputPath)
+    {
+        var fileClient = _openAiClient.GetOpenAIFileClient();
+
+        _logger.LogInformation("Downloading results file {FileId}...", outputFileId);
+        var content = await fileClient.DownloadFileAsync(outputFileId);
+
+        await using var fileStream = File.Create(outputPath);
+        await content.Value.ToStream().CopyToAsync(fileStream);
+
+        _logger.LogInformation("Results saved to {Path}", outputPath);
+        return outputPath;
+    }
 
     /// <summary>
     /// Reads a v8 CSV file and writes a JSONL batch input file.
