@@ -1,6 +1,6 @@
-using System.Text.Json;
-using System.Text.RegularExpressions;
+using System.Text.Json.Serialization;
 using AIOMarketMaker.Core.Services;
+using AIOMarketMaker.ML.Utils;
 using Microsoft.Extensions.Logging;
 
 namespace AIOMarketMaker.ML.Services;
@@ -8,6 +8,18 @@ namespace AIOMarketMaker.ML.Services;
 public record LlmClassifierConfig(
     int MaxConcurrency = 50,
     int MaxRetries = 3);
+
+[JsonConverter(typeof(CamelCaseEnumConverter))]
+public enum Verdict
+{
+    Same,
+    Different,
+    Uncertain
+}
+
+public record ClassifierResponse(
+    [property: JsonPropertyName("reason")] string Reason,
+    [property: JsonPropertyName("verdict")] Verdict Verdict);
 
 public partial class LlmVariantClassifier : IVariantClassifierClient
 {
@@ -51,16 +63,23 @@ public partial class LlmVariantClassifier : IVariantClassifierClient
     private async Task<PairResult> ClassifyOne(ClassifyPairRequest pair, CancellationToken ct)
     {
         var userPrompt = BuildUserPrompt(pair);
-        var responseText = await WithRetry(() => SendChat(userPrompt, ct), ct);
-        return responseText is not null ? ParseResponse(responseText) : new PairResult(false, 0.0f);
+        var response = await WithRetry(() => _client.CompleteChat<ClassifierResponse>(SystemPrompt, userPrompt, ct), ct);
+
+        if (response is null)
+        {
+            return new PairResult(false, 0.0f);
+        }
+
+        return response.Verdict switch
+        {
+            Verdict.Same => new PairResult(true, 1.0f, response.Reason),
+            Verdict.Different => new PairResult(false, 1.0f, response.Reason),
+            Verdict.Uncertain => new PairResult(false, 0.5f, response.Reason),
+            _ => new PairResult(false, 0.0f)
+        };
     }
 
-    private Task<string> SendChat(string userPrompt, CancellationToken ct)
-    {
-        return _client.CompleteChat(SystemPrompt, userPrompt, ct);
-    }
-
-    private async Task<string?> WithRetry(Func<Task<string>> action, CancellationToken ct)
+    private async Task<T?> WithRetry<T>(Func<Task<T?>> action, CancellationToken ct) where T : class
     {
         await _semaphore.WaitAsync(ct);
         try
@@ -112,38 +131,6 @@ public partial class LlmVariantClassifier : IVariantClassifierClient
             """;
     }
 
-    public static PairResult ParseResponse(string responseText)
-    {
-        try
-        {
-            var json = ExtractJson(responseText);
-            using var doc = JsonDocument.Parse(json);
-            var root = doc.RootElement;
-
-            var verdict = root.GetProperty("verdict").GetString() ?? "";
-            var isComparable = verdict.Equals("same", StringComparison.OrdinalIgnoreCase);
-
-            return new PairResult(isComparable, 1.0f);
-        }
-        catch
-        {
-            return new PairResult(false, 0.0f);
-        }
-    }
-
-    private static string ExtractJson(string text)
-    {
-        var trimmed = text.Trim();
-
-        var match = MarkdownCodeBlock.Match(trimmed);
-        if (match.Success)
-        {
-            return match.Groups[1].Value.Trim();
-        }
-
-        return trimmed;
-    }
-
     private static string Truncate(string text, int maxLength)
     {
         if (string.IsNullOrEmpty(text) || text.Length <= maxLength)
@@ -153,6 +140,4 @@ public partial class LlmVariantClassifier : IVariantClassifierClient
 
         return text[..maxLength];
     }
-
-    private static readonly Regex MarkdownCodeBlock = new(@"```(?:json)?\s*([\s\S]*?)```", RegexOptions.Compiled);
 }

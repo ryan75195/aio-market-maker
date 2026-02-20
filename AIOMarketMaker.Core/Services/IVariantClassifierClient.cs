@@ -15,4 +15,4 @@ public record ClassifyPairRequest(
     string TitleB,
     string DescriptionB);
 
-public record PairResult(bool IsComparable, float Confidence);
+public record PairResult(bool IsComparable, float Confidence, string? Reason = null);
