@@ -265,6 +265,76 @@ public class BatchLabeler
     }
 
     /// <summary>
+    /// Reads the merged CSV and prints disagreement statistics by product category.
+    /// </summary>
+    public static async Task AnalyzeDisagreements(string mergedCsvPath)
+    {
+        var byCategory = new Dictionary<string, (int Agreed, int Disagreed, int OnnxSame, int LlmSame)>();
+        var totalAgreed = 0;
+        var totalDisagreed = 0;
+
+        using var reader = new StreamReader(mergedCsvPath);
+        var header = await reader.ReadLineAsync();
+        if (header is null)
+        {
+            return;
+        }
+
+        var columns = header.Split(',');
+        var productIdx = Array.IndexOf(columns, "product_name");
+        var labelIdx = Array.IndexOf(columns, "label");
+        var onnxIdx = Array.IndexOf(columns, "onnx_label");
+
+        while (await reader.ReadLineAsync() is { } line)
+        {
+            if (string.IsNullOrWhiteSpace(line))
+            {
+                continue;
+            }
+            var fields = ParseCsvLine(line);
+            if (fields.Length <= onnxIdx)
+            {
+                continue;
+            }
+
+            var product = fields[productIdx];
+            var llmLabel = int.TryParse(fields[labelIdx], out var l) ? l : 0;
+            var onnxLabel = int.TryParse(fields[onnxIdx], out var o) ? o : 0;
+
+            if (!byCategory.ContainsKey(product))
+            {
+                byCategory[product] = (0, 0, 0, 0);
+            }
+
+            var cat = byCategory[product];
+            if (llmLabel == onnxLabel)
+            {
+                byCategory[product] = (cat.Agreed + 1, cat.Disagreed, cat.OnnxSame + (onnxLabel == 1 ? 1 : 0), cat.LlmSame + (llmLabel == 1 ? 1 : 0));
+                totalAgreed++;
+            }
+            else
+            {
+                byCategory[product] = (cat.Agreed, cat.Disagreed + 1, cat.OnnxSame + (onnxLabel == 1 ? 1 : 0), cat.LlmSame + (llmLabel == 1 ? 1 : 0));
+                totalDisagreed++;
+            }
+        }
+
+        Console.WriteLine($"\nOverall: {totalAgreed}/{totalAgreed + totalDisagreed} agreed ({100.0 * totalAgreed / (totalAgreed + totalDisagreed):F1}%)");
+        Console.WriteLine($"\nTop disagreement categories:");
+        Console.WriteLine($"{"Category",-35} {"Agree",-8} {"Disagree",-10} {"Rate",-8} {"ONNX=Same",-10} {"LLM=Same",-10}");
+        Console.WriteLine(new string('-', 81));
+
+        foreach (var (cat, stats) in byCategory
+            .OrderByDescending(x => x.Value.Disagreed)
+            .Take(30))
+        {
+            var total = stats.Agreed + stats.Disagreed;
+            var rate = 100.0 * stats.Agreed / total;
+            Console.WriteLine($"{cat,-35} {stats.Agreed,-8} {stats.Disagreed,-10} {rate,-7:F1}% {stats.OnnxSame,-10} {stats.LlmSame,-10}");
+        }
+    }
+
+    /// <summary>
     /// Reads a v8 CSV file and writes a JSONL batch input file.
     /// Returns the number of pairs written.
     /// </summary>
