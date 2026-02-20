@@ -247,6 +247,12 @@ if (args.Contains("--clean-descriptions"))
     return;
 }
 
+if (args.Contains("--batch-label"))
+{
+    await RunBatchLabel(host, args);
+    return;
+}
+
 if (args.Contains("--comparables"))
 {
     using var scope = host.Services.CreateScope();
@@ -602,6 +608,111 @@ static int? GetIntArg(string[] args, string flag)
         return val;
     }
     return null;
+}
+
+static string? GetStringArg(string[] args, string name)
+{
+    var idx = Array.IndexOf(args, name);
+    return idx >= 0 && idx + 1 < args.Length ? args[idx + 1] : null;
+}
+
+static async Task RunBatchLabel(IHost host, string[] args)
+{
+    var configuration = host.Services.GetRequiredService<IConfiguration>();
+    var apiKey = configuration.GetValue<string>("OpenAi:ApiKey")
+        ?? throw new InvalidOperationException("OpenAi:ApiKey is required");
+    var logger = host.Services.GetRequiredService<ILogger<BatchLabeler>>();
+    var labeler = new BatchLabeler(apiKey, logger);
+
+    var csvPath = GetStringArg(args, "--csv")
+        ?? Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "AIOMarketMaker.ML", "Training", "data", "labeled_pairs_v8.csv");
+    var workingDir = GetStringArg(args, "--output-dir")
+        ?? Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "AIOMarketMaker.ML", "Training", "data");
+
+    Directory.CreateDirectory(workingDir);
+    var statePath = Path.Combine(workingDir, "batch_state.json");
+    var inputJsonl = Path.Combine(workingDir, "batch_input.jsonl");
+    var outputJsonl = Path.Combine(workingDir, "batch_output.jsonl");
+    var mergedCsv = Path.Combine(workingDir, "labeled_pairs_v10.csv");
+
+    var subcommand = args.FirstOrDefault(a => a is "start" or "status") ?? "status";
+
+    switch (subcommand)
+    {
+        case "start":
+        {
+            if (File.Exists(statePath))
+            {
+                Console.WriteLine($"Batch already in progress (state file exists at {statePath}).");
+                Console.WriteLine("Run 'status' to check progress, or delete batch_state.json to start fresh.");
+                return;
+            }
+
+            Console.WriteLine("Generating JSONL from v8 CSV...");
+            var count = await BatchLabeler.GenerateBatchInput(csvPath, inputJsonl);
+            Console.WriteLine($"Generated {count:N0} batch requests to {inputJsonl}");
+
+            Console.WriteLine("Submitting batch to OpenAI...");
+            var batchId = await labeler.SubmitBatch(inputJsonl, workingDir);
+            Console.WriteLine($"Batch submitted: {batchId}");
+            Console.WriteLine("Run '--batch-label status' to check progress.");
+            break;
+        }
+
+        case "status":
+        {
+            if (!File.Exists(statePath))
+            {
+                Console.WriteLine("No batch in progress. Run '--batch-label start' first.");
+                return;
+            }
+
+            var stateJson = await File.ReadAllTextAsync(statePath);
+            var state = JsonSerializer.Deserialize<JsonElement>(stateJson);
+            var batchId = state.GetProperty("batchId").GetString()!;
+
+            var status = await labeler.GetBatchStatus(batchId);
+            Console.WriteLine($"Batch {batchId}:");
+            Console.WriteLine($"  Status:    {status.Status}");
+            Console.WriteLine($"  Completed: {status.Completed:N0} / {status.Total:N0}");
+            Console.WriteLine($"  Failed:    {status.Failed:N0}");
+
+            if (!status.IsTerminal)
+            {
+                var pct = status.Total > 0 ? 100.0 * status.Completed / status.Total : 0;
+                Console.WriteLine($"  Progress:  {pct:F1}%");
+                Console.WriteLine("\nBatch still running. Check back later.");
+                return;
+            }
+
+            if (status.Status != "completed")
+            {
+                Console.WriteLine($"\nBatch ended with status: {status.Status}");
+                return;
+            }
+
+            Console.WriteLine("\nBatch complete! Download and merge results? (y/n)");
+            var answer = Console.ReadLine()?.Trim().ToLowerInvariant();
+            if (answer is not "y" and not "yes")
+            {
+                Console.WriteLine("Skipped. Run '--batch-label status' again when ready.");
+                return;
+            }
+
+            Console.WriteLine("Downloading results...");
+            await labeler.DownloadResults(status.OutputFileId!, outputJsonl);
+
+            Console.WriteLine("Merging with original CSV...");
+            var mergeResult = await BatchLabeler.MergeResults(csvPath, outputJsonl, mergedCsv);
+            Console.WriteLine($"Merged {mergeResult.Total:N0} pairs: {mergeResult.Agreed:N0} agreed, {mergeResult.Disagreed:N0} disagreed, {mergeResult.Errors:N0} errors");
+
+            Console.WriteLine("\nDisagreement analysis:");
+            await BatchLabeler.AnalyzeDisagreements(mergedCsv);
+
+            Console.WriteLine($"\nOutput: {mergedCsv}");
+            break;
+        }
+    }
 }
 
 static async Task CleanContaminatedDescriptions(IHost host, int? limit)
