@@ -22,78 +22,22 @@ public class LlmVariantClassifier_UnitTests
         return new LlmVariantClassifier(client, config, logger);
     }
 
-    private static Mock<IChatClient> MockChatClient(string response)
+    private static Mock<IChatClient> MockChatClient(ClassifierResponse response)
     {
         var mock = new Mock<IChatClient>();
-        mock.Setup(c => c.CompleteChat(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+        mock.Setup(c => c.CompleteChat<ClassifierResponse>(
+                It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(response);
         return mock;
     }
 
-
-    [Test]
-    public void Should_parse_comparable_json_response()
+    private static Mock<IChatClient> MockChatClientNull()
     {
-        var result = LlmVariantClassifier.ParseResponse(
-            """{"verdict": "same", "reason": "Both are Dyson V15 Detect Absolute cordless vacuums"}""");
-
-        Assert.Multiple(() =>
-        {
-            Assert.That(result.IsComparable, Is.True);
-            Assert.That(result.Confidence, Is.EqualTo(1.0f));
-        });
-    }
-
-    [Test]
-    public void Should_parse_not_comparable_json_response()
-    {
-        var result = LlmVariantClassifier.ParseResponse(
-            """{"verdict": "different", "reason": "Different storage: 128GB vs 256GB"}""");
-
-        Assert.Multiple(() =>
-        {
-            Assert.That(result.IsComparable, Is.False);
-            Assert.That(result.Confidence, Is.EqualTo(1.0f));
-        });
-    }
-
-    [Test]
-    public void Should_return_low_confidence_for_unparseable_response()
-    {
-        var result = LlmVariantClassifier.ParseResponse("I think they are the same product");
-
-        Assert.Multiple(() =>
-        {
-            Assert.That(result.IsComparable, Is.False);
-            Assert.That(result.Confidence, Is.EqualTo(0.0f));
-        });
-    }
-
-    [Test]
-    public void Should_handle_json_wrapped_in_markdown_code_block()
-    {
-        var result = LlmVariantClassifier.ParseResponse(
-            """
-            ```json
-            {"verdict": "same", "reason": "Identical product"}
-            ```
-            """);
-
-        Assert.That(result.IsComparable, Is.True);
-    }
-
-    [TestCase("same", true)]
-    [TestCase("SAME", true)]
-    [TestCase("Same", true)]
-    [TestCase("different", false)]
-    [TestCase("DIFFERENT", false)]
-    [TestCase("Different", false)]
-    public void Should_handle_case_insensitive_verdict(string verdict, bool expectedComparable)
-    {
-        var result = LlmVariantClassifier.ParseResponse(
-            $$"""{"verdict": "{{verdict}}", "reason": "test"}""");
-
-        Assert.That(result.IsComparable, Is.EqualTo(expectedComparable));
+        var mock = new Mock<IChatClient>();
+        mock.Setup(c => c.CompleteChat<ClassifierResponse>(
+                It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((ClassifierResponse?)null);
+        return mock;
     }
 
 
@@ -140,9 +84,9 @@ public class LlmVariantClassifier_UnitTests
     }
 
     [Test]
-    public async Task Should_classify_pair_as_comparable_when_llm_returns_same()
+    public async Task Should_classify_pair_as_comparable_when_verdict_is_same()
     {
-        var client = MockChatClient("""{"verdict": "same", "reason": "Identical product"}""");
+        var client = MockChatClient(new ClassifierResponse("Identical product", Verdict.Same));
         var classifier = CreateClassifier(client.Object);
 
         var results = await classifier.Classify(new[] { SamplePair });
@@ -156,9 +100,9 @@ public class LlmVariantClassifier_UnitTests
     }
 
     [Test]
-    public async Task Should_classify_pair_as_not_comparable_when_llm_returns_different()
+    public async Task Should_classify_pair_as_not_comparable_when_verdict_is_different()
     {
-        var client = MockChatClient("""{"verdict": "different", "reason": "Different storage"}""");
+        var client = MockChatClient(new ClassifierResponse("Different storage", Verdict.Different));
         var classifier = CreateClassifier(client.Object);
 
         var results = await classifier.Classify(new[] { SamplePair });
@@ -176,13 +120,14 @@ public class LlmVariantClassifier_UnitTests
     {
         var callCount = 0;
         var mock = new Mock<IChatClient>();
-        mock.Setup(c => c.CompleteChat(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+        mock.Setup(c => c.CompleteChat<ClassifierResponse>(
+                It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(() =>
             {
                 var index = Interlocked.Increment(ref callCount);
                 return index % 2 == 1
-                    ? """{"verdict": "same", "reason": "Match"}"""
-                    : """{"verdict": "different", "reason": "No match"}""";
+                    ? new ClassifierResponse("Match", Verdict.Same)
+                    : new ClassifierResponse("No match", Verdict.Different);
             });
 
         var classifier = CreateClassifier(mock.Object);
@@ -191,7 +136,6 @@ public class LlmVariantClassifier_UnitTests
         var results = await classifier.Classify(pairs);
 
         Assert.That(results, Has.Count.EqualTo(3));
-        // At least one same and one different (order depends on task scheduling)
         Assert.That(results.Any(r => r.IsComparable), Is.True);
         Assert.That(results.Any(r => !r.IsComparable), Is.True);
     }
@@ -201,14 +145,15 @@ public class LlmVariantClassifier_UnitTests
     {
         var callCount = 0;
         var mock = new Mock<IChatClient>();
-        mock.Setup(c => c.CompleteChat(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+        mock.Setup(c => c.CompleteChat<ClassifierResponse>(
+                It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(() =>
             {
                 if (Interlocked.Increment(ref callCount) == 1)
                 {
                     throw new HttpRequestException("Service unavailable");
                 }
-                return """{"verdict": "same", "reason": "Match"}""";
+                return new ClassifierResponse("Match", Verdict.Same);
             });
 
         var classifier = CreateClassifier(mock.Object, maxRetries: 3);
@@ -226,7 +171,8 @@ public class LlmVariantClassifier_UnitTests
     public async Task Should_return_fallback_when_all_retries_exhausted()
     {
         var mock = new Mock<IChatClient>();
-        mock.Setup(c => c.CompleteChat(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+        mock.Setup(c => c.CompleteChat<ClassifierResponse>(
+                It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new HttpRequestException("Service unavailable"));
 
         var classifier = CreateClassifier(mock.Object, maxRetries: 1);
@@ -242,9 +188,9 @@ public class LlmVariantClassifier_UnitTests
     }
 
     [Test]
-    public async Task Should_return_fallback_when_llm_returns_unparseable_response()
+    public async Task Should_return_fallback_when_structured_response_is_null()
     {
-        var client = MockChatClient("I think they are the same product");
+        var client = MockChatClientNull();
         var classifier = CreateClassifier(client.Object);
 
         var results = await classifier.Classify(new[] { SamplePair });
@@ -258,10 +204,28 @@ public class LlmVariantClassifier_UnitTests
     }
 
     [Test]
+    public async Task Should_classify_as_not_comparable_with_low_confidence_when_uncertain()
+    {
+        var client = MockChatClient(new ClassifierResponse("Insufficient detail to determine", Verdict.Uncertain));
+        var classifier = CreateClassifier(client.Object);
+
+        var results = await classifier.Classify(new[] { SamplePair });
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(results, Has.Count.EqualTo(1));
+            Assert.That(results[0].IsComparable, Is.False);
+            Assert.That(results[0].Confidence, Is.LessThan(1.0f));
+            Assert.That(results[0].Confidence, Is.GreaterThan(0.0f));
+        });
+    }
+
+    [Test]
     public void Should_propagate_cancellation_not_swallow_it()
     {
         var mock = new Mock<IChatClient>();
-        mock.Setup(c => c.CompleteChat(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+        mock.Setup(c => c.CompleteChat<ClassifierResponse>(
+                It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new OperationCanceledException());
 
         var classifier = CreateClassifier(mock.Object);
@@ -271,5 +235,4 @@ public class LlmVariantClassifier_UnitTests
         Assert.CatchAsync<OperationCanceledException>(
             () => classifier.Classify(new[] { SamplePair }, cts.Token));
     }
-
 }
