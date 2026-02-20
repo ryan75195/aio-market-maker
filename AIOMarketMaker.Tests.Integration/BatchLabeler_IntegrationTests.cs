@@ -8,7 +8,7 @@ namespace AIOMarketMaker.Tests.Integration;
 public class BatchLabeler_IntegrationTests
 {
     [Test]
-    [Explicit("Generates a 200MB+ JSONL file from real data")]
+    [Explicit("Generates 200MB+ JSONL files from real data")]
     public async Task Should_generate_jsonl_from_real_v8_csv()
     {
         var csvPath = Path.Combine(
@@ -20,31 +20,31 @@ public class BatchLabeler_IntegrationTests
             Assert.Ignore($"v8 CSV not found at {Path.GetFullPath(csvPath)}");
         }
 
-        var outputPath = Path.Combine(Path.GetTempPath(), "batch_input_test.jsonl");
+        var outputDir = Path.Combine(Path.GetTempPath(), $"batch_integ_test_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(outputDir);
 
         try
         {
-            var count = await BatchLabeler.GenerateBatchInput(csvPath, outputPath);
+            var (files, totalPairs) = await BatchLabeler.GenerateBatchInput(csvPath, outputDir);
+            var fileList = files.ToList();
 
-            Assert.That(count, Is.EqualTo(143075));
-            Assert.That(File.Exists(outputPath));
+            Assert.That(totalPairs, Is.EqualTo(143075));
+            Assert.That(fileList, Has.Count.EqualTo(3)); // 143K / 50K = 3 chunks
 
-            // Verify first few lines are valid JSON
-            var lines = File.ReadLines(outputPath).Take(3).ToList();
-            foreach (var line in lines)
+            // Verify first lines of each chunk are valid JSON
+            foreach (var file in fileList)
             {
-                Assert.DoesNotThrow(() => System.Text.Json.JsonDocument.Parse(line));
+                var firstLine = File.ReadLines(file).First();
+                Assert.DoesNotThrow(() => System.Text.Json.JsonDocument.Parse(firstLine));
+                var fileInfo = new FileInfo(file);
+                TestContext.WriteLine($"{Path.GetFileName(file)}: {fileInfo.Length / 1024 / 1024}MB");
             }
 
-            var fileInfo = new FileInfo(outputPath);
-            TestContext.WriteLine($"Generated {count:N0} lines, file size: {fileInfo.Length / 1024 / 1024}MB");
+            TestContext.WriteLine($"Generated {totalPairs:N0} pairs across {fileList.Count} files");
         }
         finally
         {
-            if (File.Exists(outputPath))
-            {
-                File.Delete(outputPath);
-            }
+            Directory.Delete(outputDir, recursive: true);
         }
     }
 }

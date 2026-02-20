@@ -33,6 +33,7 @@ public class BatchLabeler
 {
     private const string Model = "gpt-5-mini";
     private const string StateFileName = "batch_state.json";
+    private const int MaxRequestsPerBatch = 50_000;
 
     private static readonly string ResponseSchema = JsonSchemaGenerator.Generate<ClassifierResponse>();
 
@@ -44,7 +45,10 @@ public class BatchLabeler
     /// </summary>
     public BatchLabeler(string apiKey, ILogger<BatchLabeler> logger)
     {
-        _openAiClient = new OpenAIClient(apiKey);
+        _openAiClient = new OpenAIClient(new System.ClientModel.ApiKeyCredential(apiKey), new OpenAIClientOptions
+        {
+            NetworkTimeout = TimeSpan.FromMinutes(10)
+        });
         _logger = logger;
     }
 
@@ -178,18 +182,21 @@ public class BatchLabeler
     /// with LLM labels alongside ONNX labels for comparison.
     /// </summary>
     public static async Task<MergeResult> MergeResults(
-        string originalCsvPath, string batchOutputPath, string outputCsvPath)
+        string originalCsvPath, IEnumerable<string> batchOutputPaths, string outputCsvPath)
     {
-        // Parse all batch output lines
+        // Parse all batch output lines from all output files
         var results = new Dictionary<int, BatchOutputResult>();
-        foreach (var line in await File.ReadAllLinesAsync(batchOutputPath))
+        foreach (var outputPath in batchOutputPaths)
         {
-            if (string.IsNullOrWhiteSpace(line))
+            foreach (var line in await File.ReadAllLinesAsync(outputPath))
             {
-                continue;
+                if (string.IsNullOrWhiteSpace(line))
+                {
+                    continue;
+                }
+                var result = ParseBatchOutputLine(line);
+                results[result.Index] = result;
             }
-            var result = ParseBatchOutputLine(line);
-            results[result.Index] = result;
         }
 
         var agreed = 0;
@@ -335,49 +342,78 @@ public class BatchLabeler
     }
 
     /// <summary>
-    /// Reads a v8 CSV file and writes a JSONL batch input file.
-    /// Returns the number of pairs written.
+    /// Reads a v8 CSV file and writes one or more JSONL batch input files.
+    /// Splits into chunks of 50,000 requests (OpenAI Batch API limit).
+    /// Returns the list of generated file paths and total pair count.
     /// </summary>
-    public static async Task<int> GenerateBatchInput(string csvPath, string outputPath)
+    public static async Task<(IEnumerable<string> Files, int TotalPairs)> GenerateBatchInput(string csvPath, string outputDir)
     {
         var count = 0;
-        using var reader = new StreamReader(csvPath);
-        using var writer = new StreamWriter(outputPath);
+        var chunkIndex = 0;
+        var chunkCount = 0;
+        var files = new List<string>();
 
-        // Skip header
+        using var reader = new StreamReader(csvPath);
+
         var header = await reader.ReadLineAsync();
         if (header is null)
         {
-            return 0;
+            return (files, 0);
         }
 
         var columnIndices = ParseHeader(header);
 
-        while (await reader.ReadLineAsync() is { } line)
+        StreamWriter? writer = null;
+        try
         {
-            if (string.IsNullOrWhiteSpace(line))
+            while (await reader.ReadLineAsync() is { } line)
             {
-                continue;
-            }
+                if (string.IsNullOrWhiteSpace(line))
+                {
+                    continue;
+                }
 
-            var fields = ParseCsvLine(line);
-            if (fields.Length < columnIndices.NeighborDesc + 1)
+                var fields = ParseCsvLine(line);
+                if (fields.Length < columnIndices.NeighborDesc + 1)
+                {
+                    continue;
+                }
+
+                // Start new chunk file if needed
+                if (writer is null || chunkCount >= MaxRequestsPerBatch)
+                {
+                    if (writer is not null)
+                    {
+                        await writer.DisposeAsync();
+                    }
+                    var chunkPath = Path.Combine(outputDir, $"batch_input_{chunkIndex}.jsonl");
+                    files.Add(chunkPath);
+                    writer = new StreamWriter(chunkPath);
+                    chunkIndex++;
+                    chunkCount = 0;
+                }
+
+                var pair = new ClassifyPairRequest(
+                    TitleA: fields[columnIndices.AnchorTitle],
+                    DescriptionA: CleanField(fields[columnIndices.AnchorDesc]),
+                    TitleB: fields[columnIndices.NeighborTitle],
+                    DescriptionB: CleanField(fields[columnIndices.NeighborDesc]));
+
+                var jsonLine = BuildBatchRequestLine($"pair-{count}", pair);
+                await writer.WriteLineAsync(jsonLine);
+                count++;
+                chunkCount++;
+            }
+        }
+        finally
+        {
+            if (writer is not null)
             {
-                continue;
+                await writer.DisposeAsync();
             }
-
-            var pair = new ClassifyPairRequest(
-                TitleA: fields[columnIndices.AnchorTitle],
-                DescriptionA: CleanField(fields[columnIndices.AnchorDesc]),
-                TitleB: fields[columnIndices.NeighborTitle],
-                DescriptionB: CleanField(fields[columnIndices.NeighborDesc]));
-
-            var jsonLine = BuildBatchRequestLine($"pair-{count}", pair);
-            await writer.WriteLineAsync(jsonLine);
-            count++;
         }
 
-        return count;
+        return (files, count);
     }
 
     /// <summary>

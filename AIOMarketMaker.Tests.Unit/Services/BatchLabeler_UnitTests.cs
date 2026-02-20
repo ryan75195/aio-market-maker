@@ -88,15 +88,19 @@ public class BatchLabeler_UnitTests
             """;
 
         var csvPath = Path.GetTempFileName();
-        var outputPath = Path.ChangeExtension(Path.GetTempFileName(), ".jsonl");
+        var outputDir = Path.Combine(Path.GetTempPath(), $"batch_test_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(outputDir);
         await File.WriteAllTextAsync(csvPath, csvContent);
 
         try
         {
-            var count = await BatchLabeler.GenerateBatchInput(csvPath, outputPath);
+            var (files, totalPairs) = await BatchLabeler.GenerateBatchInput(csvPath, outputDir);
+            var fileList = files.ToList();
 
-            Assert.That(count, Is.EqualTo(2));
-            var lines = await File.ReadAllLinesAsync(outputPath);
+            Assert.That(totalPairs, Is.EqualTo(2));
+            Assert.That(fileList, Has.Count.EqualTo(1));
+
+            var lines = await File.ReadAllLinesAsync(fileList[0]);
             Assert.That(lines, Has.Length.EqualTo(2));
 
             // Verify custom_ids are sequential
@@ -108,7 +112,7 @@ public class BatchLabeler_UnitTests
         finally
         {
             File.Delete(csvPath);
-            File.Delete(outputPath);
+            Directory.Delete(outputDir, recursive: true);
         }
     }
 }

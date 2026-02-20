@@ -631,8 +631,6 @@ static async Task RunBatchLabel(IHost host, string[] args)
 
     Directory.CreateDirectory(workingDir);
     var statePath = Path.Combine(workingDir, "batch_state.json");
-    var inputJsonl = Path.Combine(workingDir, "batch_input.jsonl");
-    var outputJsonl = Path.Combine(workingDir, "batch_output.jsonl");
     var mergedCsv = Path.Combine(workingDir, "labeled_pairs_v10.csv");
 
     var subcommand = args.FirstOrDefault(a => a is "start" or "status") ?? "status";
@@ -649,13 +647,22 @@ static async Task RunBatchLabel(IHost host, string[] args)
             }
 
             Console.WriteLine("Generating JSONL from v8 CSV...");
-            var count = await BatchLabeler.GenerateBatchInput(csvPath, inputJsonl);
-            Console.WriteLine($"Generated {count:N0} batch requests to {inputJsonl}");
+            var (chunkFiles, totalPairs) = await BatchLabeler.GenerateBatchInput(csvPath, workingDir);
+            var chunkList = chunkFiles.ToList();
+            Console.WriteLine($"Generated {totalPairs:N0} batch requests across {chunkList.Count} file(s)");
 
-            Console.WriteLine("Submitting batch to OpenAI...");
-            var batchId = await labeler.SubmitBatch(inputJsonl, workingDir);
-            Console.WriteLine($"Batch submitted: {batchId}");
-            Console.WriteLine("Run '--batch-label status' to check progress.");
+            var batches = new List<object>();
+            for (var i = 0; i < chunkList.Count; i++)
+            {
+                Console.WriteLine($"Submitting batch {i + 1}/{chunkList.Count}...");
+                var batchId = await labeler.SubmitBatch(chunkList[i], workingDir);
+                Console.WriteLine($"  Batch {i + 1}: {batchId}");
+                batches.Add(new { batchId, inputFile = Path.GetFileName(chunkList[i]) });
+            }
+
+            // Save state with all batch IDs (overwrite the single-batch state files)
+            await File.WriteAllTextAsync(statePath, JsonSerializer.Serialize(new { batches }, new JsonSerializerOptions { WriteIndented = true }));
+            Console.WriteLine($"\nAll {chunkList.Count} batches submitted. Run '--batch-label status' to check progress.");
             break;
         }
 
@@ -669,29 +676,61 @@ static async Task RunBatchLabel(IHost host, string[] args)
 
             var stateJson = await File.ReadAllTextAsync(statePath);
             var state = JsonSerializer.Deserialize<JsonElement>(stateJson);
-            var batchId = state.GetProperty("batchId").GetString()!;
+            var batchArray = state.GetProperty("batches");
 
-            var status = await labeler.GetBatchStatus(batchId);
-            Console.WriteLine($"Batch {batchId}:");
-            Console.WriteLine($"  Status:    {status.Status}");
-            Console.WriteLine($"  Completed: {status.Completed:N0} / {status.Total:N0}");
-            Console.WriteLine($"  Failed:    {status.Failed:N0}");
+            var allComplete = true;
+            var allStatuses = new List<(string BatchId, BatchStatusResult Status)>();
 
-            if (!status.IsTerminal)
+            var totalCompleted = 0;
+            var totalRequests = 0;
+            var totalFailed = 0;
+
+            for (var i = 0; i < batchArray.GetArrayLength(); i++)
             {
-                var pct = status.Total > 0 ? 100.0 * status.Completed / status.Total : 0;
-                Console.WriteLine($"  Progress:  {pct:F1}%");
-                Console.WriteLine("\nBatch still running. Check back later.");
+                var entry = batchArray[i];
+                var batchId = entry.GetProperty("batchId").GetString()!;
+                var status = await labeler.GetBatchStatus(batchId);
+                allStatuses.Add((batchId, status));
+
+                totalCompleted += status.Completed;
+                totalRequests += status.Total;
+                totalFailed += status.Failed;
+
+                Console.WriteLine($"Batch {i + 1}/{batchArray.GetArrayLength()} ({batchId}):");
+                Console.WriteLine($"  Status:    {status.Status}");
+                Console.WriteLine($"  Completed: {status.Completed:N0} / {status.Total:N0}");
+                if (status.Failed > 0)
+                {
+                    Console.WriteLine($"  Failed:    {status.Failed:N0}");
+                }
+
+                if (!status.IsTerminal)
+                {
+                    allComplete = false;
+                }
+                else if (status.Status != "completed")
+                {
+                    Console.WriteLine($"  ** Batch ended with status: {status.Status} **");
+                }
+            }
+
+            Console.WriteLine();
+            var pct = totalRequests > 0 ? 100.0 * totalCompleted / totalRequests : 0;
+            Console.WriteLine($"Overall: {totalCompleted:N0} / {totalRequests:N0} ({pct:F1}%) completed, {totalFailed:N0} failed");
+
+            if (!allComplete)
+            {
+                Console.WriteLine("\nBatches still running. Check back later.");
                 return;
             }
 
-            if (status.Status != "completed")
+            if (allStatuses.Any(s => s.Status.Status != "completed"))
             {
-                Console.WriteLine($"\nBatch ended with status: {status.Status}");
+                Console.WriteLine("\nSome batches failed. Check output above.");
                 return;
             }
 
-            Console.WriteLine("\nBatch complete! Download and merge results? (y/n)");
+            Console.WriteLine("\nAll batches complete! Download and merge results? (y/n)");
             var answer = Console.ReadLine()?.Trim().ToLowerInvariant();
             if (answer is not "y" and not "yes")
             {
@@ -699,11 +738,18 @@ static async Task RunBatchLabel(IHost host, string[] args)
                 return;
             }
 
-            Console.WriteLine("Downloading results...");
-            await labeler.DownloadResults(status.OutputFileId!, outputJsonl);
+            var outputFiles = new List<string>();
+            for (var i = 0; i < allStatuses.Count; i++)
+            {
+                var (batchId, status) = allStatuses[i];
+                var outputPath = Path.Combine(workingDir, $"batch_output_{i}.jsonl");
+                Console.WriteLine($"Downloading batch {i + 1}/{allStatuses.Count}...");
+                await labeler.DownloadResults(status.OutputFileId!, outputPath);
+                outputFiles.Add(outputPath);
+            }
 
             Console.WriteLine("Merging with original CSV...");
-            var mergeResult = await BatchLabeler.MergeResults(csvPath, outputJsonl, mergedCsv);
+            var mergeResult = await BatchLabeler.MergeResults(csvPath, outputFiles, mergedCsv);
             Console.WriteLine($"Merged {mergeResult.Total:N0} pairs: {mergeResult.Agreed:N0} agreed, {mergeResult.Disagreed:N0} disagreed, {mergeResult.Errors:N0} errors");
 
             Console.WriteLine("\nDisagreement analysis:");
