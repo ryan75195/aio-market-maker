@@ -20,6 +20,15 @@ public record BatchStatusResult(
     bool IsTerminal,
     string? OutputFileId);
 
+public record BatchOutputResult(
+    string CustomId,
+    int Index,
+    string? Verdict,
+    string? Reason,
+    string? Error);
+
+public record MergeResult(int Total, int Agreed, int Disagreed, int Errors);
+
 public class BatchLabeler
 {
     private const string Model = "gpt-5-mini";
@@ -121,6 +130,138 @@ public class BatchLabeler
 
         _logger.LogInformation("Results saved to {Path}", outputPath);
         return outputPath;
+    }
+
+    /// <summary>
+    /// Parses a single JSONL line from the OpenAI Batch API output file.
+    /// </summary>
+    public static BatchOutputResult ParseBatchOutputLine(string line)
+    {
+        var doc = JsonDocument.Parse(line);
+        var root = doc.RootElement;
+
+        var customId = root.GetProperty("custom_id").GetString()!;
+        var index = int.Parse(customId.Replace("pair-", ""));
+
+        var response = root.GetProperty("response");
+        var statusCode = response.GetProperty("status_code").GetInt32();
+
+        if (statusCode != 200)
+        {
+            var errorMsg = response.GetProperty("body")
+                .GetProperty("error")
+                .GetProperty("message")
+                .GetString();
+            return new BatchOutputResult(customId, index, null, null, errorMsg);
+        }
+
+        var content = response.GetProperty("body")
+            .GetProperty("choices")[0]
+            .GetProperty("message")
+            .GetProperty("content")
+            .GetString()!;
+
+        var parsed = JsonSerializer.Deserialize<ClassifierResponse>(content);
+        var verdict = parsed?.Verdict switch
+        {
+            Verdict.Same => "same",
+            Verdict.Different => "different",
+            Verdict.Uncertain => "uncertain",
+            _ => null
+        };
+
+        return new BatchOutputResult(customId, index, verdict, parsed?.Reason, null);
+    }
+
+    /// <summary>
+    /// Merges batch output results back into the original CSV, producing a new CSV
+    /// with LLM labels alongside ONNX labels for comparison.
+    /// </summary>
+    public static async Task<MergeResult> MergeResults(
+        string originalCsvPath, string batchOutputPath, string outputCsvPath)
+    {
+        // Parse all batch output lines
+        var results = new Dictionary<int, BatchOutputResult>();
+        foreach (var line in await File.ReadAllLinesAsync(batchOutputPath))
+        {
+            if (string.IsNullOrWhiteSpace(line))
+            {
+                continue;
+            }
+            var result = ParseBatchOutputLine(line);
+            results[result.Index] = result;
+        }
+
+        var agreed = 0;
+        var disagreed = 0;
+        var errors = 0;
+        var total = 0;
+
+        using var reader = new StreamReader(originalCsvPath);
+        await using var writer = new StreamWriter(outputCsvPath);
+
+        // Write output header
+        await writer.WriteLineAsync(
+            "anchor_id,neighbor_id,job_id,product_name,anchor_title,neighbor_title,anchor_desc,neighbor_desc,label,confidence,reasoning,source,onnx_label");
+
+        // Skip input header
+        var header = await reader.ReadLineAsync();
+        if (header is null)
+        {
+            return new MergeResult(0, 0, 0, 0);
+        }
+
+        var columnIndices = ParseHeader(header);
+        var allColumns = header.Split(',');
+        var labelIdx = Array.IndexOf(allColumns, "label");
+
+        var rowIndex = 0;
+        while (await reader.ReadLineAsync() is { } line)
+        {
+            if (string.IsNullOrWhiteSpace(line))
+            {
+                continue;
+            }
+            var fields = ParseCsvLine(line);
+
+            if (results.TryGetValue(rowIndex, out var batchResult) && batchResult.Verdict is not null)
+            {
+                var llmLabel = batchResult.Verdict == "same" ? 1 : 0;
+                var onnxLabel = int.TryParse(fields[labelIdx], out var v) ? v : 0;
+                var confidence = batchResult.Verdict == "uncertain" ? "low" : "high";
+
+                if (llmLabel == onnxLabel)
+                {
+                    agreed++;
+                }
+                else
+                {
+                    disagreed++;
+                }
+
+                var anchorId = fields[Array.IndexOf(allColumns, "anchor_id")];
+                var neighborId = fields[Array.IndexOf(allColumns, "neighbor_id")];
+                var jobId = fields[Array.IndexOf(allColumns, "job_id")];
+                var productName = CsvEscape(fields[Array.IndexOf(allColumns, "product_name")]);
+                var anchorTitle = CsvEscape(fields[columnIndices.AnchorTitle]);
+                var neighborTitle = CsvEscape(fields[columnIndices.NeighborTitle]);
+                var anchorDesc = CsvEscape(CleanField(fields[columnIndices.AnchorDesc]));
+                var neighborDesc = CsvEscape(CleanField(fields[columnIndices.NeighborDesc]));
+                var reasoning = CsvEscape(batchResult.Reason ?? "");
+
+                await writer.WriteLineAsync(
+                    $"{anchorId},{neighborId},{jobId},{productName},{anchorTitle},{neighborTitle},{anchorDesc},{neighborDesc},{llmLabel},{confidence},{reasoning},llm_gpt5mini_batch,{onnxLabel}");
+            }
+            else
+            {
+                errors++;
+            }
+
+            rowIndex++;
+            total++;
+        }
+
+        return new MergeResult(total, agreed, disagreed, errors);
     }
 
     /// <summary>
@@ -261,6 +402,15 @@ public class BatchLabeler
         if (string.IsNullOrEmpty(field) || field == "nan")
         {
             return "";
+        }
+        return field;
+    }
+
+    private static string CsvEscape(string field)
+    {
+        if (field.Contains(',') || field.Contains('"') || field.Contains('\n'))
+        {
+            return $"\"{field.Replace("\"", "\"\"")}\"";
         }
         return field;
     }

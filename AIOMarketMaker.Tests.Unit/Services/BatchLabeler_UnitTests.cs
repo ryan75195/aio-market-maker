@@ -42,6 +42,43 @@ public class BatchLabeler_UnitTests
     }
 
     [Test]
+    public void Should_parse_batch_output_line()
+    {
+        var outputLine = """
+            {"id":"batch_req_abc","custom_id":"pair-7","response":{"status_code":200,"body":{"choices":[{"message":{"content":"{\"reason\":\"Same product and condition\",\"verdict\":\"same\"}"}}]}}}
+            """;
+
+        var result = BatchLabeler.ParseBatchOutputLine(outputLine);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.CustomId, Is.EqualTo("pair-7"));
+            Assert.That(result.Index, Is.EqualTo(7));
+            Assert.That(result.Verdict, Is.EqualTo("same"));
+            Assert.That(result.Reason, Is.EqualTo("Same product and condition"));
+            Assert.That(result.Error, Is.Null);
+        });
+    }
+
+    [Test]
+    public void Should_handle_failed_batch_output_line()
+    {
+        var outputLine = """
+            {"id":"batch_req_abc","custom_id":"pair-3","response":{"status_code":429,"body":{"error":{"message":"Rate limit exceeded"}}}}
+            """;
+
+        var result = BatchLabeler.ParseBatchOutputLine(outputLine);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.CustomId, Is.EqualTo("pair-3"));
+            Assert.That(result.Index, Is.EqualTo(3));
+            Assert.That(result.Verdict, Is.Null);
+            Assert.That(result.Error, Does.Contain("Rate limit"));
+        });
+    }
+
+    [Test]
     public async Task Should_generate_jsonl_file_from_csv_rows()
     {
         var csvContent = """
