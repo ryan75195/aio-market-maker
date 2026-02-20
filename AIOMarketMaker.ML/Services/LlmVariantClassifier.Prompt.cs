@@ -17,7 +17,7 @@ public partial class LlmVariantClassifier
     private static readonly string Different = SerializeVerdict(Verdict.Different);
     private static readonly string Uncertain = SerializeVerdict(Verdict.Uncertain);
 
-    private static readonly string SystemPrompt = $"""
+    internal static readonly string SystemPromptText = $"""
         Classify whether two eBay listings are comparable for pricing — would a buyer expect to pay roughly the same for both?
 
         STEP 1 — PRODUCT IDENTITY (reject if any apply)
