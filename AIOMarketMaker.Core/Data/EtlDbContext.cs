@@ -25,7 +25,6 @@ public class EtlDbContext : DbContext
     public DbSet<ScrapeRun> ScrapeRuns { get; set; } = null!;
     public DbSet<ScrapeRunIssue> ScrapeRunIssues { get; set; } = null!;
     public DbSet<ListingRelationship> ListingRelationships { get; set; } = null!;
-    public DbSet<ListingPrediction> ListingPredictions { get; set; } = null!;
     public DbSet<Category> Categories { get; set; } = null!;
     public DbSet<JobCategory> JobCategories { get; set; } = null!;
 
@@ -173,13 +172,5 @@ public class EtlDbContext : DbContext
                 .OnDelete(DeleteBehavior.NoAction);
         });
 
-        // ListingPredictions — backed by vw_ListingPredictions view (read-only)
-        modelBuilder.Entity<ListingPrediction>(entity =>
-        {
-            entity.ToView("vw_ListingPredictions");
-            entity.HasNoKey();
-            entity.Property(e => e.AverageSoldPrice).HasColumnType("decimal(18,2)");
-            entity.Property(e => e.PotentialProfit).HasColumnType("decimal(18,2)");
-        });
     }
 }

@@ -187,8 +187,8 @@ public class ComparablesEtlService_UnitTests
         });
     }
 
-    // Predictions are now computed live by vw_ListingPredictions SQL view.
-    // No ETL step to test — view logic is verified by integration tests against real DB.
+    // Predictions are computed live by ListingPredictionService CTE queries.
+    // No ETL step to test — prediction logic is verified by ListingPredictionService unit tests.
 
     [Test]
     public async Task Should_report_counts_without_making_llm_calls_in_dry_run()
