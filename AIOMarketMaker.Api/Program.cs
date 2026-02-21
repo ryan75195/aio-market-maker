@@ -133,6 +133,7 @@ builder.Services.AddSingleton<IVariantClassifierClient, OnnxVariantClassifier>()
 
 // ComparablesEtlService
 builder.Services.AddScoped<IComparablesEtlService, ComparablesEtlService>();
+builder.Services.AddScoped<IListingPredictionService, ListingPredictionService>();
 
 // Scraping concurrency config
 var scrapingConfig = new ScrapingConfig(
