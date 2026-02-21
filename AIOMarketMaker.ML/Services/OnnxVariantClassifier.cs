@@ -80,24 +80,38 @@ public class OnnxVariantClassifier : IVariantClassifierClient, IDisposable
 
         ct.ThrowIfCancellationRequested();
 
-        // Tokenize all pairs
-        var allInputIds = new long[pairList.Count * _maxLength];
-        var allAttentionMask = new long[pairList.Count * _maxLength];
+        // Tokenize all pairs, tracking actual lengths for dynamic padding
+        var tokenizedPairs = new (long[] InputIds, long[] AttentionMask, int ActualLength)[pairList.Count];
+        var maxActualLength = 0;
 
         for (var i = 0; i < pairList.Count; i++)
         {
             var pair = pairList[i];
             var textA = $"{pair.TitleA} | {Truncate(pair.DescriptionA, MaxDescriptionLength)}";
             var textB = $"{pair.TitleB} | {Truncate(pair.DescriptionB, MaxDescriptionLength)}";
-            var (inputIds, attentionMask) = TokenizePairInternal(textA, textB);
+            var (inputIds, attentionMask, actualLength) = TokenizePairInternal(textA, textB);
+            tokenizedPairs[i] = (inputIds, attentionMask, actualLength);
 
-            Array.Copy(inputIds, 0, allInputIds, i * _maxLength, _maxLength);
-            Array.Copy(attentionMask, 0, allAttentionMask, i * _maxLength, _maxLength);
+            if (actualLength > maxActualLength)
+            {
+                maxActualLength = actualLength;
+            }
         }
 
-        // Build batched tensors [N, maxLength]
-        var inputTensor = new DenseTensor<long>(allInputIds, [pairList.Count, _maxLength]);
-        var maskTensor = new DenseTensor<long>(allAttentionMask, [pairList.Count, _maxLength]);
+        // Pad to max actual length in batch (not global _maxLength)
+        var padLength = maxActualLength;
+        var allInputIds = new long[pairList.Count * padLength];
+        var allAttentionMask = new long[pairList.Count * padLength];
+
+        for (var i = 0; i < pairList.Count; i++)
+        {
+            Array.Copy(tokenizedPairs[i].InputIds, 0, allInputIds, i * padLength, padLength);
+            Array.Copy(tokenizedPairs[i].AttentionMask, 0, allAttentionMask, i * padLength, padLength);
+        }
+
+        // Build batched tensors [N, padLength]
+        var inputTensor = new DenseTensor<long>(allInputIds, [pairList.Count, padLength]);
+        var maskTensor = new DenseTensor<long>(allAttentionMask, [pairList.Count, padLength]);
         var inputs = new List<NamedOnnxValue>
         {
             NamedOnnxValue.CreateFromTensor("input_ids", inputTensor),
@@ -130,7 +144,7 @@ public class OnnxVariantClassifier : IVariantClassifierClient, IDisposable
     /// <summary>
     /// Static tokenization method exposed for unit testing without requiring a model file.
     /// </summary>
-    public static (long[] InputIds, long[] AttentionMask) TokenizePair(
+    public static (long[] InputIds, long[] AttentionMask, int ActualLength) TokenizePair(
         string vocabPath, string mergesPath, string textA, string textB, int maxLength)
     {
         using var vocabStream = File.OpenRead(vocabPath);
@@ -168,12 +182,12 @@ public class OnnxVariantClassifier : IVariantClassifierClient, IDisposable
         return results;
     }
 
-    private (long[] InputIds, long[] AttentionMask) TokenizePairInternal(string textA, string textB)
+    private (long[] InputIds, long[] AttentionMask, int ActualLength) TokenizePairInternal(string textA, string textB)
     {
         return TokenizePairCore(_tokenizer, textA, textB, _maxLength);
     }
 
-    private static (long[] InputIds, long[] AttentionMask) TokenizePairCore(
+    private static (long[] InputIds, long[] AttentionMask, int ActualLength) TokenizePairCore(
         CodeGenTokenizer tokenizer, string textA, string textB, int maxLength)
     {
         var idsA = tokenizer.EncodeToIds(textA);
@@ -217,7 +231,7 @@ public class OnnxVariantClassifier : IVariantClassifierClient, IDisposable
             mask[i] = 1;
         }
 
-        return (combined.ToArray(), mask);
+        return (combined.ToArray(), mask, realLength);
     }
 
     /// <summary>

@@ -34,7 +34,7 @@ public class OnnxVariantClassifier_UnitTests
         var vocabPath = FindModelFile("vocab.json");
         var mergesPath = FindModelFile("merges.txt");
 
-        var (inputIds, attentionMask) = OnnxVariantClassifier.TokenizePair(
+        var (inputIds, attentionMask, _) = OnnxVariantClassifier.TokenizePair(
             vocabPath, mergesPath,
             "Dyson V15 Detect Absolute | Cordless vacuum cleaner with laser dust detection",
             "Dyson V15 Detect Absolute | Brand new cordless vacuum with laser illuminate technology",
@@ -74,7 +74,7 @@ public class OnnxVariantClassifier_UnitTests
         // Create very long text that would exceed 256 tokens
         var longText = string.Join(" ", Enumerable.Repeat("premium quality professional grade", 50));
 
-        var (inputIds, attentionMask) = OnnxVariantClassifier.TokenizePair(
+        var (inputIds, attentionMask, _) = OnnxVariantClassifier.TokenizePair(
             vocabPath, mergesPath, longText, longText, maxLength: 64);
 
         Assert.Multiple(() =>
