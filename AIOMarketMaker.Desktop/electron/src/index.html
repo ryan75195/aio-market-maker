@@ -44,7 +44,7 @@
             <span>Loading dashboard...</span>
           </div>
 
-          <div :style="overviewLoading ? 'position:absolute;opacity:0;pointer-events:none;width:100%' : ''">
+          <div class="overview-content" :class="{ 'loading-hidden': overviewLoading }">
           <!-- KPI Cards -->
           <div class="kpi-grid">
             <div class="kpi-card">
@@ -131,8 +131,8 @@
             <span>Loading opportunities...</span>
           </div>
 
-          <template v-else>
-          <div style="display: flex; gap: 8px; margin-bottom: 12px;">
+          <div v-else class="view-fill">
+          <div class="filter-row">
 
           <!-- Category Filter Dropdown -->
           <div v-if="categories.length > 0" class="filter-dropdown-wrapper">
@@ -172,18 +172,30 @@
           </div>
 
           <table class="data-table">
+            <colgroup>
+              <col style="width: 8%">
+              <col style="width: 24%">
+              <col style="width: 12%">
+              <col style="width: 9%">
+              <col style="width: 9%">
+              <col style="width: 6%">
+              <col style="width: 9%">
+              <col style="width: 7%">
+              <col style="width: 9%">
+              <col style="width: 7%">
+            </colgroup>
             <thead>
               <tr>
-                <th>Listing ID</th>
+                <th>ID</th>
                 <th class="sortable" @click="sortOpportunities('title')">Title{{ sortIndicator('title') }}</th>
                 <th class="sortable" @click="sortOpportunities('searchTerm')">Job{{ sortIndicator('searchTerm') }}</th>
-                <th class="sortable" @click="sortOpportunities('price')">Listed Price{{ sortIndicator('price') }}</th>
+                <th class="sortable" @click="sortOpportunities('price')">Price{{ sortIndicator('price') }}</th>
                 <th class="sortable" @click="sortOpportunities('averageSoldPrice')">Avg Sold{{ sortIndicator('averageSoldPrice') }}</th>
                 <th class="sortable" @click="sortOpportunities('similarSoldCount')">Comps{{ sortIndicator('similarSoldCount') }}</th>
                 <th class="sortable" @click="sortOpportunities('potentialProfit')">Profit{{ sortIndicator('potentialProfit') }}</th>
-                <th class="sortable" @click="sortOpportunities('estimatedDaysToSell')">Est. Days to Sell{{ sortIndicator('estimatedDaysToSell') }}</th>
-                <th class="sortable" @click="sortOpportunities('condition')">Condition{{ sortIndicator('condition') }}</th>
-                <th>Actions</th>
+                <th class="sortable" @click="sortOpportunities('estimatedDaysToSell')">Days{{ sortIndicator('estimatedDaysToSell') }}</th>
+                <th class="sortable" @click="sortOpportunities('condition')">Cond{{ sortIndicator('condition') }}</th>
+                <th>Link</th>
               </tr>
             </thead>
             <tbody>
@@ -231,13 +243,13 @@
             <button class="page-btn" :disabled="opportunityPage >= opportunityTotalPages" @click="goToPage(opportunityPage + 1)">Next</button>
             <span class="page-info">Page {{ opportunityPage }} of {{ opportunityTotalPages }}</span>
           </div>
-          </template>
+          </div>
         </div>
 
         <!-- Listing Detail View -->
         <div v-if="currentView === 'listing-detail'" class="view">
           <div v-if="listingDetailLoading" class="loading">Loading...</div>
-          <div v-else-if="listingDetail">
+          <div v-else-if="listingDetail" class="view-fill">
             <!-- Header -->
             <div class="detail-header">
               <button class="btn" @click="backToOpportunities">&larr; Back</button>
@@ -304,7 +316,7 @@
               <h2>Comparables ({{ listingDetail.comparables.length }})</h2>
             </div>
             <div v-if="listingDetail.comparables.length === 0" class="empty">No comparables found</div>
-            <div v-else class="comp-grid">
+            <div v-else class="comp-grid scrollable">
               <div v-for="comp in listingDetail.comparables" :key="comp.relationshipId" class="comp-card">
                 <div class="comp-image">
                   <img v-if="getFirstImage(comp.images)" :src="getFirstImage(comp.images)" alt="Comp image">
@@ -325,6 +337,7 @@
                 </div>
               </div>
             </div>
+
           </div>
         </div>
 
@@ -332,7 +345,7 @@
         <div v-if="currentView === 'index'" class="view">
 
           <!-- Batch List Mode -->
-          <div v-if="historyMode === 'batches'">
+          <div v-if="historyMode === 'batches'" class="view-fill">
             <div class="view-header">
               <template v-if="showJobsPanel">
                 <button class="btn" @click="showJobsPanel = false">&larr; Back</button>
@@ -378,10 +391,18 @@
               <!-- Job List View -->
               <template v-if="jobOverviewMode === 'jobs'">
               <table class="data-table">
+                <colgroup>
+                  <col style="width: 8%">
+                  <col style="width: 30%">
+                  <col style="width: 22%">
+                  <col style="width: 15%">
+                  <col style="width: 10%">
+                  <col style="width: 15%">
+                </colgroup>
                 <thead>
                   <tr>
                     <th class="sortable" @click="sortJobs('id')">ID{{ jobSortIndicator('id') }}</th>
-                    <th class="sortable" @click="sortJobs('searchTerm')">Search Term{{ jobSortIndicator('searchTerm') }}</th>
+                    <th class="sortable" @click="sortJobs('searchTerm')">Search{{ jobSortIndicator('searchTerm') }}</th>
                     <th>Categories</th>
                     <th class="sortable" @click="sortJobs('lastRunUtc')">Last Run{{ jobSortIndicator('lastRunUtc') }}</th>
                     <th class="sortable" @click="sortJobs('isEnabled')">Enabled{{ jobSortIndicator('isEnabled') }}</th>
@@ -551,6 +572,15 @@
             </div>
 
             <table class="data-table history-table">
+              <colgroup>
+                <col style="width: 14%">
+                <col style="width: 10%">
+                <col style="width: 12%">
+                <col style="width: 8%">
+                <col style="width: 10%">
+                <col style="width: 12%">
+                <col style="width: 34%">
+              </colgroup>
               <thead>
                 <tr>
                   <th>Started</th>
@@ -558,7 +588,7 @@
                   <th>Status</th>
                   <th>Jobs</th>
                   <th>Found</th>
-                  <th>Processed</th>
+                  <th>Done</th>
                   <th>Progress</th>
                 </tr>
               </thead>
@@ -596,10 +626,11 @@
             </div>
 
             </template>
+            </template>
           </div>
 
           <!-- Run Detail Mode (drill-down into a batch) -->
-          <div v-if="historyMode === 'runs' && selectedBatch">
+          <div v-if="historyMode === 'runs' && selectedBatch" class="view-fill">
             <div class="view-header">
               <button class="btn" @click="backToBatches">&larr; Back to Batches</button>
               <h1>
@@ -610,6 +641,18 @@
             </div>
 
             <table class="data-table history-table">
+              <colgroup>
+                <col style="width: 4%">
+                <col style="width: 18%">
+                <col style="width: 12%">
+                <col style="width: 18%">
+                <col style="width: 8%">
+                <col style="width: 8%">
+                <col style="width: 8%">
+                <col style="width: 8%">
+                <col style="width: 8%">
+                <col style="width: 8%">
+              </colgroup>
               <thead>
                 <tr>
                   <th></th>
@@ -618,9 +661,9 @@
                   <th>Progress</th>
                   <th>Active</th>
                   <th>Sold</th>
-                  <th>Updated</th>
-                  <th>Skipped</th>
-                  <th>Failed</th>
+                  <th>Upd</th>
+                  <th>Skip</th>
+                  <th>Fail</th>
                   <th></th>
                 </tr>
               </thead>
@@ -684,7 +727,6 @@
                 </template>
               </tbody>
             </table>
-            </template>
           </div>
         </div>
 
