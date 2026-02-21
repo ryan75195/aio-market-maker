@@ -2,6 +2,7 @@ using System.Reflection;
 using AIOMarketMaker.Api.Endpoints;
 using AIOMarketMaker.Core.Data;
 using AIOMarketMaker.Core.Data.Models;
+using AIOMarketMaker.Core.Services;
 using AIOMarketMaker.Tests.Common;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.HttpResults;
@@ -26,23 +27,29 @@ public class ListingEndpoints_UnitTests
         _db.Dispose();
     }
 
-    private async Task<IResult> CallGetListingDetail(int id)
+    private async Task<IResult> CallGetListingDetail(int id,
+        decimal priceBand = 0, decimal feePercent = 0, bool matchCondition = true)
     {
         var method = typeof(ListingEndpoints).GetMethod(
             "GetListingDetail",
             BindingFlags.NonPublic | BindingFlags.Static);
 
-        var resultTask = (Task<IResult>)method!.Invoke(null, new object[] { _db, id })!;
+        var service = new ListingPredictionService(_db);
+        var resultTask = (Task<IResult>)method!.Invoke(null,
+            new object[] { _db, service, id, priceBand, feePercent, matchCondition })!;
         return await resultTask;
     }
 
-    private async Task<IResult> CallDismissComparable(int listingId, int relationshipId)
+    private async Task<IResult> CallDismissComparable(int listingId, int relationshipId,
+        decimal priceBand = 0, decimal feePercent = 0, bool matchCondition = true)
     {
         var method = typeof(ListingEndpoints).GetMethod(
             "DismissComparable",
             BindingFlags.NonPublic | BindingFlags.Static);
 
-        var resultTask = (Task<IResult>)method!.Invoke(null, new object[] { _db, listingId, relationshipId })!;
+        var service = new ListingPredictionService(_db);
+        var resultTask = (Task<IResult>)method!.Invoke(null,
+            new object[] { _db, service, listingId, relationshipId, priceBand, feePercent, matchCondition })!;
         return await resultTask;
     }
 
