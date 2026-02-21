@@ -389,10 +389,8 @@ public class ScrapeJobsApi
     public async Task<HttpResponseData> GetActiveListings(
         [HttpTrigger(AuthorizationLevel.Function, "get", Route = "listings/active")] HttpRequestData req)
     {
-        // Load predictions for active listings
-        var predictions = await _dbContext.ListingPredictions
-            .Where(p => _dbContext.Listings.Any(l => l.Id == p.ListingId && l.ListingStatus == "Active"))
-            .ToDictionaryAsync(p => p.ListingId, p => new PricingAggregate(p.AverageSoldPrice, p.SimilarSoldCount, p.EstimatedDaysToSell));
+        // ListingPrediction view removed — predictions are computed by ListingPredictionService in API
+        var predictions = new Dictionary<int, PricingAggregate>();
 
         var enrichedListings = await _dbContext.Listings
             .Include(l => l.ScrapeJob)
@@ -558,7 +556,7 @@ public class ScrapeJobsApi
 
         if (count > 0)
         {
-            // Delete relationships first (NoAction FK to Listings). Predictions are a live view.
+            // Delete relationships first (NoAction FK to Listings).
             await _dbContext.Database.ExecuteSqlRawAsync("DELETE FROM ListingRelationships");
             await _dbContext.Database.ExecuteSqlRawAsync("DELETE FROM Listings");
             _logger.LogInformation("Cleared {Count} listings from database", count);

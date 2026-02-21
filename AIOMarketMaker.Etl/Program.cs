@@ -271,7 +271,7 @@ if (args.Contains("--comparables"))
     Console.WriteLine($"ONNX pairs classified:  {result.LlmCallsMade}");
     Console.WriteLine($"Comparables found:      {result.ComparablesFound}");
     Console.WriteLine();
-    Console.WriteLine("Predictions are computed live via vw_ListingPredictions view.");
+    Console.WriteLine("Predictions are computed live via ListingPredictionService.");
     return;
 }
 
