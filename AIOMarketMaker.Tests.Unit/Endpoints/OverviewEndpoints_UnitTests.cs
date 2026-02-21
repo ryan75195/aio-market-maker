@@ -2,6 +2,7 @@ using System.Reflection;
 using AIOMarketMaker.Api.Endpoints;
 using AIOMarketMaker.Core.Data;
 using AIOMarketMaker.Core.Data.Models;
+using AIOMarketMaker.Core.Services;
 using AIOMarketMaker.Tests.Common;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.HttpResults;
@@ -32,7 +33,9 @@ public class OverviewEndpoints_UnitTests
             "GetOverview",
             BindingFlags.NonPublic | BindingFlags.Static);
 
-        var resultTask = (Task<IResult>)method!.Invoke(null, new object[] { _db, 3, 13.25m, true })!;
+        var service = new ListingPredictionService(_db);
+        var resultTask = (Task<IResult>)method!.Invoke(null,
+            new object[] { _db, service, 3, 13.25m, true })!;
         var result = await resultTask;
 
         var okResult = (Ok<OverviewResponse>)result;
