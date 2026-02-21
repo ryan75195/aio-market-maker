@@ -102,7 +102,9 @@ createApp({
         lastScrape: null,
         cumulativeGrowth: [],
         topJobsByOpportunities: [],
-        profitDistribution: { range0to25: 0, range25to50: 0, range50to100: 0, range100plus: 0 },
+        avgProfitByCondition: [],
+        avgDaysToSellByJob: [],
+        priceVsProfitPoints: [],
         topOpportunities: [],
         recentRuns: []
       },
@@ -381,8 +383,11 @@ createApp({
 
     renderCharts() {
       this.renderCumulativeGrowthChart();
+      this.renderOpportunityTrendChart();
+      this.renderAvgProfitByConditionChart();
       this.renderTopJobsChart();
-      this.renderProfitDistributionChart();
+      this.renderAvgDaysToSellChart();
+      this.renderPriceVsProfitChart();
     },
 
     renderCumulativeGrowthChart() {
@@ -480,22 +485,75 @@ createApp({
       });
     },
 
-    renderProfitDistributionChart() {
-      const canvas = document.getElementById('profitDistributionChart');
+    renderOpportunityTrendChart() {
+      const canvas = document.getElementById('opportunityTrendChart');
       if (!canvas) { return; }
 
-      if (this.overviewCharts.profitDistribution) {
-        this.overviewCharts.profitDistribution.destroy();
+      if (this.overviewCharts.opportunityTrend) {
+        this.overviewCharts.opportunityTrend.destroy();
       }
 
-      const dist = this.overviewData.profitDistribution || {};
-      this.overviewCharts.profitDistribution = new Chart(canvas, {
+      const runs = (this.overviewData.recentRuns || []).slice().reverse();
+      this.overviewCharts.opportunityTrend = new Chart(canvas, {
+        type: 'line',
+        data: {
+          labels: runs.map(r => r.jobSearchTerm || `Run ${r.id}`),
+          datasets: [{
+            label: 'Active Added',
+            data: runs.map(r => r.listingsAddedActive),
+            borderColor: '#22c55e',
+            backgroundColor: 'rgba(34, 197, 94, 0.1)',
+            fill: true,
+            tension: 0.3,
+            pointRadius: 3
+          }, {
+            label: 'Sold Added',
+            data: runs.map(r => r.listingsAddedSold),
+            borderColor: '#f59e0b',
+            backgroundColor: 'rgba(245, 158, 11, 0.1)',
+            fill: true,
+            tension: 0.3,
+            pointRadius: 3
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { labels: { color: '#b0b0b0', boxWidth: 12 } }
+          },
+          scales: {
+            x: {
+              ticks: { color: '#808080', maxTicksLimit: 5 },
+              grid: { color: '#3c3c3c' }
+            },
+            y: {
+              ticks: { color: '#808080' },
+              grid: { color: '#3c3c3c' },
+              beginAtZero: true
+            }
+          }
+        }
+      });
+    },
+
+    renderAvgProfitByConditionChart() {
+      const canvas = document.getElementById('avgProfitByConditionChart');
+      if (!canvas) { return; }
+
+      if (this.overviewCharts.avgProfitByCondition) {
+        this.overviewCharts.avgProfitByCondition.destroy();
+      }
+
+      const data = this.overviewData.avgProfitByCondition || [];
+      const colors = ['#4a9eff', '#22c55e', '#f59e0b', '#ef4444', '#a855f7', '#06b6d4'];
+      this.overviewCharts.avgProfitByCondition = new Chart(canvas, {
         type: 'bar',
         data: {
-          labels: ['$0-25', '$25-50', '$50-100', '$100+'],
+          labels: data.map(d => d.condition),
           datasets: [{
-            data: [dist.range0to25 || 0, dist.range25to50 || 0, dist.range50to100 || 0, dist.range100plus || 0],
-            backgroundColor: ['#4a9eff', '#22c55e', '#f59e0b', '#ef4444'],
+            data: data.map(d => d.avgProfit),
+            backgroundColor: data.map((_, i) => colors[i % colors.length]),
             borderRadius: 4
           }]
         },
@@ -503,7 +561,15 @@ createApp({
           responsive: true,
           maintainAspectRatio: false,
           plugins: {
-            legend: { display: false }
+            legend: { display: false },
+            tooltip: {
+              callbacks: {
+                afterLabel: (ctx) => {
+                  const item = data[ctx.dataIndex];
+                  return item ? `${item.count} opportunities` : '';
+                }
+              }
+            }
           },
           scales: {
             x: {
@@ -511,8 +577,121 @@ createApp({
               grid: { display: false }
             },
             y: {
+              ticks: {
+                color: '#808080',
+                callback: (v) => this.formatPrice(v, 'GBP')
+              },
+              grid: { color: '#3c3c3c' },
+              beginAtZero: true
+            }
+          }
+        }
+      });
+    },
+
+    renderAvgDaysToSellChart() {
+      const canvas = document.getElementById('avgDaysToSellChart');
+      if (!canvas) { return; }
+
+      if (this.overviewCharts.avgDaysToSell) {
+        this.overviewCharts.avgDaysToSell.destroy();
+      }
+
+      const data = this.overviewData.avgDaysToSellByJob || [];
+      const colors = ['#06b6d4', '#4a9eff', '#22c55e', '#f59e0b', '#ef4444', '#a855f7', '#ec4899', '#84cc16'];
+      this.overviewCharts.avgDaysToSell = new Chart(canvas, {
+        type: 'bar',
+        data: {
+          labels: data.map(d => this.truncate(d.searchTerm, 25)),
+          datasets: [{
+            data: data.map(d => d.avgDaysToSell),
+            backgroundColor: data.map((_, i) => colors[i % colors.length]),
+            borderRadius: 4
+          }]
+        },
+        options: {
+          indexAxis: 'y',
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              callbacks: {
+                label: (ctx) => `${Math.round(ctx.raw)} days avg`
+              }
+            }
+          },
+          scales: {
+            x: {
               ticks: { color: '#808080' },
               grid: { color: '#3c3c3c' },
+              beginAtZero: true,
+              title: { display: true, text: 'Days', color: '#808080' }
+            },
+            y: {
+              ticks: { color: '#e0e0e0' },
+              grid: { display: false }
+            }
+          }
+        }
+      });
+    },
+
+    renderPriceVsProfitChart() {
+      const canvas = document.getElementById('priceVsProfitChart');
+      if (!canvas) { return; }
+
+      if (this.overviewCharts.priceVsProfit) {
+        this.overviewCharts.priceVsProfit.destroy();
+      }
+
+      const data = this.overviewData.priceVsProfitPoints || [];
+      const conditionColors = {
+        'New': '#22c55e',
+        'Used': '#4a9eff',
+        'Refurbished': '#f59e0b',
+        'For parts or not working': '#ef4444'
+      };
+      this.overviewCharts.priceVsProfit = new Chart(canvas, {
+        type: 'scatter',
+        data: {
+          datasets: [{
+            data: data.map(d => ({ x: d.price, y: d.potentialProfit })),
+            backgroundColor: data.map(d => conditionColors[d.condition] || '#a855f7'),
+            pointRadius: 4,
+            pointHoverRadius: 6
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              callbacks: {
+                label: (ctx) => {
+                  const item = data[ctx.dataIndex];
+                  return `${item.condition || 'Unknown'}: Buy ${this.formatPrice(item.price, 'GBP')}, Profit ${this.formatPrice(item.potentialProfit, 'GBP')}`;
+                }
+              }
+            }
+          },
+          scales: {
+            x: {
+              ticks: {
+                color: '#808080',
+                callback: (v) => `£${v}`
+              },
+              grid: { color: '#3c3c3c' },
+              title: { display: true, text: 'Buy Price', color: '#808080' }
+            },
+            y: {
+              ticks: {
+                color: '#808080',
+                callback: (v) => `£${v}`
+              },
+              grid: { color: '#3c3c3c' },
+              title: { display: true, text: 'Profit', color: '#808080' },
               beginAtZero: true
             }
           }

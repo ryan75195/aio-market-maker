@@ -925,17 +925,17 @@ body {
 
 .chart-container {
   position: relative;
-  height: 280px;
+  height: 220px;
 }
 
-.chart-row {
+.chart-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 20px;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 16px;
   margin-bottom: 20px;
 }
 
-.chart-section.half {
+.chart-grid .chart-section {
   margin-bottom: 0;
 }
 
