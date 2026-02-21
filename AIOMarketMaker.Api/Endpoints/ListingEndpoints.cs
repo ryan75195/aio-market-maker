@@ -225,12 +225,12 @@ public static class ListingEndpoints
 
         var priceBandFilter = priceBand > 0
             ? $@"AND active.Price > 0
-                   AND sp.SoldPrice BETWEEN active.Price / {pb} AND active.Price * {pb}"
+                   AND sold.Price BETWEEN active.Price / {pb} AND active.Price * {pb}"
             : "";
 
         var profitExpr = feePercent > 0
-            ? $"AVG(sp.SoldPrice) * (1.0 - {fee} / 100.0) - active.Price - ISNULL(active.ShippingCost, 0)"
-            : "AVG(sp.SoldPrice) - active.Price";
+            ? $"AVG(sold.Price) * (1.0 - {fee} / 100.0) - active.Price - ISNULL(active.ShippingCost, 0)"
+            : "AVG(sold.Price) - active.Price";
 
         return $@";WITH ComparableSoldNeighbors AS (
             SELECT r.ListingIdA AS ActiveListingId, r.ListingIdB AS SoldListingId
@@ -247,29 +247,18 @@ public static class ListingEndpoints
             WHERE r.IsComparable = 1
             {conditionFilter}
         ),
-        SoldPrices AS (
-            SELECT csn.ActiveListingId, csn.SoldListingId,
-                COALESCE(
-                    (SELECT TOP 1 h.Price FROM ListingStatusHistory h
-                     WHERE h.ListingId = csn.SoldListingId AND h.ListingStatus = 'Sold'
-                     ORDER BY h.RecordedUtc DESC),
-                    sold.Price
-                ) AS SoldPrice,
-                CASE WHEN sold.EndDateUtc > sold.CreatedUtc
-                     THEN DATEDIFF(day, sold.CreatedUtc, sold.EndDateUtc)
-                END AS DaysToSell
-            FROM ComparableSoldNeighbors csn
-            INNER JOIN Listings sold ON sold.Id = csn.SoldListingId
-        ),
         FilteredPredictions AS (
             SELECT active.Id AS ListingId,
                 COUNT(*) AS SimilarSoldCount,
-                AVG(sp.SoldPrice) AS AverageSoldPrice,
+                AVG(sold.Price) AS AverageSoldPrice,
                 {profitExpr} AS PotentialProfit,
-                AVG(sp.DaysToSell) AS EstimatedDaysToSell
-            FROM SoldPrices sp
-            INNER JOIN Listings active ON active.Id = sp.ActiveListingId
-            WHERE sp.SoldPrice > 0
+                AVG(CASE WHEN sold.EndDateUtc > sold.CreatedUtc
+                         THEN DATEDIFF(day, sold.CreatedUtc, sold.EndDateUtc)
+                    END) AS EstimatedDaysToSell
+            FROM ComparableSoldNeighbors csn
+            INNER JOIN Listings sold ON sold.Id = csn.SoldListingId
+            INNER JOIN Listings active ON active.Id = csn.ActiveListingId
+            WHERE sold.Price > 0
             {priceBandFilter}
             GROUP BY active.Id, active.Price, active.ShippingCost
             HAVING COUNT(*) >= {mc}

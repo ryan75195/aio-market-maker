@@ -80,7 +80,7 @@ public class OverviewEndpoints_UnitTests
             Assert.That(response.AggregateProfit, Is.EqualTo(0m));
             Assert.That(response.LastScrape, Is.Null);
             Assert.That(response.CumulativeGrowth, Is.Empty);
-            Assert.That(response.ListingsByJob, Is.Empty);
+            Assert.That(response.TopJobsByOpportunities, Is.Empty);
             Assert.That(response.RecentRuns, Is.Empty);
         });
     }
@@ -125,36 +125,20 @@ public class OverviewEndpoints_UnitTests
     }
 
     [Test]
-    public async Task Should_return_listings_grouped_by_job()
+    public async Task Should_return_empty_top_jobs_on_sqlite()
     {
         var job1 = new ScrapeJob { SearchTerm = "PlayStation 5" };
-        var job2 = new ScrapeJob { SearchTerm = "Xbox Series X" };
-        _db.ScrapeJobs.AddRange(job1, job2);
+        _db.ScrapeJobs.Add(job1);
         await _db.SaveChangesAsync();
 
-        _db.Listings.AddRange(
-            new Listing { ListingId = "1", ListingStatus = "Active", ScrapeJobId = job1.Id },
-            new Listing { ListingId = "2", ListingStatus = "Active", ScrapeJobId = job1.Id },
-            new Listing { ListingId = "3", ListingStatus = "Active", ScrapeJobId = job1.Id },
-            new Listing { ListingId = "4", ListingStatus = "Active", ScrapeJobId = job2.Id });
+        _db.Listings.Add(
+            new Listing { ListingId = "1", ListingStatus = "Active", ScrapeJobId = job1.Id });
         await _db.SaveChangesAsync();
 
         var response = await CallOverview();
 
-        var byJob = response.ListingsByJob.ToList();
-
-        Assert.Multiple(() =>
-        {
-            Assert.That(byJob, Has.Count.EqualTo(2));
-
-            var ps5Entry = byJob.First(j => j.SearchTerm == "PlayStation 5");
-            Assert.That(ps5Entry.JobId, Is.EqualTo(job1.Id));
-            Assert.That(ps5Entry.Count, Is.EqualTo(3));
-
-            var xboxEntry = byJob.First(j => j.SearchTerm == "Xbox Series X");
-            Assert.That(xboxEntry.JobId, Is.EqualTo(job2.Id));
-            Assert.That(xboxEntry.Count, Is.EqualTo(1));
-        });
+        // TopJobsByOpportunities uses SQL Server CTEs — returns empty on SQLite
+        Assert.That(response.TopJobsByOpportunities, Is.Empty);
     }
 
     [Test]
