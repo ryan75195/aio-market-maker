@@ -79,9 +79,53 @@ public class ListingPredictionService : IListingPredictionService
         _db = db;
     }
 
-    public Task<ListingPredictionResult?> GetPrediction(int listingId, PredictionFilters filters)
+    public async Task<ListingPredictionResult?> GetPrediction(
+        int listingId, PredictionFilters filters)
     {
-        throw new NotImplementedException();
+        var comps = (await GetComparables(listingId, filters)).ToList();
+        var listing = await _db.Listings.FindAsync(listingId);
+        if (listing == null)
+        {
+            return null;
+        }
+
+        var pricedComps = comps
+            .Where(c => c.Price.HasValue && c.Price.Value > 0)
+            .ToList();
+
+        if (pricedComps.Count == 0)
+        {
+            return null;
+        }
+
+        var avgSoldPrice = pricedComps.Average(c => c.Price!.Value);
+        var profit = filters.FeePercent > 0
+            ? avgSoldPrice * (1.0m - filters.FeePercent / 100.0m)
+                - listing.Price!.Value - (listing.ShippingCost ?? 0)
+            : avgSoldPrice - listing.Price!.Value;
+
+        int? estimatedDays = null;
+        var compsWithDates = comps
+            .Where(c => c.SoldDateUtc.HasValue)
+            .ToList();
+        if (compsWithDates.Count > 0)
+        {
+            var soldIds = compsWithDates.Select(c => c.SoldListingId).ToList();
+            var soldListings = await _db.Listings
+                .Where(l => soldIds.Contains(l.Id) && l.EndDateUtc > l.CreatedUtc)
+                .Select(l => new { l.Id, l.CreatedUtc, l.EndDateUtc })
+                .ToListAsync();
+
+            if (soldListings.Count > 0)
+            {
+                var avgDays = soldListings
+                    .Average(l => (l.EndDateUtc!.Value - l.CreatedUtc).TotalDays);
+                estimatedDays = (int)Math.Round(avgDays);
+            }
+        }
+
+        return new ListingPredictionResult(
+            listingId, pricedComps.Count, avgSoldPrice, profit, estimatedDays);
     }
 
     public async Task<IEnumerable<ComparableSoldListing>> GetComparables(
