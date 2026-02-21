@@ -12,7 +12,9 @@ public record OverviewResponse(
     LastScrapeResponse? LastScrape,
     IEnumerable<CumulativeGrowthEntry> CumulativeGrowth,
     IEnumerable<TopJobOpportunityEntry> TopJobsByOpportunities,
-    ProfitDistributionResponse ProfitDistribution,
+    IEnumerable<ConditionProfitEntry> AvgProfitByCondition,
+    IEnumerable<DaysToSellEntry> AvgDaysToSellByJob,
+    IEnumerable<PriceVsProfitEntry> PriceVsProfitPoints,
     IEnumerable<TopOpportunityResponse> TopOpportunities,
     IEnumerable<RecentRunResponse> RecentRuns);
 
@@ -24,8 +26,11 @@ public record CumulativeGrowthEntry(string Date, int Cumulative);
 
 public record TopJobOpportunityEntry(int JobId, string? SearchTerm, int OpportunityCount, decimal TotalProfit);
 
-public record ProfitDistributionResponse(
-    int Range0to25, int Range25to50, int Range50to100, int Range100plus);
+public record ConditionProfitEntry(string Condition, decimal AvgProfit, int Count);
+
+public record DaysToSellEntry(int JobId, string? SearchTerm, decimal? AvgDaysToSell);
+
+public record PriceVsProfitEntry(decimal Price, decimal PotentialProfit, string? Condition);
 
 public record TopOpportunityResponse(
     string ListingId, string? Title, decimal? Price, string? Currency,
@@ -66,7 +71,9 @@ public static class OverviewEndpoints
             LastScrape: lastScrape,
             CumulativeGrowth: cumulativeGrowth,
             TopJobsByOpportunities: oppData.TopJobsByOpportunities,
-            ProfitDistribution: oppData.ProfitDistribution,
+            AvgProfitByCondition: oppData.AvgProfitByCondition,
+            AvgDaysToSellByJob: oppData.AvgDaysToSellByJob,
+            PriceVsProfitPoints: oppData.PriceVsProfitPoints,
             TopOpportunities: oppData.TopOpportunities,
             RecentRuns: recentRuns);
 
@@ -97,8 +104,10 @@ public static class OverviewEndpoints
     private record OpportunityData(
         int Opportunities, decimal AggregateProfit,
         IEnumerable<TopOpportunityResponse> TopOpportunities,
-        ProfitDistributionResponse ProfitDistribution,
-        IEnumerable<TopJobOpportunityEntry> TopJobsByOpportunities);
+        IEnumerable<TopJobOpportunityEntry> TopJobsByOpportunities,
+        IEnumerable<ConditionProfitEntry> AvgProfitByCondition,
+        IEnumerable<DaysToSellEntry> AvgDaysToSellByJob,
+        IEnumerable<PriceVsProfitEntry> PriceVsProfitPoints);
 
     private static async Task<OpportunityData> GetOpportunityData(
         EtlDbContext db, int minComps, decimal feePercent, bool matchCondition)
@@ -115,8 +124,10 @@ public static class OverviewEndpoints
             return new OpportunityData(
                 0, 0m,
                 Enumerable.Empty<TopOpportunityResponse>(),
-                new ProfitDistributionResponse(0, 0, 0, 0),
-                Enumerable.Empty<TopJobOpportunityEntry>());
+                Enumerable.Empty<TopJobOpportunityEntry>(),
+                Enumerable.Empty<ConditionProfitEntry>(),
+                Enumerable.Empty<DaysToSellEntry>(),
+                Enumerable.Empty<PriceVsProfitEntry>());
         }
 
         var cte = BuildFilteredPredictionsCte(feePercent, minComps, matchCondition);
@@ -125,7 +136,8 @@ public static class OverviewEndpoints
         // The CTE scans 738K+ relationships — running it once instead of 3× saves ~6s.
         var materializeSql = $@"
             {cte}
-            SELECT fp.ListingId, fp.SimilarSoldCount, fp.AverageSoldPrice, fp.PotentialProfit
+            SELECT fp.ListingId, fp.SimilarSoldCount, fp.AverageSoldPrice,
+                   fp.PotentialProfit, fp.EstimatedDaysToSell
             INTO #Predictions
             FROM FilteredPredictions fp";
 
@@ -135,32 +147,20 @@ public static class OverviewEndpoints
             await cmd.ExecuteNonQueryAsync();
         }
 
-        // Aggregate + distribution in a single scan of the temp table
+        // Aggregate totals
         int opportunities = 0;
         decimal aggregateProfit = 0m;
-        var profitDistribution = new ProfitDistributionResponse(0, 0, 0, 0);
 
         await using (var cmd = conn.CreateCommand())
         {
             cmd.CommandText = @"
-                SELECT
-                    COUNT(*),
-                    ISNULL(SUM(PotentialProfit), 0),
-                    SUM(CASE WHEN PotentialProfit >= 0 AND PotentialProfit < 25 THEN 1 ELSE 0 END),
-                    SUM(CASE WHEN PotentialProfit >= 25 AND PotentialProfit < 50 THEN 1 ELSE 0 END),
-                    SUM(CASE WHEN PotentialProfit >= 50 AND PotentialProfit < 100 THEN 1 ELSE 0 END),
-                    SUM(CASE WHEN PotentialProfit >= 100 THEN 1 ELSE 0 END)
+                SELECT COUNT(*), ISNULL(SUM(PotentialProfit), 0)
                 FROM #Predictions";
             await using var reader = await cmd.ExecuteReaderAsync();
             if (await reader.ReadAsync())
             {
                 opportunities = reader.GetInt32(0);
                 aggregateProfit = reader.GetDecimal(1);
-                profitDistribution = new ProfitDistributionResponse(
-                    reader.IsDBNull(2) ? 0 : reader.GetInt32(2),
-                    reader.IsDBNull(3) ? 0 : reader.GetInt32(3),
-                    reader.IsDBNull(4) ? 0 : reader.GetInt32(4),
-                    reader.IsDBNull(5) ? 0 : reader.GetInt32(5));
             }
         }
 
@@ -217,6 +217,71 @@ public static class OverviewEndpoints
             }
         }
 
+        // Avg profit by condition
+        var avgProfitByCondition = new List<ConditionProfitEntry>();
+        await using (var cmd = conn.CreateCommand())
+        {
+            cmd.CommandText = @"
+                SELECT ISNULL(l.[Condition], 'Unknown'), AVG(p.PotentialProfit), COUNT(*)
+                FROM #Predictions p
+                INNER JOIN Listings l ON l.Id = p.ListingId
+                GROUP BY l.[Condition]
+                ORDER BY AVG(p.PotentialProfit) DESC";
+            await using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                avgProfitByCondition.Add(new ConditionProfitEntry(
+                    reader.GetString(0),
+                    reader.GetDecimal(1),
+                    reader.GetInt32(2)));
+            }
+        }
+
+        // Avg days to sell by job (top 10)
+        var avgDaysToSell = new List<DaysToSellEntry>();
+        await using (var cmd = conn.CreateCommand())
+        {
+            cmd.CommandText = @"
+                SELECT TOP 10
+                    l.ScrapeJobId, sj.SearchTerm,
+                    AVG(p.EstimatedDaysToSell)
+                FROM #Predictions p
+                INNER JOIN Listings l ON l.Id = p.ListingId
+                LEFT JOIN ScrapeJobs sj ON sj.Id = l.ScrapeJobId
+                WHERE p.EstimatedDaysToSell IS NOT NULL
+                GROUP BY l.ScrapeJobId, sj.SearchTerm
+                ORDER BY AVG(p.EstimatedDaysToSell) ASC";
+            await using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                avgDaysToSell.Add(new DaysToSellEntry(
+                    reader.GetInt32(0),
+                    reader.IsDBNull(1) ? null : reader.GetString(1),
+                    reader.IsDBNull(2) ? null : (decimal?)reader.GetInt32(2)));
+            }
+        }
+
+        // Price vs profit scatter (top 100 by profit)
+        var priceVsProfit = new List<PriceVsProfitEntry>();
+        await using (var cmd = conn.CreateCommand())
+        {
+            cmd.CommandText = @"
+                SELECT TOP 100
+                    l.Price, p.PotentialProfit, l.[Condition]
+                FROM #Predictions p
+                INNER JOIN Listings l ON l.Id = p.ListingId
+                WHERE l.Price IS NOT NULL
+                ORDER BY p.PotentialProfit DESC";
+            await using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                priceVsProfit.Add(new PriceVsProfitEntry(
+                    reader.GetDecimal(0),
+                    reader.GetDecimal(1),
+                    reader.IsDBNull(2) ? null : reader.GetString(2)));
+            }
+        }
+
         // Clean up temp table
         await using (var cmd = conn.CreateCommand())
         {
@@ -224,7 +289,9 @@ public static class OverviewEndpoints
             await cmd.ExecuteNonQueryAsync();
         }
 
-        return new OpportunityData(opportunities, aggregateProfit, topOpportunities, profitDistribution, topJobs);
+        return new OpportunityData(
+            opportunities, aggregateProfit, topOpportunities, topJobs,
+            avgProfitByCondition, avgDaysToSell, priceVsProfit);
     }
 
     // -- Last scrape run --
