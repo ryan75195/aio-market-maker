@@ -44,7 +44,7 @@
             <span>Loading dashboard...</span>
           </div>
 
-          <template v-else>
+          <div :style="overviewLoading ? 'position:absolute;opacity:0;pointer-events:none;width:100%' : ''">
           <!-- KPI Cards -->
           <div class="kpi-grid">
             <div class="kpi-card">
@@ -114,7 +114,7 @@
               </div>
             </div>
           </div>
-          </template>
+          </div>
 
         </div>
 
