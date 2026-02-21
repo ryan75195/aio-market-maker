@@ -196,4 +196,159 @@ public class ListingPredictionService_UnitTests
         Assert.That(result, Has.Count.EqualTo(1));
         Assert.That(result[0].ListingId, Is.EqualTo("444"));
     }
+
+    // -- GetPrediction tests --
+
+    [Test]
+    public async Task GetPrediction_should_return_null_when_no_comps()
+    {
+        var job = AddJob();
+        var active = AddListing(job.Id, "111", 350m, "New", "Active");
+
+        var result = await _service.GetPrediction(active.Id, new PredictionFilters());
+
+        Assert.That(result, Is.Null);
+    }
+
+    [Test]
+    public async Task GetPrediction_should_compute_count_and_avg_from_sold_comps()
+    {
+        var job = AddJob();
+        var active = AddListing(job.Id, "111", 350m, "New", "Active");
+        var sold1 = AddListing(job.Id, "222", 380m, "New", "Sold");
+        var sold2 = AddListing(job.Id, "333", 400m, "New", "Sold");
+
+        AddRelationship(active.Id, sold1.Id);
+        AddRelationship(active.Id, sold2.Id);
+
+        var result = await _service.GetPrediction(active.Id,
+            new PredictionFilters(MatchCondition: false));
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(result, Is.Not.Null);
+            Assert.That(result!.SimilarSoldCount, Is.EqualTo(2));
+            Assert.That(result.AverageSoldPrice, Is.EqualTo(390m));
+            Assert.That(result.PotentialProfit, Is.EqualTo(40m)); // 390 - 350
+        });
+    }
+
+    [Test]
+    public async Task GetPrediction_should_apply_fee_percent()
+    {
+        var job = AddJob();
+        var active = AddListing(job.Id, "111", 100m, "New", "Active");
+        var sold = AddListing(job.Id, "222", 200m, "New", "Sold");
+
+        AddRelationship(active.Id, sold.Id);
+
+        var result = await _service.GetPrediction(active.Id,
+            new PredictionFilters(FeePercent: 10m, MatchCondition: false));
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(result, Is.Not.Null);
+            // Profit = 200 * (1 - 10/100) - 100 = 180 - 100 = 80
+            Assert.That(result!.PotentialProfit, Is.EqualTo(80m));
+        });
+    }
+
+    [Test]
+    public async Task GetPrediction_should_deduct_shipping_cost_with_fees()
+    {
+        var job = AddJob();
+        var listing = new Listing
+        {
+            ListingId = "111", Price = 100m, ShippingCost = 10m,
+            Condition = "New", ListingStatus = "Active", ScrapeJobId = job.Id,
+            Title = "Item 111"
+        };
+        _db.Listings.Add(listing);
+        _db.SaveChanges();
+
+        var sold = AddListing(job.Id, "222", 200m, "New", "Sold");
+        AddRelationship(listing.Id, sold.Id);
+
+        var result = await _service.GetPrediction(listing.Id,
+            new PredictionFilters(FeePercent: 10m, MatchCondition: false));
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(result, Is.Not.Null);
+            // Profit = 200 * (1 - 10/100) - 100 - 10 = 180 - 110 = 70
+            Assert.That(result!.PotentialProfit, Is.EqualTo(70m));
+        });
+    }
+
+    [Test]
+    public async Task GetPrediction_should_respect_price_band_filter()
+    {
+        var job = AddJob();
+        var active = AddListing(job.Id, "111", 100m, "New", "Active");
+        var soldInBand = AddListing(job.Id, "222", 150m, "New", "Sold");    // in 2x band
+        var soldOutBand = AddListing(job.Id, "333", 250m, "New", "Sold");   // out of 2x band
+
+        AddRelationship(active.Id, soldInBand.Id);
+        AddRelationship(active.Id, soldOutBand.Id);
+
+        var result = await _service.GetPrediction(active.Id,
+            new PredictionFilters(PriceBand: 2.0m, MatchCondition: false));
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(result, Is.Not.Null);
+            Assert.That(result!.SimilarSoldCount, Is.EqualTo(1));
+            Assert.That(result.AverageSoldPrice, Is.EqualTo(150m));
+        });
+    }
+
+    [Test]
+    public async Task GetPrediction_should_exclude_zero_price_comps()
+    {
+        var job = AddJob();
+        var active = AddListing(job.Id, "111", 100m, "New", "Active");
+        var sold1 = AddListing(job.Id, "222", 200m, "New", "Sold");
+        var sold2 = AddListing(job.Id, "333", 0m, "New", "Sold");
+
+        AddRelationship(active.Id, sold1.Id);
+        AddRelationship(active.Id, sold2.Id);
+
+        var result = await _service.GetPrediction(active.Id,
+            new PredictionFilters(MatchCondition: false));
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(result, Is.Not.Null);
+            Assert.That(result!.SimilarSoldCount, Is.EqualTo(1));
+            Assert.That(result.AverageSoldPrice, Is.EqualTo(200m));
+        });
+    }
+
+    [Test]
+    public async Task GetPrediction_should_be_consistent_with_GetComparables()
+    {
+        var job = AddJob();
+        var active = AddListing(job.Id, "111", 100m, "New", "Active");
+        var sold1 = AddListing(job.Id, "222", 150m, "New", "Sold");
+        var sold2 = AddListing(job.Id, "333", 180m, "Used", "Sold");
+
+        AddRelationship(active.Id, sold1.Id);
+        AddRelationship(active.Id, sold2.Id);
+
+        var filters = new PredictionFilters(PriceBand: 2.0m, MatchCondition: true);
+
+        var comps = (await _service.GetComparables(active.Id, filters)).ToList();
+        var prediction = await _service.GetPrediction(active.Id, filters);
+
+        Assert.Multiple(() =>
+        {
+            // Only sold1 matches (New condition + in price band)
+            Assert.That(comps, Has.Count.EqualTo(1));
+            Assert.That(prediction, Is.Not.Null);
+            Assert.That(prediction!.SimilarSoldCount, Is.EqualTo(comps.Count));
+
+            var expectedAvg = comps.Where(c => c.Price > 0).Average(c => c.Price!.Value);
+            Assert.That(prediction.AverageSoldPrice, Is.EqualTo(expectedAvg));
+        });
+    }
 }
