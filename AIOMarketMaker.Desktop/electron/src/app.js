@@ -495,25 +495,19 @@ createApp({
 
       const runs = (this.overviewData.recentRuns || []).slice().reverse();
       this.overviewCharts.opportunityTrend = new Chart(canvas, {
-        type: 'line',
+        type: 'bar',
         data: {
-          labels: runs.map(r => r.jobSearchTerm || `Run ${r.id}`),
+          labels: runs.map(r => this.truncate(r.jobSearchTerm, 20) || `Run ${r.id}`),
           datasets: [{
             label: 'Active Added',
             data: runs.map(r => r.listingsAddedActive),
-            borderColor: '#22c55e',
-            backgroundColor: 'rgba(34, 197, 94, 0.1)',
-            fill: true,
-            tension: 0.3,
-            pointRadius: 3
+            backgroundColor: '#22c55e',
+            borderRadius: 4
           }, {
             label: 'Sold Added',
             data: runs.map(r => r.listingsAddedSold),
-            borderColor: '#f59e0b',
-            backgroundColor: 'rgba(245, 158, 11, 0.1)',
-            fill: true,
-            tension: 0.3,
-            pointRadius: 3
+            backgroundColor: '#f59e0b',
+            borderRadius: 4
           }]
         },
         options: {
@@ -524,8 +518,8 @@ createApp({
           },
           scales: {
             x: {
-              ticks: { color: '#808080', maxTicksLimit: 5 },
-              grid: { color: '#3c3c3c' }
+              ticks: { color: '#808080' },
+              grid: { display: false }
             },
             y: {
               ticks: { color: '#808080' },
