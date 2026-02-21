@@ -44,6 +44,7 @@
             <span>Loading dashboard...</span>
           </div>
 
+          <template v-else>
           <!-- KPI Cards -->
           <div class="kpi-grid">
             <div class="kpi-card">
@@ -113,6 +114,7 @@
               </div>
             </div>
           </div>
+          </template>
 
         </div>
 
@@ -129,6 +131,7 @@
             <span>Loading opportunities...</span>
           </div>
 
+          <template v-else>
           <div style="display: flex; gap: 8px; margin-bottom: 12px;">
 
           <!-- Category Filter Dropdown -->
@@ -228,6 +231,7 @@
             <button class="page-btn" :disabled="opportunityPage >= opportunityTotalPages" @click="goToPage(opportunityPage + 1)">Next</button>
             <span class="page-info">Page {{ opportunityPage }} of {{ opportunityTotalPages }}</span>
           </div>
+          </template>
         </div>
 
         <!-- Listing Detail View -->
@@ -351,6 +355,7 @@
               <span>Loading history...</span>
             </div>
 
+            <template v-else>
             <!-- Job Overview View -->
             <template v-if="showJobsPanel">
               <div class="jobs-toolbar">
@@ -679,6 +684,7 @@
                 </template>
               </tbody>
             </table>
+            </template>
           </div>
         </div>
 
