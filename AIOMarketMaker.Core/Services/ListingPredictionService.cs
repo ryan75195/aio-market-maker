@@ -174,15 +174,208 @@ public class ListingPredictionService : IListingPredictionService
         return comparables;
     }
 
-    public Task<PagedPredictions> GetPredictions(
+    private static readonly HashSet<string> AllowedSortColumns = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "title", "price", "averageSoldPrice", "potentialProfit",
+        "similarSoldCount", "estimatedDaysToSell", "condition",
+        "createdUtc", "searchTerm"
+    };
+
+    public async Task<PagedPredictions> GetPredictions(
         PredictionFilters filters, IEnumerable<int>? jobIds,
         string sortBy, string sortDir, int page, int pageSize)
     {
-        throw new NotImplementedException();
+        if (IsSqlite())
+        {
+            return new PagedPredictions(
+                Enumerable.Empty<ListingPredictionResult>(),
+                Enumerable.Empty<int>(), 0, page, pageSize, 0);
+        }
+
+        page = Math.Max(1, page);
+        pageSize = Math.Clamp(pageSize, 1, 200);
+        sortDir = string.Equals(sortDir, "asc", StringComparison.OrdinalIgnoreCase) ? "asc" : "desc";
+        if (!AllowedSortColumns.Contains(sortBy))
+        {
+            sortBy = "potentialProfit";
+        }
+
+        var jobIdList = jobIds?.ToList() ?? new List<int>();
+        var cte = BuildCte(filters);
+        var joinType = filters.MinComps > 0 ? "INNER JOIN" : "LEFT JOIN";
+
+        int totalCount;
+        if (filters.MinComps > 0)
+        {
+            var jobFilterClauseCount = jobIdList.Count > 0
+                ? $"AND l.ScrapeJobId IN ({string.Join(",", jobIdList)})"
+                : "";
+            var countSql = $@"
+                {cte}
+                SELECT COUNT(*)
+                FROM Listings l
+                INNER JOIN FilteredPredictions p ON p.ListingId = l.Id
+                WHERE l.ListingStatus = 'Active'
+                {jobFilterClauseCount}";
+            totalCount = (int)(await ExecuteScalar(countSql))!;
+        }
+        else
+        {
+            var countQuery = _db.Listings.Where(l => l.ListingStatus == "Active");
+            if (jobIdList.Count > 0)
+            {
+                countQuery = countQuery.Where(l => jobIdList.Contains(l.ScrapeJobId));
+            }
+            totalCount = await countQuery.CountAsync();
+        }
+
+        if (totalCount == 0)
+        {
+            return new PagedPredictions(
+                Enumerable.Empty<ListingPredictionResult>(),
+                Enumerable.Empty<int>(), 0, page, pageSize, 0);
+        }
+
+        var orderByColumn = sortBy.ToLowerInvariant() switch
+        {
+            "title" => "l.Title",
+            "price" => "l.Price",
+            "averagedsoldprice" or "averagesoldprice" => "p.AverageSoldPrice",
+            "potentialprofit" => "p.PotentialProfit",
+            "similarsoldcount" => "p.SimilarSoldCount",
+            "estimateddaystosell" => "p.EstimatedDaysToSell",
+            "condition" => "l.[Condition]",
+            "createdutc" => "l.CreatedUtc",
+            "searchterm" => "sj.SearchTerm",
+            _ => "p.PotentialProfit"
+        };
+
+        var nullsLast = $"CASE WHEN {orderByColumn} IS NULL THEN 1 ELSE 0 END";
+        var orderClause = $"{nullsLast}, {orderByColumn} {sortDir.ToUpperInvariant()}";
+        var offset = (page - 1) * pageSize;
+
+        var jobFilterClause = jobIdList.Count > 0
+            ? $"AND l.ScrapeJobId IN ({string.Join(",", jobIdList)})"
+            : "";
+
+        var sql = $@"
+            {cte}
+            SELECT l.Id, p.AverageSoldPrice, p.SimilarSoldCount, p.PotentialProfit, p.EstimatedDaysToSell
+            FROM Listings l
+            {joinType} FilteredPredictions p ON p.ListingId = l.Id
+            LEFT JOIN ScrapeJobs sj ON sj.Id = l.ScrapeJobId
+            WHERE l.ListingStatus = 'Active'
+            {jobFilterClause}
+            ORDER BY {orderClause}
+            OFFSET {offset} ROWS FETCH NEXT {pageSize} ROWS ONLY";
+
+        var rows = await ExecuteQuery(sql, reader => new ListingPredictionResult(
+            reader.GetInt32(0),
+            reader.IsDBNull(2) ? 0 : reader.GetInt32(2),
+            reader.IsDBNull(1) ? 0 : reader.GetDecimal(1),
+            reader.IsDBNull(3) ? 0 : reader.GetDecimal(3),
+            reader.IsDBNull(4) ? null : reader.GetInt32(4)));
+
+        var orderedIds = rows.Select(r => r.ListingId).ToList();
+        var totalPages = (int)Math.Ceiling((double)totalCount / pageSize);
+
+        return new PagedPredictions(rows, orderedIds, totalCount, page, pageSize, totalPages);
     }
 
     public Task<PredictionAggregates> GetAggregates(PredictionFilters filters)
     {
         throw new NotImplementedException();
+    }
+
+    private static string BuildCte(PredictionFilters filters)
+    {
+        var pb = filters.PriceBand.ToString(CultureInfo.InvariantCulture);
+        var fee = filters.FeePercent.ToString(CultureInfo.InvariantCulture);
+        var mc = filters.MinComps.ToString(CultureInfo.InvariantCulture);
+
+        var conditionFilter = filters.MatchCondition
+            ? "AND active.[Condition] = sold.[Condition]"
+            : "";
+
+        var priceBandFilter = filters.PriceBand > 0
+            ? $@"AND active.Price > 0
+               AND sold.Price BETWEEN active.Price / {pb} AND active.Price * {pb}"
+            : "";
+
+        var profitExpr = filters.FeePercent > 0
+            ? $"AVG(sold.Price) * (1.0 - {fee} / 100.0) - active.Price - ISNULL(active.ShippingCost, 0)"
+            : "AVG(sold.Price) - active.Price";
+
+        return $@";WITH ComparableSoldNeighbors AS (
+        SELECT r.ListingIdA AS ActiveListingId, r.ListingIdB AS SoldListingId
+        FROM ListingRelationships r
+        INNER JOIN Listings active ON active.Id = r.ListingIdA AND active.ListingStatus = 'Active'
+        INNER JOIN Listings sold ON sold.Id = r.ListingIdB AND sold.ListingStatus = 'Sold'
+        WHERE r.IsComparable = 1
+        {conditionFilter}
+        UNION ALL
+        SELECT r.ListingIdB AS ActiveListingId, r.ListingIdA AS SoldListingId
+        FROM ListingRelationships r
+        INNER JOIN Listings active ON active.Id = r.ListingIdB AND active.ListingStatus = 'Active'
+        INNER JOIN Listings sold ON sold.Id = r.ListingIdA AND sold.ListingStatus = 'Sold'
+        WHERE r.IsComparable = 1
+        {conditionFilter}
+    ),
+    FilteredPredictions AS (
+        SELECT active.Id AS ListingId,
+            COUNT(*) AS SimilarSoldCount,
+            AVG(sold.Price) AS AverageSoldPrice,
+            {profitExpr} AS PotentialProfit,
+            AVG(CASE WHEN sold.EndDateUtc > sold.CreatedUtc
+                     THEN DATEDIFF(day, sold.CreatedUtc, sold.EndDateUtc)
+                END) AS EstimatedDaysToSell
+        FROM ComparableSoldNeighbors csn
+        INNER JOIN Listings sold ON sold.Id = csn.SoldListingId
+        INNER JOIN Listings active ON active.Id = csn.ActiveListingId
+        WHERE sold.Price > 0
+        {priceBandFilter}
+        GROUP BY active.Id, active.Price, active.ShippingCost
+        HAVING COUNT(*) >= {mc}
+            AND {profitExpr} > 0
+    )";
+    }
+
+    private async Task<object?> ExecuteScalar(string sql)
+    {
+        var conn = _db.Database.GetDbConnection();
+        if (conn.State != ConnectionState.Open)
+        {
+            await conn.OpenAsync();
+        }
+
+        await using var cmd = conn.CreateCommand();
+        cmd.CommandText = sql;
+        return await cmd.ExecuteScalarAsync();
+    }
+
+    private async Task<List<T>> ExecuteQuery<T>(string sql, Func<DbDataReader, T> map)
+    {
+        var conn = _db.Database.GetDbConnection();
+        if (conn.State != ConnectionState.Open)
+        {
+            await conn.OpenAsync();
+        }
+
+        await using var cmd = conn.CreateCommand();
+        cmd.CommandText = sql;
+        await using var reader = await cmd.ExecuteReaderAsync();
+
+        var results = new List<T>();
+        while (await reader.ReadAsync())
+        {
+            results.Add(map(reader));
+        }
+
+        return results;
+    }
+
+    private bool IsSqlite()
+    {
+        return _db.Database.GetDbConnection().GetType().Name.Contains("Sqlite");
     }
 }
