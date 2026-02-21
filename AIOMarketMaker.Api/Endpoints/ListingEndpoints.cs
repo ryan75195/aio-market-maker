@@ -1,7 +1,3 @@
-using System.Data;
-using System.Data.Common;
-using System.Globalization;
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Azure.Storage.Blobs;
 using AIOMarketMaker.Core.Data;
@@ -62,19 +58,9 @@ public static class ListingEndpoints
         app.MapDelete("/api/data/all", ClearAllData);
     }
 
-    private record ListingIdWithPrediction(
-        int Id, decimal? AverageSoldPrice, int? SimilarSoldCount, decimal? PotentialProfit,
-        int? EstimatedDaysToSell);
-
-    private static readonly HashSet<string> AllowedSortColumns = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "title", "price", "averageSoldPrice", "potentialProfit",
-        "similarSoldCount", "estimatedDaysToSell", "condition",
-        "createdUtc", "searchTerm"
-    };
-
     private static async Task<IResult> GetActiveListings(
         EtlDbContext db,
+        IListingPredictionService predictionService,
         int page = 1,
         int pageSize = 50,
         string sortBy = "potentialProfit",
@@ -85,117 +71,34 @@ public static class ListingEndpoints
         decimal feePercent = 0,
         bool matchCondition = true)
     {
-        page = Math.Max(1, page);
-        pageSize = Math.Clamp(pageSize, 1, 200);
-        sortDir = string.Equals(sortDir, "asc", StringComparison.OrdinalIgnoreCase) ? "asc" : "desc";
-        if (!AllowedSortColumns.Contains(sortBy))
-        {
-            sortBy = "potentialProfit";
-        }
+        var filters = new PredictionFilters(priceBand, feePercent, matchCondition, minComps);
+        var jobIdList = ParseJobIds(jobIds);
 
-        var jobIdFilter = ParseJobIds(jobIds);
-        var cte = BuildFilteredPredictionsCte(priceBand, feePercent, minComps, matchCondition);
-        var joinType = minComps > 0 ? "INNER JOIN" : "LEFT JOIN";
+        var paged = await predictionService.GetPredictions(
+            filters, jobIdList.Count > 0 ? jobIdList : null,
+            sortBy, sortDir, page, pageSize);
 
-        // Count total matching active listings
-        int totalCount;
-        if (minComps > 0)
-        {
-            var jobFilterClauseCount = jobIdFilter.Count > 0
-                ? $"AND l.ScrapeJobId IN ({string.Join(",", jobIdFilter)})"
-                : "";
-            var countSql = $@"
-                {cte}
-                SELECT COUNT(*)
-                FROM Listings l
-                INNER JOIN FilteredPredictions p ON p.ListingId = l.Id
-                WHERE l.ListingStatus = 'Active'
-                {jobFilterClauseCount}";
-            totalCount = (int)(await ExecuteScalar(db, countSql))!;
-        }
-        else
-        {
-            var countQuery = db.Listings.Where(l => l.ListingStatus == "Active");
-            if (jobIdFilter.Count > 0)
-            {
-                countQuery = countQuery.Where(l => jobIdFilter.Contains(l.ScrapeJobId));
-            }
-            totalCount = await countQuery.CountAsync();
-        }
-
-        if (totalCount == 0)
+        if (paged.TotalCount == 0)
         {
             return Results.Ok(new PagedResponse<OpportunityListing>(
                 Enumerable.Empty<OpportunityListing>(), 0, page, pageSize, 0));
         }
 
-        // Sort + paginate via raw SQL with inline CTE
-        var orderByColumn = sortBy.ToLowerInvariant() switch
-        {
-            "title" => "l.Title",
-            "price" => "l.Price",
-            "averagedsoldprice" or "averageSoldPrice" => "p.AverageSoldPrice",
-            "potentialprofit" or "potentialProfit" => "p.PotentialProfit",
-            "similarsoldcount" or "similarSoldCount" => "p.SimilarSoldCount",
-            "estimateddaystosell" or "estimatedDaysToSell" => "p.EstimatedDaysToSell",
-            "condition" => "l.[Condition]",
-            "createdutc" or "createdUtc" => "l.CreatedUtc",
-            "searchterm" or "searchTerm" => "sj.SearchTerm",
-            _ => "p.PotentialProfit"
-        };
-
-        var nullsLast = $"CASE WHEN {orderByColumn} IS NULL THEN 1 ELSE 0 END";
-        var orderClause = $"{nullsLast}, {orderByColumn} {sortDir.ToUpperInvariant()}";
-        var offset = (page - 1) * pageSize;
-
-        var jobFilterClause = jobIdFilter.Count > 0
-            ? $"AND l.ScrapeJobId IN ({string.Join(",", jobIdFilter)})"
-            : "";
-
-        var sql = $@"
-            {cte}
-            SELECT l.Id, p.AverageSoldPrice, p.SimilarSoldCount, p.PotentialProfit, p.EstimatedDaysToSell
-            FROM Listings l
-            {joinType} FilteredPredictions p ON p.ListingId = l.Id
-            LEFT JOIN ScrapeJobs sj ON sj.Id = l.ScrapeJobId
-            WHERE l.ListingStatus = 'Active'
-            {jobFilterClause}
-            ORDER BY {orderClause}
-            OFFSET {offset} ROWS FETCH NEXT {pageSize} ROWS ONLY";
-
-        var rows = await ExecuteQuery(db, sql, reader => new ListingIdWithPrediction(
-            reader.GetInt32(0),
-            reader.IsDBNull(1) ? null : reader.GetDecimal(1),
-            reader.IsDBNull(2) ? null : reader.GetInt32(2),
-            reader.IsDBNull(3) ? null : reader.GetDecimal(3),
-            reader.IsDBNull(4) ? null : reader.GetInt32(4)));
-
-        if (rows.Count == 0)
-        {
-            var totalPages0 = (int)Math.Ceiling((double)totalCount / pageSize);
-            return Results.Ok(new PagedResponse<OpportunityListing>(
-                Enumerable.Empty<OpportunityListing>(), totalCount, page, pageSize, totalPages0));
-        }
-
-        var ids = rows.Select(r => r.Id).ToList();
-
-        // Build predictions dictionary from CTE results (no second query needed)
-        var predictions = rows
-            .Where(r => r.AverageSoldPrice.HasValue)
+        var ids = paged.OrderedListingIds.ToList();
+        var predictions = paged.Items
+            .Where(r => r.AverageSoldPrice > 0)
             .ToDictionary(
-                r => r.Id,
-                r => new PricingAggregate(r.AverageSoldPrice, r.SimilarSoldCount ?? 0, r.EstimatedDaysToSell));
+                r => r.ListingId,
+                r => new PricingAggregate(r.AverageSoldPrice, r.SimilarSoldCount, r.EstimatedDaysToSell));
 
-        // Pass through fee-adjusted profit from CTE when fees are applied
         Dictionary<int, decimal>? profitOverrides = null;
         if (feePercent > 0 || priceBand > 0)
         {
-            profitOverrides = rows
-                .Where(r => r.PotentialProfit.HasValue)
-                .ToDictionary(r => r.Id, r => r.PotentialProfit!.Value);
+            profitOverrides = paged.Items
+                .Where(r => r.PotentialProfit != 0)
+                .ToDictionary(r => r.ListingId, r => r.PotentialProfit);
         }
 
-        // Load full entities preserving SQL sort order
         var listings = await db.Listings
             .Include(l => l.ScrapeJob)
             .Where(l => ids.Contains(l.Id))
@@ -206,99 +109,9 @@ public static class ListingEndpoints
             .CompareTo(idOrder.GetValueOrDefault(b.Id, int.MaxValue)));
 
         var items = listings.Select(l => ToOpportunityListing(l, predictions, profitOverrides));
-        var totalPagesCalc = (int)Math.Ceiling((double)totalCount / pageSize);
 
         return Results.Ok(new PagedResponse<OpportunityListing>(
-            items, totalCount, page, pageSize, totalPagesCalc));
-    }
-
-    private static string BuildFilteredPredictionsCte(
-        decimal priceBand, decimal feePercent, int minComps, bool matchCondition)
-    {
-        var pb = priceBand.ToString(CultureInfo.InvariantCulture);
-        var fee = feePercent.ToString(CultureInfo.InvariantCulture);
-        var mc = minComps.ToString(CultureInfo.InvariantCulture);
-
-        var conditionFilter = matchCondition
-            ? "AND active.[Condition] = sold.[Condition]"
-            : "";
-
-        var priceBandFilter = priceBand > 0
-            ? $@"AND active.Price > 0
-                   AND sold.Price BETWEEN active.Price / {pb} AND active.Price * {pb}"
-            : "";
-
-        var profitExpr = feePercent > 0
-            ? $"AVG(sold.Price) * (1.0 - {fee} / 100.0) - active.Price - ISNULL(active.ShippingCost, 0)"
-            : "AVG(sold.Price) - active.Price";
-
-        return $@";WITH ComparableSoldNeighbors AS (
-            SELECT r.ListingIdA AS ActiveListingId, r.ListingIdB AS SoldListingId
-            FROM ListingRelationships r
-            INNER JOIN Listings active ON active.Id = r.ListingIdA AND active.ListingStatus = 'Active'
-            INNER JOIN Listings sold ON sold.Id = r.ListingIdB AND sold.ListingStatus = 'Sold'
-            WHERE r.IsComparable = 1
-            {conditionFilter}
-            UNION ALL
-            SELECT r.ListingIdB AS ActiveListingId, r.ListingIdA AS SoldListingId
-            FROM ListingRelationships r
-            INNER JOIN Listings active ON active.Id = r.ListingIdB AND active.ListingStatus = 'Active'
-            INNER JOIN Listings sold ON sold.Id = r.ListingIdA AND sold.ListingStatus = 'Sold'
-            WHERE r.IsComparable = 1
-            {conditionFilter}
-        ),
-        FilteredPredictions AS (
-            SELECT active.Id AS ListingId,
-                COUNT(*) AS SimilarSoldCount,
-                AVG(sold.Price) AS AverageSoldPrice,
-                {profitExpr} AS PotentialProfit,
-                AVG(CASE WHEN sold.EndDateUtc > sold.CreatedUtc
-                         THEN DATEDIFF(day, sold.CreatedUtc, sold.EndDateUtc)
-                    END) AS EstimatedDaysToSell
-            FROM ComparableSoldNeighbors csn
-            INNER JOIN Listings sold ON sold.Id = csn.SoldListingId
-            INNER JOIN Listings active ON active.Id = csn.ActiveListingId
-            WHERE sold.Price > 0
-            {priceBandFilter}
-            GROUP BY active.Id, active.Price, active.ShippingCost
-            HAVING COUNT(*) >= {mc}
-                AND {profitExpr} > 0
-        )";
-    }
-
-    private static async Task<object?> ExecuteScalar(EtlDbContext db, string sql)
-    {
-        var conn = db.Database.GetDbConnection();
-        if (conn.State != ConnectionState.Open)
-        {
-            await conn.OpenAsync();
-        }
-
-        await using var cmd = conn.CreateCommand();
-        cmd.CommandText = sql;
-        return await cmd.ExecuteScalarAsync();
-    }
-
-    private static async Task<List<T>> ExecuteQuery<T>(
-        EtlDbContext db, string sql, Func<DbDataReader, T> map)
-    {
-        var conn = db.Database.GetDbConnection();
-        if (conn.State != ConnectionState.Open)
-        {
-            await conn.OpenAsync();
-        }
-
-        await using var cmd = conn.CreateCommand();
-        cmd.CommandText = sql;
-        await using var reader = await cmd.ExecuteReaderAsync();
-
-        var results = new List<T>();
-        while (await reader.ReadAsync())
-        {
-            results.Add(map(reader));
-        }
-
-        return results;
+            items, paged.TotalCount, paged.Page, paged.PageSize, paged.TotalPages));
     }
 
     private static List<int> ParseJobIds(string? jobIds)
@@ -316,7 +129,9 @@ public static class ListingEndpoints
             .ToList();
     }
 
-    private static async Task<IResult> GetListingDetail(EtlDbContext db, int id)
+    private static async Task<IResult> GetListingDetail(
+        EtlDbContext db, IListingPredictionService predictionService, int id,
+        decimal priceBand = 0, decimal feePercent = 0, bool matchCondition = true)
     {
         var listing = await db.Listings
             .Include(l => l.ScrapeJob)
@@ -327,40 +142,15 @@ public static class ListingEndpoints
             return Results.NotFound();
         }
 
-        // Get prediction data (may not exist if no comps).
-        // The view backing ListingPredictions doesn't exist in SQLite test environments.
-        ListingPrediction? prediction = null;
-        try
-        {
-            prediction = await db.ListingPredictions
-                .FirstOrDefaultAsync(p => p.ListingId == id);
-        }
-        catch (SqliteException)
-        {
-            // View doesn't exist (e.g., SQLite in-memory tests) — predictions unavailable
-        }
+        var filters = new PredictionFilters(priceBand, feePercent, matchCondition);
+        var comps = await predictionService.GetComparables(id, filters);
+        var prediction = await predictionService.GetPrediction(id, filters);
 
-        // Get comparable sold relationships (bidirectional).
-        // Filter to sold comps with matching condition to match the prediction view.
-        var relationships = await db.ListingRelationships
-            .Include(r => r.ListingA)
-            .Include(r => r.ListingB)
-            .Where(r => r.IsComparable && (r.ListingIdA == id || r.ListingIdB == id))
-            .Where(r => r.ListingIdA == id
-                ? r.ListingB.ListingStatus == "Sold"
-                    && r.ListingB.Condition == listing.Condition
-                : r.ListingA.ListingStatus == "Sold"
-                    && r.ListingA.Condition == listing.Condition)
-            .ToListAsync();
-
-        var comparables = relationships.Select(r =>
-        {
-            var comp = r.ListingIdA == id ? r.ListingB : r.ListingA;
-            return new ComparableListing(
-                r.Id, comp.ListingId, comp.Title, comp.Description,
-                comp.Price, comp.Condition, comp.Url, comp.Images,
-                comp.EndDateUtc, r.SimilarityScore, r.Explanation);
-        });
+        var comparables = comps.Select(c => new ComparableListing(
+            c.RelationshipId, c.ListingId!, c.Title,
+            c.Description, c.Price, c.Condition,
+            c.Url, c.Images,
+            c.SoldDateUtc, c.SimilarityScore, c.Explanation));
 
         var detail = new ListingDetail(
             listing.Id, listing.ListingId, listing.Title, listing.Description,
@@ -375,7 +165,9 @@ public static class ListingEndpoints
     }
 
     private static async Task<IResult> DismissComparable(
-        EtlDbContext db, int id, int relationshipId)
+        EtlDbContext db, IListingPredictionService predictionService,
+        int id, int relationshipId,
+        decimal priceBand = 0, decimal feePercent = 0, bool matchCondition = true)
     {
         var relationship = await db.ListingRelationships
             .FirstOrDefaultAsync(r =>
@@ -390,8 +182,7 @@ public static class ListingEndpoints
         db.ListingRelationships.Remove(relationship);
         await db.SaveChangesAsync();
 
-        // Return updated detail (reuse GetListingDetail logic)
-        return await GetListingDetail(db, id);
+        return await GetListingDetail(db, predictionService, id, priceBand, feePercent, matchCondition);
     }
 
     private static async Task<IResult> GetListingStats(EtlDbContext db)
