@@ -126,7 +126,8 @@ builder.Services.AddSingleton<IPricingAnalysisService, PricingAnalysisService>()
 var classifierConfig = new OnnxClassifierConfig(
     ModelPath: configuration.GetValue<string>("VariantClassifier:ModelPath") ?? "models/variant-classifier/model.onnx",
     VocabPath: configuration.GetValue<string>("VariantClassifier:VocabPath") ?? "models/variant-classifier/vocab.json",
-    MergesPath: configuration.GetValue<string>("VariantClassifier:MergesPath") ?? "models/variant-classifier/merges.txt");
+    MergesPath: configuration.GetValue<string>("VariantClassifier:MergesPath") ?? "models/variant-classifier/merges.txt",
+    MaxLength: configuration.GetValue<int?>("VariantClassifier:MaxLength") ?? 256);
 builder.Services.AddSingleton(classifierConfig);
 builder.Services.AddSingleton<IVariantClassifierClient, OnnxVariantClassifier>();
 
