@@ -373,10 +373,13 @@ createApp({
         }
         const data = await this.apiCall(`/overview?${params.toString()}`);
         this.overviewData = this.toCamelCase(data);
-        this.$nextTick(() => this.renderCharts());
+        // Render charts while content is invisible (opacity:0), then reveal
+        this.$nextTick(() => {
+          this.renderCharts();
+          this.overviewLoading = false;
+        });
       } catch (err) {
         this.showToast(`Failed to load overview: ${err.message}`, 'error');
-      } finally {
         this.overviewLoading = false;
       }
     },
