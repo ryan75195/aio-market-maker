@@ -12,7 +12,6 @@ createApp({
       jobs: [],
       opportunities: [],
       opportunityPage: 1,
-      opportunityPageSize: 50,
       opportunitySortBy: 'potentialProfit',
       opportunitySortDir: 'desc',
       opportunityJobFilter: [],
@@ -27,7 +26,7 @@ createApp({
       batches: [],
       selectedBatch: null,
       batchPage: 1,
-      batchPageSize: 20,
+      compPage: 1,
       batchTotalCount: 0,
       batchTotalPages: 0,
       expandedRuns: {},
@@ -135,6 +134,53 @@ createApp({
         return `Category: ${cat ? cat.name : 'Unknown'}`;
       }
       return `Category: ${this.opportunityCategoryFilter.length} selected`;
+    },
+
+    opportunityPageSize() {
+      // ~36px per row (8px padding*2 + 13px font*1.5 line-height), ~220px overhead
+      return Math.max(5, Math.floor((this.windowHeight - 220) / 36));
+    },
+
+    batchPageSize() {
+      // ~36px per row, ~240px overhead (header/stats/table-head/pagination/padding)
+      return Math.max(5, Math.floor((this.windowHeight - 240) / 36));
+    },
+
+    compPageSize() {
+      // ~220px per comp card row, reserve ~380px for header/anchor/comps-header/pagination
+      const available = this.windowHeight - 380;
+      const cardsPerRow = 3;
+      const rows = Math.max(1, Math.floor(available / 220));
+      return cardsPerRow * rows;
+    },
+
+    paginatedComps() {
+      if (!this.listingDetail || !this.listingDetail.comparables) { return []; }
+      const start = (this.compPage - 1) * this.compPageSize;
+      return this.listingDetail.comparables.slice(start, start + this.compPageSize);
+    },
+
+    compTotalPages() {
+      if (!this.listingDetail || !this.listingDetail.comparables) { return 0; }
+      return Math.ceil(this.listingDetail.comparables.length / this.compPageSize);
+    },
+
+    compPageRange() {
+      const total = this.compTotalPages;
+      const current = this.compPage;
+      if (total <= 7) {
+        return Array.from({ length: total }, (_, i) => i + 1);
+      }
+      const pages = [1];
+      const start = Math.max(2, current - 1);
+      const end = Math.min(total - 1, current + 1);
+      if (start > 2) { pages.push('...'); }
+      for (let i = start; i <= end; i++) {
+        pages.push(i);
+      }
+      if (end < total - 1) { pages.push('...'); }
+      pages.push(total);
+      return pages;
     },
 
     filteredJobIds() {
@@ -323,7 +369,19 @@ createApp({
   },
 
   async mounted() {
-    this._onResize = () => { this.windowHeight = window.innerHeight; };
+    this._onResize = () => {
+      this.windowHeight = window.innerHeight;
+      clearTimeout(this._resizeTimer);
+      this._resizeTimer = setTimeout(() => {
+        if (this.currentView === 'opportunities') {
+          this.opportunityPage = 1;
+          this.loadOpportunities();
+        } else if (this.currentView === 'index' && this.historyMode === 'batches' && !this.showJobsPanel) {
+          this.batchPage = 1;
+          this.loadHistory();
+        }
+      }, 300);
+    };
     window.addEventListener('resize', this._onResize);
     await this.loadConfig();
     if (!this.configError) {
@@ -1077,10 +1135,32 @@ createApp({
       }
     },
 
+    goToCompPage(page) {
+      if (page < 1 || page > this.compTotalPages) { return; }
+      this.compPage = page;
+    },
+
+    listingDetailParams() {
+      const opp = this.settings?.opportunities || {};
+      const params = new URLSearchParams();
+      if (opp.priceBandMultiplier > 0) {
+        params.set('priceBand', opp.priceBandMultiplier);
+      }
+      if (opp.feePercent > 0) {
+        params.set('feePercent', opp.feePercent);
+      }
+      if (opp.matchCondition) {
+        params.set('matchCondition', 'true');
+      }
+      return params.toString();
+    },
+
     async loadListingDetail(id) {
       this.listingDetailLoading = true;
+      this.compPage = 1;
       try {
-        const data = await this.apiCall(`/listings/${id}`);
+        const qs = this.listingDetailParams();
+        const data = await this.apiCall(`/listings/${id}${qs ? '?' + qs : ''}`);
         this.listingDetail = this.toCamelCase(data);
       } catch (err) {
         this.showToast(`Failed to load listing: ${err.message}`, 'error');
@@ -1103,8 +1183,9 @@ createApp({
 
     async dismissComparable(relationshipId) {
       try {
+        const qs = this.listingDetailParams();
         const data = await this.apiCall(
-          `/listings/${this.selectedListingId}/comparables/${relationshipId}`,
+          `/listings/${this.selectedListingId}/comparables/${relationshipId}${qs ? '?' + qs : ''}`,
           { method: 'DELETE' }
         );
         this.listingDetail = this.toCamelCase(data);
@@ -1352,7 +1433,15 @@ createApp({
     },
 
     toggleSection(section) {
-      this.collapsedSections[section] = !this.collapsedSections[section];
+      const isOpening = this.collapsedSections[section];
+      // Accordion: close all sections first
+      Object.keys(this.collapsedSections).forEach(key => {
+        this.collapsedSections[key] = true;
+      });
+      // Toggle the clicked section
+      if (isOpening) {
+        this.collapsedSections[section] = false;
+      }
     },
 
     async saveSettings() {
