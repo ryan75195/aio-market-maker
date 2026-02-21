@@ -92,12 +92,12 @@ public class ListingEndpoints_UnitTests
         var active = new Listing
         {
             ListingId = "111", Title = "PS5 Active", Price = 350m,
-            ListingStatus = "Active", ScrapeJobId = job.Id
+            Condition = "New", ListingStatus = "Active", ScrapeJobId = job.Id
         };
         var sold = new Listing
         {
             ListingId = "222", Title = "PS5 Sold", Price = 380m,
-            ListingStatus = "Sold", ScrapeJobId = job.Id,
+            Condition = "New", ListingStatus = "Sold", ScrapeJobId = job.Id,
             Description = "Good condition PS5"
         };
         _db.Listings.AddRange(active, sold);
@@ -136,12 +136,12 @@ public class ListingEndpoints_UnitTests
         var active = new Listing
         {
             ListingId = "111", Title = "PS5 Active", Price = 350m,
-            ListingStatus = "Active", ScrapeJobId = job.Id
+            Condition = "New", ListingStatus = "Active", ScrapeJobId = job.Id
         };
         var sold = new Listing
         {
             ListingId = "222", Title = "PS5 Sold", Price = 380m,
-            ListingStatus = "Sold", ScrapeJobId = job.Id
+            Condition = "New", ListingStatus = "Sold", ScrapeJobId = job.Id
         };
         _db.Listings.AddRange(active, sold);
         await _db.SaveChangesAsync();
@@ -172,11 +172,11 @@ public class ListingEndpoints_UnitTests
 
         var active = new Listing
         {
-            ListingId = "111", ListingStatus = "Active", ScrapeJobId = job.Id
+            ListingId = "111", Condition = "New", ListingStatus = "Active", ScrapeJobId = job.Id
         };
         var sold = new Listing
         {
-            ListingId = "222", ListingStatus = "Sold", ScrapeJobId = job.Id
+            ListingId = "222", Condition = "New", ListingStatus = "Sold", ScrapeJobId = job.Id
         };
         _db.Listings.AddRange(active, sold);
         await _db.SaveChangesAsync();
@@ -193,6 +193,76 @@ public class ListingEndpoints_UnitTests
         var ok = (Ok<ListingDetailResponse>)result;
 
         Assert.That(ok.Value!.Comparables, Is.Empty);
+    }
+
+    [Test]
+    public async Task Should_exclude_non_sold_and_condition_mismatched_comparables()
+    {
+        var job = new ScrapeJob { SearchTerm = "PS5" };
+        _db.ScrapeJobs.Add(job);
+        await _db.SaveChangesAsync();
+
+        var active = new Listing
+        {
+            ListingId = "111", Title = "PS5 Active", Price = 350m,
+            Condition = "New", ListingStatus = "Active", ScrapeJobId = job.Id
+        };
+        var soldSameCondition = new Listing
+        {
+            ListingId = "222", Title = "PS5 Sold New", Price = 380m,
+            Condition = "New", ListingStatus = "Sold", ScrapeJobId = job.Id
+        };
+        var soldDifferentCondition = new Listing
+        {
+            ListingId = "333", Title = "PS5 Sold Used", Price = 320m,
+            Condition = "Used", ListingStatus = "Sold", ScrapeJobId = job.Id
+        };
+        var otherActive = new Listing
+        {
+            ListingId = "444", Title = "PS5 Also Active", Price = 360m,
+            Condition = "New", ListingStatus = "Active", ScrapeJobId = job.Id
+        };
+        var ended = new Listing
+        {
+            ListingId = "555", Title = "PS5 Ended", Price = 370m,
+            Condition = "New", ListingStatus = "Ended", ScrapeJobId = job.Id
+        };
+        _db.Listings.AddRange(active, soldSameCondition, soldDifferentCondition, otherActive, ended);
+        await _db.SaveChangesAsync();
+
+        _db.ListingRelationships.AddRange(
+            new ListingRelationship
+            {
+                ListingIdA = active.Id, ListingIdB = soldSameCondition.Id,
+                IsComparable = true, SimilarityScore = 0.9, Explanation = "Same"
+            },
+            new ListingRelationship
+            {
+                ListingIdA = active.Id, ListingIdB = soldDifferentCondition.Id,
+                IsComparable = true, SimilarityScore = 0.85, Explanation = "Same"
+            },
+            new ListingRelationship
+            {
+                ListingIdA = active.Id, ListingIdB = otherActive.Id,
+                IsComparable = true, SimilarityScore = 0.85, Explanation = "Same"
+            },
+            new ListingRelationship
+            {
+                ListingIdA = active.Id, ListingIdB = ended.Id,
+                IsComparable = true, SimilarityScore = 0.88, Explanation = "Same"
+            });
+        await _db.SaveChangesAsync();
+
+        var result = await CallGetListingDetail(active.Id);
+        var ok = (Ok<ListingDetailResponse>)result;
+        var response = ok.Value!;
+
+        Assert.Multiple(() =>
+        {
+            // Only the Sold listing with matching condition should appear
+            Assert.That(response.Comparables.Count(), Is.EqualTo(1));
+            Assert.That(response.Comparables.First().ListingId, Is.EqualTo("222"));
+        });
     }
 
     [Test]
@@ -223,17 +293,17 @@ public class ListingEndpoints_UnitTests
         var active = new Listing
         {
             ListingId = "111", Title = "PS5", Price = 350m,
-            ListingStatus = "Active", ScrapeJobId = job.Id
+            Condition = "New", ListingStatus = "Active", ScrapeJobId = job.Id
         };
         var sold1 = new Listing
         {
             ListingId = "222", Title = "PS5 Sold 1", Price = 380m,
-            ListingStatus = "Sold", ScrapeJobId = job.Id
+            Condition = "New", ListingStatus = "Sold", ScrapeJobId = job.Id
         };
         var sold2 = new Listing
         {
             ListingId = "333", Title = "PS5 Sold 2", Price = 400m,
-            ListingStatus = "Sold", ScrapeJobId = job.Id
+            Condition = "New", ListingStatus = "Sold", ScrapeJobId = job.Id
         };
         _db.Listings.AddRange(active, sold1, sold2);
         await _db.SaveChangesAsync();
@@ -276,15 +346,15 @@ public class ListingEndpoints_UnitTests
 
         var listing1 = new Listing
         {
-            ListingId = "111", ListingStatus = "Active", ScrapeJobId = job.Id
+            ListingId = "111", Condition = "New", ListingStatus = "Active", ScrapeJobId = job.Id
         };
         var listing2 = new Listing
         {
-            ListingId = "222", ListingStatus = "Active", ScrapeJobId = job.Id
+            ListingId = "222", Condition = "New", ListingStatus = "Active", ScrapeJobId = job.Id
         };
         var sold = new Listing
         {
-            ListingId = "333", ListingStatus = "Sold", ScrapeJobId = job.Id
+            ListingId = "333", Condition = "New", ListingStatus = "Sold", ScrapeJobId = job.Id
         };
         _db.Listings.AddRange(listing1, listing2, sold);
         await _db.SaveChangesAsync();

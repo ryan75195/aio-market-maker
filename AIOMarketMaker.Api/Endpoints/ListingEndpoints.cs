@@ -351,11 +351,17 @@ public static class ListingEndpoints
             // View doesn't exist (e.g., SQLite in-memory tests) — predictions unavailable
         }
 
-        // Get all comparable relationships (bidirectional)
+        // Get comparable sold relationships (bidirectional).
+        // Filter to sold comps with matching condition to match the prediction view.
         var relationships = await db.ListingRelationships
             .Include(r => r.ListingA)
             .Include(r => r.ListingB)
             .Where(r => r.IsComparable && (r.ListingIdA == id || r.ListingIdB == id))
+            .Where(r => r.ListingIdA == id
+                ? r.ListingB.ListingStatus == "Sold"
+                    && r.ListingB.Condition == listing.Condition
+                : r.ListingA.ListingStatus == "Sold"
+                    && r.ListingA.Condition == listing.Condition)
             .ToListAsync();
 
         var comparables = relationships.Select(r =>
