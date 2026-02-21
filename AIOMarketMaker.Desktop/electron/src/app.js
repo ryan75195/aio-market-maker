@@ -477,7 +477,7 @@ createApp({
               title: { display: true, text: 'Opportunities', color: '#808080' }
             },
             y: {
-              ticks: { color: '#e0e0e0' },
+              ticks: { color: '#e0e0e0', autoSkip: false },
               grid: { display: false }
             }
           }
@@ -623,7 +623,7 @@ createApp({
               title: { display: true, text: 'Days', color: '#808080' }
             },
             y: {
-              ticks: { color: '#e0e0e0' },
+              ticks: { color: '#e0e0e0', autoSkip: false },
               grid: { display: false }
             }
           }
