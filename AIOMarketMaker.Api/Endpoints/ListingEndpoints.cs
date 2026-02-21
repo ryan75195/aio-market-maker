@@ -379,9 +379,24 @@ public static class ListingEndpoints
         return Results.Ok(new ListingDetailResponse(detail, comparables));
     }
 
-    private static Task<IResult> DismissComparable(EtlDbContext db, int id, int relationshipId)
+    private static async Task<IResult> DismissComparable(
+        EtlDbContext db, int id, int relationshipId)
     {
-        throw new NotImplementedException();
+        var relationship = await db.ListingRelationships
+            .FirstOrDefaultAsync(r =>
+                r.Id == relationshipId &&
+                (r.ListingIdA == id || r.ListingIdB == id));
+
+        if (relationship == null)
+        {
+            return Results.NotFound();
+        }
+
+        db.ListingRelationships.Remove(relationship);
+        await db.SaveChangesAsync();
+
+        // Return updated detail (reuse GetListingDetail logic)
+        return await GetListingDetail(db, id);
     }
 
     private static async Task<IResult> GetListingStats(EtlDbContext db)

@@ -36,6 +36,16 @@ public class ListingEndpoints_UnitTests
         return await resultTask;
     }
 
+    private async Task<IResult> CallDismissComparable(int listingId, int relationshipId)
+    {
+        var method = typeof(ListingEndpoints).GetMethod(
+            "DismissComparable",
+            BindingFlags.NonPublic | BindingFlags.Static);
+
+        var resultTask = (Task<IResult>)method!.Invoke(null, new object[] { _db, listingId, relationshipId })!;
+        return await resultTask;
+    }
+
     [Test]
     public async Task Should_return_404_when_listing_not_found()
     {
@@ -183,5 +193,115 @@ public class ListingEndpoints_UnitTests
         var ok = (Ok<ListingDetailResponse>)result;
 
         Assert.That(ok.Value!.Comparables, Is.Empty);
+    }
+
+    [Test]
+    public async Task Should_return_404_when_relationship_not_found()
+    {
+        var job = new ScrapeJob { SearchTerm = "PS5" };
+        _db.ScrapeJobs.Add(job);
+        await _db.SaveChangesAsync();
+
+        var listing = new Listing
+        {
+            ListingId = "111", ListingStatus = "Active", ScrapeJobId = job.Id
+        };
+        _db.Listings.Add(listing);
+        await _db.SaveChangesAsync();
+
+        var result = await CallDismissComparable(listing.Id, 999);
+        Assert.That(result, Is.TypeOf<NotFound>());
+    }
+
+    [Test]
+    public async Task Should_delete_relationship_and_return_updated_detail()
+    {
+        var job = new ScrapeJob { SearchTerm = "PS5" };
+        _db.ScrapeJobs.Add(job);
+        await _db.SaveChangesAsync();
+
+        var active = new Listing
+        {
+            ListingId = "111", Title = "PS5", Price = 350m,
+            ListingStatus = "Active", ScrapeJobId = job.Id
+        };
+        var sold1 = new Listing
+        {
+            ListingId = "222", Title = "PS5 Sold 1", Price = 380m,
+            ListingStatus = "Sold", ScrapeJobId = job.Id
+        };
+        var sold2 = new Listing
+        {
+            ListingId = "333", Title = "PS5 Sold 2", Price = 400m,
+            ListingStatus = "Sold", ScrapeJobId = job.Id
+        };
+        _db.Listings.AddRange(active, sold1, sold2);
+        await _db.SaveChangesAsync();
+
+        var rel1 = new ListingRelationship
+        {
+            ListingIdA = active.Id, ListingIdB = sold1.Id,
+            IsComparable = true, SimilarityScore = 0.9, Explanation = "Same"
+        };
+        var rel2 = new ListingRelationship
+        {
+            ListingIdA = active.Id, ListingIdB = sold2.Id,
+            IsComparable = true, SimilarityScore = 0.85, Explanation = "Same"
+        };
+        _db.ListingRelationships.AddRange(rel1, rel2);
+        await _db.SaveChangesAsync();
+
+        // Dismiss rel1
+        var result = await CallDismissComparable(active.Id, rel1.Id);
+        var ok = (Ok<ListingDetailResponse>)result;
+        var response = ok.Value!;
+
+        Assert.Multiple(() =>
+        {
+            // Should only have 1 comp remaining
+            Assert.That(response.Comparables.Count(), Is.EqualTo(1));
+            Assert.That(response.Comparables.First().ListingId, Is.EqualTo("333"));
+
+            // Relationship should be deleted from DB
+            Assert.That(_db.ListingRelationships.Count(), Is.EqualTo(1));
+        });
+    }
+
+    [Test]
+    public async Task Should_reject_dismiss_when_relationship_does_not_belong_to_listing()
+    {
+        var job = new ScrapeJob { SearchTerm = "PS5" };
+        _db.ScrapeJobs.Add(job);
+        await _db.SaveChangesAsync();
+
+        var listing1 = new Listing
+        {
+            ListingId = "111", ListingStatus = "Active", ScrapeJobId = job.Id
+        };
+        var listing2 = new Listing
+        {
+            ListingId = "222", ListingStatus = "Active", ScrapeJobId = job.Id
+        };
+        var sold = new Listing
+        {
+            ListingId = "333", ListingStatus = "Sold", ScrapeJobId = job.Id
+        };
+        _db.Listings.AddRange(listing1, listing2, sold);
+        await _db.SaveChangesAsync();
+
+        var rel = new ListingRelationship
+        {
+            ListingIdA = listing2.Id, ListingIdB = sold.Id,
+            IsComparable = true, SimilarityScore = 0.9, Explanation = "Same"
+        };
+        _db.ListingRelationships.Add(rel);
+        await _db.SaveChangesAsync();
+
+        // Try to dismiss rel via listing1 (doesn't own it)
+        var result = await CallDismissComparable(listing1.Id, rel.Id);
+        Assert.That(result, Is.TypeOf<NotFound>());
+
+        // Relationship should still exist
+        Assert.That(_db.ListingRelationships.Count(), Is.EqualTo(1));
     }
 }
