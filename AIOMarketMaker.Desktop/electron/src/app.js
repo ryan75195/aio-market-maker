@@ -6,6 +6,9 @@ createApp({
       currentView: 'overview',
       config: null,
       configError: null,
+      overviewLoading: false,
+      opportunitiesLoading: false,
+      historyLoading: false,
       jobs: [],
       opportunities: [],
       opportunityPage: 1,
@@ -98,7 +101,7 @@ createApp({
         aggregateProfit: 0,
         lastScrape: null,
         cumulativeGrowth: [],
-        listingsByJob: [],
+        topJobsByOpportunities: [],
         profitDistribution: { range0to25: 0, range25to50: 0, range50to100: 0, range100plus: 0 },
         topOpportunities: [],
         recentRuns: []
@@ -353,6 +356,7 @@ createApp({
     },
 
     async loadOverview() {
+      this.overviewLoading = true;
       try {
         const opp = this.settings?.opportunities || {};
         const params = new URLSearchParams();
@@ -370,12 +374,14 @@ createApp({
         this.$nextTick(() => this.renderCharts());
       } catch (err) {
         this.showToast(`Failed to load overview: ${err.message}`, 'error');
+      } finally {
+        this.overviewLoading = false;
       }
     },
 
     renderCharts() {
       this.renderCumulativeGrowthChart();
-      this.renderListingsByJobChart();
+      this.renderTopJobsChart();
       this.renderProfitDistributionChart();
     },
 
@@ -423,22 +429,22 @@ createApp({
       });
     },
 
-    renderListingsByJobChart() {
-      const canvas = document.getElementById('listingsByJobChart');
+    renderTopJobsChart() {
+      const canvas = document.getElementById('topJobsChart');
       if (!canvas) { return; }
 
-      if (this.overviewCharts.listingsByJob) {
-        this.overviewCharts.listingsByJob.destroy();
+      if (this.overviewCharts.topJobs) {
+        this.overviewCharts.topJobs.destroy();
       }
 
-      const data = this.overviewData.listingsByJob || [];
+      const data = this.overviewData.topJobsByOpportunities || [];
       const colors = ['#4a9eff', '#22c55e', '#f59e0b', '#ef4444', '#a855f7', '#06b6d4', '#ec4899', '#84cc16'];
-      this.overviewCharts.listingsByJob = new Chart(canvas, {
+      this.overviewCharts.topJobs = new Chart(canvas, {
         type: 'bar',
         data: {
-          labels: data.map(d => d.searchTerm),
+          labels: data.map(d => this.truncate(d.searchTerm, 30)),
           datasets: [{
-            data: data.map(d => d.count),
+            data: data.map(d => d.opportunityCount),
             backgroundColor: data.map((_, i) => colors[i % colors.length]),
             borderRadius: 4
           }]
@@ -448,13 +454,22 @@ createApp({
           responsive: true,
           maintainAspectRatio: false,
           plugins: {
-            legend: { display: false }
+            legend: { display: false },
+            tooltip: {
+              callbacks: {
+                afterLabel: (ctx) => {
+                  const item = data[ctx.dataIndex];
+                  return item ? `Profit: ${this.formatPrice(item.totalProfit, 'GBP')}` : '';
+                }
+              }
+            }
           },
           scales: {
             x: {
               ticks: { color: '#808080' },
               grid: { color: '#3c3c3c' },
-              beginAtZero: true
+              beginAtZero: true,
+              title: { display: true, text: 'Opportunities', color: '#808080' }
             },
             y: {
               ticks: { color: '#e0e0e0' },
@@ -730,6 +745,7 @@ createApp({
     },
 
     async loadHistory() {
+      this.historyLoading = true;
       try {
         const params = new URLSearchParams({
           page: this.batchPage,
@@ -742,6 +758,8 @@ createApp({
         this.batchTotalPages = result.totalPages || 0;
       } catch (err) {
         this.showToast(`Failed to load history: ${err.message}`, 'error');
+      } finally {
+        this.historyLoading = false;
       }
     },
 
@@ -765,6 +783,7 @@ createApp({
     },
 
     async loadOpportunities() {
+      this.opportunitiesLoading = true;
       try {
         const opp = this.settings?.opportunities || this.config?.opportunities || {};
         const params = new URLSearchParams({
@@ -801,6 +820,8 @@ createApp({
         this.opportunityTotalPages = result.totalPages;
       } catch (err) {
         this.showToast(`Failed to load opportunities: ${err.message}`, 'error');
+      } finally {
+        this.opportunitiesLoading = false;
       }
     },
 

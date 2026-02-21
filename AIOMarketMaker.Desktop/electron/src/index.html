@@ -36,7 +36,12 @@
         <div v-if="currentView === 'overview'" class="view">
           <div class="view-header">
             <h1>Overview</h1>
-            <button class="btn" @click="loadOverview">Refresh</button>
+            <button class="btn" @click="loadOverview" :disabled="overviewLoading">Refresh</button>
+          </div>
+
+          <div v-if="overviewLoading" class="view-loading">
+            <div class="loading-spinner"></div>
+            <span>Loading dashboard...</span>
           </div>
 
           <!-- KPI Cards -->
@@ -80,9 +85,9 @@
           <!-- Two-column charts -->
           <div class="chart-row">
             <div class="chart-section half">
-              <h3>Listings by Job</h3>
+              <h3>Top Jobs by Opportunities</h3>
               <div class="chart-container">
-                <canvas id="listingsByJobChart"></canvas>
+                <canvas id="topJobsChart"></canvas>
               </div>
             </div>
             <div class="chart-section half">
@@ -100,7 +105,12 @@
           <div class="view-header">
             <h1>Opportunities</h1>
             <span class="count-badge">{{ opportunityTotalCount }} active listings</span>
-            <button class="btn" @click="loadOpportunities">Refresh</button>
+            <button class="btn" @click="loadOpportunities" :disabled="opportunitiesLoading">Refresh</button>
+          </div>
+
+          <div v-if="opportunitiesLoading" class="view-loading">
+            <div class="loading-spinner"></div>
+            <span>Loading opportunities...</span>
           </div>
 
           <div style="display: flex; gap: 8px; margin-bottom: 12px;">
@@ -186,7 +196,7 @@
                   <a v-if="listing.url" :href="listing.url" target="_blank" class="btn small" @click.stop>eBay</a>
                 </td>
               </tr>
-              <tr v-if="opportunities.length === 0">
+              <tr v-if="opportunities.length === 0 && !opportunitiesLoading">
                 <td colspan="10" class="empty">No active listings found</td>
               </tr>
             </tbody>
@@ -315,9 +325,14 @@
                     {{ loading ? 'Starting...' : 'Start Scrape' }}
                   </button>
                   <button class="btn" @click="showJobsPanel = true; loadJobs(); loadCategories()">Job Overview</button>
-                  <button class="btn" @click="loadHistory">Refresh</button>
+                  <button class="btn" @click="loadHistory" :disabled="historyLoading">Refresh</button>
                 </div>
               </template>
+            </div>
+
+            <div v-if="historyLoading" class="view-loading">
+              <div class="loading-spinner"></div>
+              <span>Loading history...</span>
             </div>
 
             <!-- Job Overview View -->
