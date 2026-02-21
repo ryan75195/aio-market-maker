@@ -84,9 +84,50 @@ public class ListingPredictionService : IListingPredictionService
         throw new NotImplementedException();
     }
 
-    public Task<IEnumerable<ComparableSoldListing>> GetComparables(int listingId, PredictionFilters filters)
+    public async Task<IEnumerable<ComparableSoldListing>> GetComparables(
+        int listingId, PredictionFilters filters)
     {
-        throw new NotImplementedException();
+        var listing = await _db.Listings.FindAsync(listingId);
+        if (listing == null)
+        {
+            return Enumerable.Empty<ComparableSoldListing>();
+        }
+
+        var relationships = await _db.ListingRelationships
+            .Include(r => r.ListingA)
+            .Include(r => r.ListingB)
+            .Where(r => r.IsComparable && (r.ListingIdA == listingId || r.ListingIdB == listingId))
+            .Where(r => r.ListingIdA == listingId
+                ? r.ListingB.ListingStatus == "Sold"
+                : r.ListingA.ListingStatus == "Sold")
+            .ToListAsync();
+
+        var comparables = relationships.Select(r =>
+        {
+            var comp = r.ListingIdA == listingId ? r.ListingB : r.ListingA;
+            return new ComparableSoldListing(
+                r.Id, comp.Id, comp.ListingId, comp.Title, comp.Description,
+                comp.Price, comp.Condition, comp.Url, comp.Images,
+                comp.EndDateUtc, r.SimilarityScore, r.Explanation);
+        }).ToList();
+
+        if (filters.MatchCondition && listing.Condition != null)
+        {
+            comparables = comparables
+                .Where(c => c.Condition == listing.Condition)
+                .ToList();
+        }
+
+        if (filters.PriceBand > 0 && listing.Price.HasValue && listing.Price.Value > 0)
+        {
+            var minPrice = listing.Price.Value / filters.PriceBand;
+            var maxPrice = listing.Price.Value * filters.PriceBand;
+            comparables = comparables
+                .Where(c => c.Price.HasValue && c.Price.Value >= minPrice && c.Price.Value <= maxPrice)
+                .ToList();
+        }
+
+        return comparables;
     }
 
     public Task<PagedPredictions> GetPredictions(
