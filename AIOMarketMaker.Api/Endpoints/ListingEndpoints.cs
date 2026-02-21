@@ -1,6 +1,7 @@
 using System.Data;
 using System.Data.Common;
 using System.Globalization;
+using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Azure.Storage.Blobs;
 using AIOMarketMaker.Core.Data;
@@ -28,6 +29,24 @@ public record ClearDataResponse(int DeletedListings, int DeletedRuns, bool Blobs
 public record ListingStatsEntry(string? Currency, int Total, int NullPrice, int NullTitle);
 public record InvalidListingResponse(int Id, string ListingId, string? Title, decimal? Price, string? Currency, string? Url, DateTime CreatedUtc);
 
+public record ListingDetail(
+    int Id, string ListingId, string? Title, string? Description,
+    decimal? Price, string? Currency, decimal? ShippingCost,
+    string? Condition, string? Url, string? Images,
+    string? ListingStatus, string? SearchTerm,
+    DateTime CreatedUtc,
+    decimal? AverageSoldPrice, int SimilarSoldCount,
+    int? EstimatedDaysToSell, decimal? PotentialProfit);
+
+public record ComparableListing(
+    int RelationshipId, string ListingId, string? Title,
+    string? Description, decimal? Price, string? Condition,
+    string? Url, string? Images,
+    DateTime? SoldDateUtc, double SimilarityScore, string Explanation);
+
+public record ListingDetailResponse(
+    ListingDetail Listing, IEnumerable<ComparableListing> Comparables);
+
 public static class ListingEndpoints
 {
     public static void MapListingEndpoints(this WebApplication app)
@@ -36,6 +55,8 @@ public static class ListingEndpoints
         app.MapGet("/api/listings/stats", GetListingStats);
         app.MapGet("/api/listings/invalid", GetInvalidListings);
         app.MapDelete("/api/listings/invalid", DeleteInvalidListings);
+        app.MapGet("/api/listings/{id:int}", GetListingDetail);
+        app.MapDelete("/api/listings/{id:int}/comparables/{relationshipId:int}", DismissComparable);
         app.MapDelete("/api/listings/all", ClearAllListings);
         app.MapDelete("/api/history/all", ClearAllHistory);
         app.MapDelete("/api/data/all", ClearAllData);
@@ -304,6 +325,63 @@ public static class ListingEndpoints
             .Where(id => id.HasValue)
             .Select(id => id!.Value)
             .ToList();
+    }
+
+    private static async Task<IResult> GetListingDetail(EtlDbContext db, int id)
+    {
+        var listing = await db.Listings
+            .Include(l => l.ScrapeJob)
+            .FirstOrDefaultAsync(l => l.Id == id);
+
+        if (listing == null)
+        {
+            return Results.NotFound();
+        }
+
+        // Get prediction data (may not exist if no comps).
+        // The view backing ListingPredictions doesn't exist in SQLite test environments.
+        ListingPrediction? prediction = null;
+        try
+        {
+            prediction = await db.ListingPredictions
+                .FirstOrDefaultAsync(p => p.ListingId == id);
+        }
+        catch (SqliteException)
+        {
+            // View doesn't exist (e.g., SQLite in-memory tests) — predictions unavailable
+        }
+
+        // Get all comparable relationships (bidirectional)
+        var relationships = await db.ListingRelationships
+            .Include(r => r.ListingA)
+            .Include(r => r.ListingB)
+            .Where(r => r.IsComparable && (r.ListingIdA == id || r.ListingIdB == id))
+            .ToListAsync();
+
+        var comparables = relationships.Select(r =>
+        {
+            var comp = r.ListingIdA == id ? r.ListingB : r.ListingA;
+            return new ComparableListing(
+                r.Id, comp.ListingId, comp.Title, comp.Description,
+                comp.Price, comp.Condition, comp.Url, comp.Images,
+                comp.EndDateUtc, r.SimilarityScore, r.Explanation);
+        });
+
+        var detail = new ListingDetail(
+            listing.Id, listing.ListingId, listing.Title, listing.Description,
+            listing.Price, listing.Currency, listing.ShippingCost,
+            listing.Condition, listing.Url, listing.Images,
+            listing.ListingStatus, listing.ScrapeJob?.SearchTerm,
+            listing.CreatedUtc,
+            prediction?.AverageSoldPrice, prediction?.SimilarSoldCount ?? 0,
+            prediction?.EstimatedDaysToSell, prediction?.PotentialProfit);
+
+        return Results.Ok(new ListingDetailResponse(detail, comparables));
+    }
+
+    private static Task<IResult> DismissComparable(EtlDbContext db, int id, int relationshipId)
+    {
+        throw new NotImplementedException();
     }
 
     private static async Task<IResult> GetListingStats(EtlDbContext db)
