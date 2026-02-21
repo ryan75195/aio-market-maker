@@ -282,9 +282,177 @@ public class ListingPredictionService : IListingPredictionService
         return new PagedPredictions(rows, orderedIds, totalCount, page, pageSize, totalPages);
     }
 
-    public Task<PredictionAggregates> GetAggregates(PredictionFilters filters)
+    public async Task<PredictionAggregates> GetAggregates(PredictionFilters filters)
     {
-        throw new NotImplementedException();
+        if (IsSqlite())
+        {
+            return new PredictionAggregates(
+                0, 0m,
+                Enumerable.Empty<TopOpportunity>(),
+                Enumerable.Empty<TopJobOpportunity>(),
+                Enumerable.Empty<ConditionProfit>(),
+                Enumerable.Empty<DaysToSell>(),
+                Enumerable.Empty<PriceVsProfit>());
+        }
+
+        var conn = _db.Database.GetDbConnection();
+        if (conn.State != ConnectionState.Open)
+        {
+            await conn.OpenAsync();
+        }
+
+        var cte = BuildCte(filters);
+
+        var materializeSql = $@"
+            {cte}
+            SELECT fp.ListingId, fp.SimilarSoldCount, fp.AverageSoldPrice,
+                   fp.PotentialProfit, fp.EstimatedDaysToSell
+            INTO #Predictions
+            FROM FilteredPredictions fp";
+
+        await using (var cmd = conn.CreateCommand())
+        {
+            cmd.CommandText = materializeSql;
+            await cmd.ExecuteNonQueryAsync();
+        }
+
+        int opportunities = 0;
+        decimal aggregateProfit = 0m;
+        await using (var cmd = conn.CreateCommand())
+        {
+            cmd.CommandText = @"
+                SELECT COUNT(*), ISNULL(SUM(PotentialProfit), 0)
+                FROM #Predictions";
+            await using var reader = await cmd.ExecuteReaderAsync();
+            if (await reader.ReadAsync())
+            {
+                opportunities = reader.GetInt32(0);
+                aggregateProfit = reader.GetDecimal(1);
+            }
+        }
+
+        var topOpportunities = new List<TopOpportunity>();
+        await using (var cmd = conn.CreateCommand())
+        {
+            cmd.CommandText = @"
+                SELECT TOP 10
+                    l.ListingId, l.Title, l.Price, l.Currency,
+                    p.AverageSoldPrice, p.PotentialProfit, p.SimilarSoldCount,
+                    l.[Condition], l.Url
+                FROM #Predictions p
+                INNER JOIN Listings l ON l.Id = p.ListingId
+                ORDER BY p.PotentialProfit DESC";
+            await using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                topOpportunities.Add(new TopOpportunity(
+                    reader.GetString(0),
+                    reader.IsDBNull(1) ? null : reader.GetString(1),
+                    reader.IsDBNull(2) ? null : reader.GetDecimal(2),
+                    reader.IsDBNull(3) ? null : reader.GetString(3),
+                    reader.IsDBNull(4) ? null : reader.GetDecimal(4),
+                    reader.IsDBNull(5) ? null : reader.GetDecimal(5),
+                    reader.IsDBNull(6) ? 0 : reader.GetInt32(6),
+                    reader.IsDBNull(7) ? null : reader.GetString(7),
+                    reader.IsDBNull(8) ? null : reader.GetString(8)));
+            }
+        }
+
+        var topJobs = new List<TopJobOpportunity>();
+        await using (var cmd = conn.CreateCommand())
+        {
+            cmd.CommandText = @"
+                SELECT TOP 10
+                    l.ScrapeJobId, sj.SearchTerm,
+                    COUNT(*) AS OpportunityCount,
+                    SUM(p.PotentialProfit) AS TotalProfit
+                FROM #Predictions p
+                INNER JOIN Listings l ON l.Id = p.ListingId
+                LEFT JOIN ScrapeJobs sj ON sj.Id = l.ScrapeJobId
+                GROUP BY l.ScrapeJobId, sj.SearchTerm
+                ORDER BY COUNT(*) DESC";
+            await using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                topJobs.Add(new TopJobOpportunity(
+                    reader.GetInt32(0),
+                    reader.IsDBNull(1) ? null : reader.GetString(1),
+                    reader.GetInt32(2),
+                    reader.IsDBNull(3) ? 0m : reader.GetDecimal(3)));
+            }
+        }
+
+        var avgProfitByCondition = new List<ConditionProfit>();
+        await using (var cmd = conn.CreateCommand())
+        {
+            cmd.CommandText = @"
+                SELECT ISNULL(l.[Condition], 'Unknown'), AVG(p.PotentialProfit), COUNT(*)
+                FROM #Predictions p
+                INNER JOIN Listings l ON l.Id = p.ListingId
+                GROUP BY l.[Condition]
+                ORDER BY AVG(p.PotentialProfit) DESC";
+            await using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                avgProfitByCondition.Add(new ConditionProfit(
+                    reader.GetString(0),
+                    reader.GetDecimal(1),
+                    reader.GetInt32(2)));
+            }
+        }
+
+        var avgDaysToSell = new List<DaysToSell>();
+        await using (var cmd = conn.CreateCommand())
+        {
+            cmd.CommandText = @"
+                SELECT TOP 10
+                    l.ScrapeJobId, sj.SearchTerm,
+                    AVG(p.EstimatedDaysToSell)
+                FROM #Predictions p
+                INNER JOIN Listings l ON l.Id = p.ListingId
+                LEFT JOIN ScrapeJobs sj ON sj.Id = l.ScrapeJobId
+                WHERE p.EstimatedDaysToSell IS NOT NULL
+                GROUP BY l.ScrapeJobId, sj.SearchTerm
+                ORDER BY AVG(p.EstimatedDaysToSell) ASC";
+            await using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                avgDaysToSell.Add(new DaysToSell(
+                    reader.GetInt32(0),
+                    reader.IsDBNull(1) ? null : reader.GetString(1),
+                    reader.IsDBNull(2) ? null : (decimal?)reader.GetInt32(2)));
+            }
+        }
+
+        var priceVsProfit = new List<PriceVsProfit>();
+        await using (var cmd = conn.CreateCommand())
+        {
+            cmd.CommandText = @"
+                SELECT TOP 100
+                    l.Price, p.PotentialProfit, l.[Condition]
+                FROM #Predictions p
+                INNER JOIN Listings l ON l.Id = p.ListingId
+                WHERE l.Price IS NOT NULL
+                ORDER BY p.PotentialProfit DESC";
+            await using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                priceVsProfit.Add(new PriceVsProfit(
+                    reader.GetDecimal(0),
+                    reader.GetDecimal(1),
+                    reader.IsDBNull(2) ? null : reader.GetString(2)));
+            }
+        }
+
+        await using (var cmd = conn.CreateCommand())
+        {
+            cmd.CommandText = "DROP TABLE #Predictions";
+            await cmd.ExecuteNonQueryAsync();
+        }
+
+        return new PredictionAggregates(
+            opportunities, aggregateProfit, topOpportunities, topJobs,
+            avgProfitByCondition, avgDaysToSell, priceVsProfit);
     }
 
     private static string BuildCte(PredictionFilters filters)
