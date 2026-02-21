@@ -158,7 +158,7 @@
               </tr>
             </thead>
             <tbody>
-              <tr v-for="listing in opportunities" :key="listing.id">
+              <tr v-for="listing in opportunities" :key="listing.id" @click="openListingDetail(listing)" style="cursor: pointer;">
                 <td>{{ listing.listingId || '-' }}</td>
                 <td class="title-cell" :title="listing.title">{{ truncate(listing.title, 50) }}</td>
                 <td>{{ listing.searchTerm || '-' }}</td>
@@ -183,7 +183,7 @@
                 </td>
                 <td>{{ listing.condition || '-' }}</td>
                 <td>
-                  <a v-if="listing.url" :href="listing.url" target="_blank" class="btn small">View</a>
+                  <a v-if="listing.url" :href="listing.url" target="_blank" class="btn small" @click.stop>eBay</a>
                 </td>
               </tr>
               <tr v-if="opportunities.length === 0">
@@ -201,6 +201,100 @@
             </template>
             <button class="page-btn" :disabled="opportunityPage >= opportunityTotalPages" @click="goToPage(opportunityPage + 1)">Next</button>
             <span class="page-info">Page {{ opportunityPage }} of {{ opportunityTotalPages }}</span>
+          </div>
+        </div>
+
+        <!-- Listing Detail View -->
+        <div v-if="currentView === 'listing-detail'" class="view">
+          <div v-if="listingDetailLoading" class="loading">Loading...</div>
+          <div v-else-if="listingDetail">
+            <!-- Header -->
+            <div class="detail-header">
+              <button class="btn" @click="backToOpportunities">&larr; Back</button>
+              <h1 class="detail-title">{{ listingDetail.listing.title || 'Untitled' }}</h1>
+              <a v-if="listingDetail.listing.url" :href="listingDetail.listing.url" target="_blank" class="btn">View on eBay</a>
+            </div>
+
+            <!-- Anchor Listing Card -->
+            <div class="detail-anchor">
+              <div class="detail-anchor-image">
+                <img v-if="getFirstImage(listingDetail.listing.images)" :src="getFirstImage(listingDetail.listing.images)" alt="Listing image">
+                <div v-else class="image-placeholder">No Image</div>
+              </div>
+              <div class="detail-anchor-info">
+                <div class="detail-meta">
+                  <div class="detail-meta-item">
+                    <span class="meta-label">Price</span>
+                    <span class="meta-value">{{ formatPrice(listingDetail.listing.price, listingDetail.listing.currency) }}
+                      <span v-if="listingDetail.listing.shippingCost"> + {{ formatPrice(listingDetail.listing.shippingCost, listingDetail.listing.currency) }} shipping</span>
+                    </span>
+                  </div>
+                  <div class="detail-meta-item">
+                    <span class="meta-label">Condition</span>
+                    <span class="meta-value">{{ listingDetail.listing.condition || '-' }}</span>
+                  </div>
+                  <div class="detail-meta-item">
+                    <span class="meta-label">Status</span>
+                    <span class="meta-value">{{ listingDetail.listing.listingStatus || '-' }}</span>
+                  </div>
+                  <div class="detail-meta-item">
+                    <span class="meta-label">Job</span>
+                    <span class="meta-value">{{ listingDetail.listing.searchTerm || '-' }}</span>
+                  </div>
+                </div>
+                <div class="detail-metrics">
+                  <div class="metric-card">
+                    <span class="metric-value">{{ formatPrice(listingDetail.listing.averageSoldPrice, listingDetail.listing.currency) || '-' }}</span>
+                    <span class="metric-label">Avg Sold</span>
+                  </div>
+                  <div class="metric-card">
+                    <span class="metric-value">{{ listingDetail.listing.similarSoldCount || 0 }}</span>
+                    <span class="metric-label">Comps</span>
+                  </div>
+                  <div class="metric-card">
+                    <span class="metric-value" :style="{ color: (listingDetail.listing.potentialProfit || 0) >= 0 ? '#22c55e' : '#ef4444' }">
+                      {{ listingDetail.listing.potentialProfit != null ? (listingDetail.listing.potentialProfit >= 0 ? '+' : '') + formatPrice(listingDetail.listing.potentialProfit, listingDetail.listing.currency) : '-' }}
+                    </span>
+                    <span class="metric-label">Profit</span>
+                  </div>
+                  <div class="metric-card">
+                    <span class="metric-value">{{ listingDetail.listing.estimatedDaysToSell != null ? listingDetail.listing.estimatedDaysToSell + 'd' : '-' }}</span>
+                    <span class="metric-label">Days to Sell</span>
+                  </div>
+                </div>
+                <div v-if="listingDetail.listing.description" class="detail-description">
+                  <span class="meta-label">Description</span>
+                  <div class="description-text">{{ listingDetail.listing.description }}</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Comparables Section -->
+            <div class="detail-comps-header">
+              <h2>Comparables ({{ listingDetail.comparables.length }})</h2>
+            </div>
+            <div v-if="listingDetail.comparables.length === 0" class="empty">No comparables found</div>
+            <div v-else class="comp-grid">
+              <div v-for="comp in listingDetail.comparables" :key="comp.relationshipId" class="comp-card">
+                <div class="comp-image">
+                  <img v-if="getFirstImage(comp.images)" :src="getFirstImage(comp.images)" alt="Comp image">
+                  <div v-else class="image-placeholder small">No Image</div>
+                </div>
+                <div class="comp-info">
+                  <div class="comp-title">{{ comp.title || 'Untitled' }}</div>
+                  <div v-if="comp.description" class="comp-description">{{ truncate(comp.description, 150) }}</div>
+                  <div class="comp-meta">
+                    <span class="comp-price">{{ formatPrice(comp.price, listingDetail.listing.currency) }}</span>
+                    <span v-if="comp.condition" class="comp-condition">{{ comp.condition }}</span>
+                    <span class="comp-score">Score: {{ comp.similarityScore != null ? comp.similarityScore.toFixed(2) : '-' }}</span>
+                  </div>
+                </div>
+                <div class="comp-actions">
+                  <a v-if="comp.url" :href="comp.url" target="_blank" class="btn small">eBay</a>
+                  <button class="btn small danger" @click="dismissComparable(comp.relationshipId)">Dismiss</button>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 

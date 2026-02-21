@@ -16,6 +16,10 @@ createApp({
       opportunityCategoryFilter: [],
       opportunityTotalCount: 0,
       opportunityTotalPages: 0,
+      // Listing detail view
+      selectedListingId: null,
+      listingDetail: null,
+      listingDetailLoading: false,
       historyMode: 'batches',
       batches: [],
       selectedBatch: null,
@@ -873,6 +877,54 @@ createApp({
         return Array.isArray(images) && images.length > 0 ? images[0] : null;
       } catch {
         return null;
+      }
+    },
+
+    async loadListingDetail(id) {
+      this.listingDetailLoading = true;
+      try {
+        const data = await this.apiCall(`/listings/${id}`);
+        this.listingDetail = this.toCamelCase(data);
+      } catch (err) {
+        this.showToast(`Failed to load listing: ${err.message}`, 'error');
+      } finally {
+        this.listingDetailLoading = false;
+      }
+    },
+
+    openListingDetail(listing) {
+      this.selectedListingId = listing.id;
+      this.currentView = 'listing-detail';
+      this.loadListingDetail(listing.id);
+    },
+
+    backToOpportunities() {
+      this.currentView = 'opportunities';
+      this.listingDetail = null;
+      this.selectedListingId = null;
+    },
+
+    async dismissComparable(relationshipId) {
+      try {
+        const data = await this.apiCall(
+          `/listings/${this.selectedListingId}/comparables/${relationshipId}`,
+          { method: 'DELETE' }
+        );
+        this.listingDetail = this.toCamelCase(data);
+        const count = this.listingDetail.comparables?.length || 0;
+        this.showToast(`Comparable dismissed. ${count} remaining.`, 'success');
+      } catch (err) {
+        this.showToast(`Failed to dismiss: ${err.message}`, 'error');
+      }
+    },
+
+    parseImages(imagesJson) {
+      if (!imagesJson) { return []; }
+      try {
+        const parsed = JSON.parse(imagesJson);
+        return Array.isArray(parsed) ? parsed : [];
+      } catch {
+        return [];
       }
     },
 
