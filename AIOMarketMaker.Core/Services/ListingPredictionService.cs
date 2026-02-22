@@ -10,7 +10,8 @@ public record PredictionFilters(
     decimal PriceBand = 0,
     decimal FeePercent = 0,
     bool MatchCondition = true,
-    int MinComps = 0);
+    int MinComps = 0,
+    decimal MaxPrice = 0);
 
 public record ListingPredictionResult(
     int ListingId,
@@ -66,7 +67,8 @@ public interface IListingPredictionService
     Task<IEnumerable<ComparableSoldListing>> GetComparables(int listingId, PredictionFilters filters);
     Task<PagedPredictions> GetPredictions(
         PredictionFilters filters, IEnumerable<int>? jobIds,
-        string sortBy, string sortDir, int page, int pageSize);
+        string sortBy, string sortDir, int page, int pageSize,
+        IEnumerable<int>? listingIds = null);
     Task<PredictionAggregates> GetAggregates(PredictionFilters filters);
 }
 
@@ -183,7 +185,8 @@ public class ListingPredictionService : IListingPredictionService
 
     public async Task<PagedPredictions> GetPredictions(
         PredictionFilters filters, IEnumerable<int>? jobIds,
-        string sortBy, string sortDir, int page, int pageSize)
+        string sortBy, string sortDir, int page, int pageSize,
+        IEnumerable<int>? listingIds = null)
     {
         if (IsSqlite())
         {
@@ -201,8 +204,15 @@ public class ListingPredictionService : IListingPredictionService
         }
 
         var jobIdList = jobIds?.ToList() ?? new List<int>();
+        var listingIdList = listingIds?.ToList() ?? new List<int>();
         var cte = BuildCte(filters);
         var joinType = filters.MinComps > 0 ? "INNER JOIN" : "LEFT JOIN";
+        var maxPriceClause = filters.MaxPrice > 0
+            ? FormattableString.Invariant($"AND l.Price <= {filters.MaxPrice}")
+            : "";
+        var listingIdClause = listingIdList.Count > 0
+            ? $"AND l.Id IN ({string.Join(",", listingIdList)})"
+            : "";
 
         int totalCount;
         if (filters.MinComps > 0)
@@ -216,7 +226,9 @@ public class ListingPredictionService : IListingPredictionService
                 FROM Listings l
                 INNER JOIN FilteredPredictions p ON p.ListingId = l.Id
                 WHERE l.ListingStatus = 'Active'
-                {jobFilterClauseCount}";
+                {jobFilterClauseCount}
+                {maxPriceClause}
+                {listingIdClause}";
             totalCount = (int)(await ExecuteScalar(countSql))!;
         }
         else
@@ -225,6 +237,14 @@ public class ListingPredictionService : IListingPredictionService
             if (jobIdList.Count > 0)
             {
                 countQuery = countQuery.Where(l => jobIdList.Contains(l.ScrapeJobId));
+            }
+            if (filters.MaxPrice > 0)
+            {
+                countQuery = countQuery.Where(l => l.Price <= filters.MaxPrice);
+            }
+            if (listingIdList.Count > 0)
+            {
+                countQuery = countQuery.Where(l => listingIdList.Contains(l.Id));
             }
             totalCount = await countQuery.CountAsync();
         }
@@ -266,6 +286,8 @@ public class ListingPredictionService : IListingPredictionService
             LEFT JOIN ScrapeJobs sj ON sj.Id = l.ScrapeJobId
             WHERE l.ListingStatus = 'Active'
             {jobFilterClause}
+            {maxPriceClause}
+            {listingIdClause}
             ORDER BY {orderClause}
             OFFSET {offset} ROWS FETCH NEXT {pageSize} ROWS ONLY";
 

@@ -16,6 +16,9 @@ createApp({
       opportunitySortDir: 'desc',
       opportunityJobFilter: [],
       opportunityCategoryFilter: [],
+      opportunityBudget: null,
+      opportunitySearchQuery: '',
+      opportunitySearchLoading: false,
       opportunityTotalCount: 0,
       opportunityTotalPages: 0,
       // Listing detail view
@@ -1047,6 +1050,13 @@ createApp({
         if (opp.matchCondition) {
           params.set('matchCondition', 'true');
         }
+        if (this.opportunityBudget > 0) {
+          params.set('maxPrice', this.opportunityBudget);
+        }
+        if (this.opportunitySearchQuery.trim()) {
+          params.set('searchQuery', this.opportunitySearchQuery.trim());
+          this.opportunitySearchLoading = true;
+        }
         const data = await this.apiCall(`/listings/active?${params.toString()}`);
         const result = this.toCamelCase(data);
         this.opportunities = result.items;
@@ -1056,7 +1066,19 @@ createApp({
         this.showToast(`Failed to load opportunities: ${err.message}`, 'error');
       } finally {
         this.opportunitiesLoading = false;
+        this.opportunitySearchLoading = false;
       }
+    },
+
+    searchOpportunities() {
+      this.opportunityPage = 1;
+      this.loadOpportunities();
+    },
+
+    clearSearch() {
+      this.opportunitySearchQuery = '';
+      this.opportunityPage = 1;
+      this.loadOpportunities();
     },
 
     sortOpportunities(column) {
@@ -1371,6 +1393,12 @@ createApp({
       if (!dateStr) return 'Never';
       const date = new Date(dateStr);
       return date.toLocaleString();
+    },
+
+    formatShortDate(dateStr) {
+      if (!dateStr) return '-';
+      const date = new Date(dateStr);
+      return date.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
     },
 
     listingsToProcess(run) {
