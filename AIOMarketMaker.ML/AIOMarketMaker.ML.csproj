@@ -18,6 +18,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="AIOMarketMaker.Tests.Unit" />
+  </ItemGroup>
+
+  <ItemGroup>
     <Compile Update="Services\LlmVariantClassifier.Prompt.cs">
       <DependentUpon>LlmVariantClassifier.cs</DependentUpon>
     </Compile>

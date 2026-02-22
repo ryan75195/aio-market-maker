@@ -210,7 +210,7 @@ var host = new HostBuilder()
             MergesPath: configuration.GetValue<string>("VariantClassifier:MergesPath") ?? "models/variant-classifier/merges.txt",
             MaxLength: configuration.GetValue<int?>("VariantClassifier:MaxLength") ?? 256);
         services.AddSingleton(classifierConfig);
-        services.AddSingleton<IVariantClassifierClient, OnnxVariantClassifier>();
+        services.AddSingleton<VariantModelRunner>();
 
         // ComparablesEtlService
         services.AddScoped<IComparablesEtlService, ComparablesEtlService>();

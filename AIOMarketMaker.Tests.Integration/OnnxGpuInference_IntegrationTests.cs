@@ -38,7 +38,7 @@ public class OnnxGpuInference_IntegrationTests
     [Test]
     public void Should_use_gpu_in_onnx_variant_classifier()
     {
-        var logger = new Mock<ILogger<OnnxVariantClassifier>>();
+        var logger = new Mock<ILogger<VariantModelRunner>>();
         var config = new OnnxClassifierConfig(
             ModelPath: Path.Combine(ModelDir, "model.onnx"),
             VocabPath: Path.Combine(ModelDir, "vocab.json"),
@@ -57,7 +57,7 @@ public class OnnxGpuInference_IntegrationTests
                 logMessages.Add(formatter.DynamicInvoke(state, ex)?.ToString() ?? "");
             });
 
-        using var classifier = new OnnxVariantClassifier(config, logger.Object);
+        using var classifier = new VariantModelRunner(config, logger.Object);
 
         var usedCuda = logMessages.Any(m => m.Contains("CUDA GPU"));
         var fellBackToCpu = logMessages.Any(m => m.Contains("CUDA not available"));
@@ -82,7 +82,7 @@ public class OnnxGpuInference_IntegrationTests
             VocabPath: Path.Combine(ModelDir, "vocab.json"),
             MergesPath: Path.Combine(ModelDir, "merges.txt"));
 
-        using var classifier = new OnnxVariantClassifier(config, Mock.Of<ILogger<OnnxVariantClassifier>>());
+        using var classifier = new VariantModelRunner(config, Mock.Of<ILogger<VariantModelRunner>>());
 
         var pair = new ClassifyPairRequest(
             "Sony PlayStation 5 Slim Disc Edition Console",
@@ -119,7 +119,7 @@ public class OnnxGpuInference_IntegrationTests
             VocabPath: Path.Combine(ModelDir, "vocab.json"),
             MergesPath: Path.Combine(ModelDir, "merges.txt"));
 
-        using var classifier = new OnnxVariantClassifier(config, Mock.Of<ILogger<OnnxVariantClassifier>>());
+        using var classifier = new VariantModelRunner(config, Mock.Of<ILogger<VariantModelRunner>>());
 
         // Build a batch of 128 pairs (same size as ETL batches)
         var pairs = Enumerable.Range(0, 128).Select(i => new ClassifyPairRequest(
