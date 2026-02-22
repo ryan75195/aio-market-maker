@@ -403,3 +403,6 @@ unsloth_compiled_cache/
 
 # Local data files
 AIOMarketMaker.Api/data/
+
+# Large ML batch files (too large for GitHub)
+AIOMarketMaker.ML/Training/data/batch_input_*.jsonl
