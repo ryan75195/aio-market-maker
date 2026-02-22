@@ -203,7 +203,7 @@ var host = new HostBuilder()
         // Pricing analysis service
         services.AddSingleton<IPricingAnalysisService, PricingAnalysisService>();
 
-        // Variant classifier (local ONNX model)
+        // Variant classifier (local ONNX model + ensemble calibration)
         var classifierConfig = new OnnxClassifierConfig(
             ModelPath: configuration.GetValue<string>("VariantClassifier:ModelPath") ?? "models/variant-classifier/model.onnx",
             VocabPath: configuration.GetValue<string>("VariantClassifier:VocabPath") ?? "models/variant-classifier/vocab.json",
@@ -211,6 +211,17 @@ var host = new HostBuilder()
             MaxLength: configuration.GetValue<int?>("VariantClassifier:MaxLength") ?? 256);
         services.AddSingleton(classifierConfig);
         services.AddSingleton<VariantModelRunner>();
+        services.AddSingleton<IVariantModelRunner>(sp => sp.GetRequiredService<VariantModelRunner>());
+
+        var ensembleLogitWeight = configuration.GetValue<float>("VariantClassifier:Ensemble:LogitWeight");
+        if (ensembleLogitWeight != 0)
+        {
+            services.AddSingleton(new EnsembleConfig(
+                LogitWeight: ensembleLogitWeight,
+                SimilarityWeight: configuration.GetValue<float>("VariantClassifier:Ensemble:SimilarityWeight"),
+                Intercept: configuration.GetValue<float>("VariantClassifier:Ensemble:Intercept")));
+        }
+        services.AddSingleton<IVariantClassifierClient, VariantClassifier>();
 
         // ComparablesEtlService
         services.AddScoped<IComparablesEtlService, ComparablesEtlService>();
