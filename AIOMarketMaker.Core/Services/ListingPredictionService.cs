@@ -450,12 +450,11 @@ public class ListingPredictionService : IListingPredictionService
         await using (var cmd = conn.CreateCommand())
         {
             cmd.CommandText = @"
-                SELECT TOP 100
+                SELECT
                     l.Price, p.PotentialProfit, l.[Condition]
                 FROM #Predictions p
                 INNER JOIN Listings l ON l.Id = p.ListingId
-                WHERE l.Price IS NOT NULL
-                ORDER BY p.PotentialProfit DESC";
+                WHERE l.Price IS NOT NULL";
             await using var reader = await cmd.ExecuteReaderAsync();
             while (await reader.ReadAsync())
             {

@@ -450,7 +450,6 @@ createApp({
       this.renderOpportunityTrendChart();
       this.renderAvgProfitByConditionChart();
       this.renderTopJobsChart();
-      this.renderAvgDaysToSellChart();
       this.renderPriceVsProfitChart();
     },
 
@@ -507,25 +506,27 @@ createApp({
       }
 
       const data = this.overviewData.topJobsByOpportunities || [];
-      const colors = ['#4a9eff', '#22c55e', '#f59e0b', '#ef4444', '#a855f7', '#06b6d4', '#ec4899', '#84cc16'];
       this.overviewCharts.topJobs = new Chart(canvas, {
         type: 'bar',
         data: {
-          labels: data.map(d => this.truncate(d.searchTerm, 30)),
+          labels: data.map(d => this.truncate(d.searchTerm, 15)),
           datasets: [{
             data: data.map(d => d.opportunityCount),
-            backgroundColor: data.map((_, i) => colors[i % colors.length]),
+            backgroundColor: '#06b6d4',
             borderRadius: 4
           }]
         },
         options: {
-          indexAxis: 'y',
           responsive: true,
           maintainAspectRatio: false,
           plugins: {
             legend: { display: false },
             tooltip: {
               callbacks: {
+                title: (ctx) => {
+                  const item = data[ctx[0].dataIndex];
+                  return item ? item.searchTerm : '';
+                },
                 afterLabel: (ctx) => {
                   const item = data[ctx.dataIndex];
                   return item ? `Profit: ${this.formatPrice(item.totalProfit, 'GBP')}` : '';
@@ -535,14 +536,14 @@ createApp({
           },
           scales: {
             x: {
+              ticks: { color: '#e0e0e0', maxRotation: 45, minRotation: 45 },
+              grid: { display: false }
+            },
+            y: {
               ticks: { color: '#808080' },
               grid: { color: '#3c3c3c' },
               beginAtZero: true,
               title: { display: true, text: 'Opportunities', color: '#808080' }
-            },
-            y: {
-              ticks: { color: '#e0e0e0', autoSkip: false },
-              grid: { display: false }
             }
           }
         }
@@ -557,33 +558,31 @@ createApp({
         this.overviewCharts.opportunityTrend.destroy();
       }
 
-      const runs = (this.overviewData.recentRuns || []).slice().reverse();
+      const data = this.overviewData.opportunitiesByDay || [];
       this.overviewCharts.opportunityTrend = new Chart(canvas, {
-        type: 'bar',
+        type: 'line',
         data: {
-          labels: runs.map(r => this.truncate(r.jobSearchTerm, 20) || `Run ${r.id}`),
+          labels: data.map(d => d.date),
           datasets: [{
-            label: 'Active Added',
-            data: runs.map(r => r.listingsAddedActive),
-            backgroundColor: '#22c55e',
-            borderRadius: 4
-          }, {
-            label: 'Sold Added',
-            data: runs.map(r => r.listingsAddedSold),
-            backgroundColor: '#f59e0b',
-            borderRadius: 4
+            label: 'New Opportunities',
+            data: data.map(d => d.count),
+            borderColor: '#22c55e',
+            backgroundColor: 'rgba(34, 197, 94, 0.1)',
+            fill: true,
+            tension: 0.3,
+            pointRadius: data.length > 30 ? 0 : 3
           }]
         },
         options: {
           responsive: true,
           maintainAspectRatio: false,
           plugins: {
-            legend: { labels: { color: '#b0b0b0', boxWidth: 12 } }
+            legend: { display: false }
           },
           scales: {
             x: {
-              ticks: { color: '#808080' },
-              grid: { display: false }
+              ticks: { color: '#808080', maxTicksLimit: 10 },
+              grid: { color: '#3c3c3c' }
             },
             y: {
               ticks: { color: '#808080' },
@@ -603,15 +602,26 @@ createApp({
         this.overviewCharts.avgProfitByCondition.destroy();
       }
 
-      const data = this.overviewData.avgProfitByCondition || [];
-      const colors = ['#4a9eff', '#22c55e', '#f59e0b', '#ef4444', '#a855f7', '#06b6d4'];
+      const conditionLabels = {
+        'USED': 'Used',
+        'NEW': 'New',
+        'FOR_PARTS_NOT_WORKING': 'For Parts',
+        'GOOD_REFURBISHED': 'Good Refurb',
+        'EXCELLENT_REFURBISHED': 'Excellent Refurb',
+        'VERY_GOOD_REFURBISHED': 'VG Refurb',
+        'OPENED_NEVER_USED': 'Open Box'
+      };
+
+      const data = (this.overviewData.avgProfitByCondition || [])
+        .filter(d => d.condition && d.condition !== 'NULL');
+
       this.overviewCharts.avgProfitByCondition = new Chart(canvas, {
         type: 'bar',
         data: {
-          labels: data.map(d => d.condition),
+          labels: data.map(d => conditionLabels[d.condition] || d.condition),
           datasets: [{
             data: data.map(d => d.avgProfit),
-            backgroundColor: data.map((_, i) => colors[i % colors.length]),
+            backgroundColor: '#4a9eff',
             borderRadius: 4
           }]
         },
@@ -629,65 +639,18 @@ createApp({
               }
             }
           },
+          indexAxis: 'y',
           scales: {
             x: {
-              ticks: { color: '#e0e0e0' },
-              grid: { display: false }
-            },
-            y: {
               ticks: {
                 color: '#808080',
                 callback: (v) => this.formatPrice(v, 'GBP')
               },
               grid: { color: '#3c3c3c' },
               beginAtZero: true
-            }
-          }
-        }
-      });
-    },
-
-    renderAvgDaysToSellChart() {
-      const canvas = document.getElementById('avgDaysToSellChart');
-      if (!canvas) { return; }
-
-      if (this.overviewCharts.avgDaysToSell) {
-        this.overviewCharts.avgDaysToSell.destroy();
-      }
-
-      const data = this.overviewData.avgDaysToSellByJob || [];
-      const colors = ['#06b6d4', '#4a9eff', '#22c55e', '#f59e0b', '#ef4444', '#a855f7', '#ec4899', '#84cc16'];
-      this.overviewCharts.avgDaysToSell = new Chart(canvas, {
-        type: 'bar',
-        data: {
-          labels: data.map(d => this.truncate(d.searchTerm, 25)),
-          datasets: [{
-            data: data.map(d => d.avgDaysToSell),
-            backgroundColor: data.map((_, i) => colors[i % colors.length]),
-            borderRadius: 4
-          }]
-        },
-        options: {
-          indexAxis: 'y',
-          responsive: true,
-          maintainAspectRatio: false,
-          plugins: {
-            legend: { display: false },
-            tooltip: {
-              callbacks: {
-                label: (ctx) => `${Math.round(ctx.raw)} days avg`
-              }
-            }
-          },
-          scales: {
-            x: {
-              ticks: { color: '#808080' },
-              grid: { color: '#3c3c3c' },
-              beginAtZero: true,
-              title: { display: true, text: 'Days', color: '#808080' }
             },
             y: {
-              ticks: { color: '#e0e0e0', autoSkip: false },
+              ticks: { color: '#e0e0e0' },
               grid: { display: false }
             }
           }
@@ -705,10 +668,13 @@ createApp({
 
       const data = this.overviewData.priceVsProfitPoints || [];
       const conditionColors = {
-        'New': '#22c55e',
-        'Used': '#4a9eff',
-        'Refurbished': '#f59e0b',
-        'For parts or not working': '#ef4444'
+        'NEW': '#22c55e',
+        'USED': '#4a9eff',
+        'GOOD_REFURBISHED': '#f59e0b',
+        'EXCELLENT_REFURBISHED': '#f59e0b',
+        'VERY_GOOD_REFURBISHED': '#f59e0b',
+        'OPENED_NEVER_USED': '#06b6d4',
+        'FOR_PARTS_NOT_WORKING': '#ef4444'
       };
       this.overviewCharts.priceVsProfit = new Chart(canvas, {
         type: 'scatter',
@@ -716,8 +682,8 @@ createApp({
           datasets: [{
             data: data.map(d => ({ x: d.price, y: d.potentialProfit })),
             backgroundColor: data.map(d => conditionColors[d.condition] || '#a855f7'),
-            pointRadius: 4,
-            pointHoverRadius: 6
+            pointRadius: 2,
+            pointHoverRadius: 5
           }]
         },
         options: {
@@ -736,6 +702,7 @@ createApp({
           },
           scales: {
             x: {
+              type: 'logarithmic',
               ticks: {
                 color: '#808080',
                 callback: (v) => `£${v}`

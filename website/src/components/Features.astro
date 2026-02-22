@@ -1,106 +1,139 @@
-<section class="py-20 px-6">
-  <div class="max-w-6xl mx-auto">
-    <h2 class="text-3xl font-bold text-white text-center mb-16">Why Market Maker?</h2>
+<section class="py-28 px-6 relative">
+  <div class="max-w-7xl mx-auto">
+
+    <div class="fade-up text-center mb-20">
+      <span class="tag-green tag mb-4 inline-block">Features</span>
+      <h2 class="font-['Outfit',sans-serif] text-4xl md:text-5xl font-700 text-white tracking-tight">
+        Your Unfair Advantage
+      </h2>
+    </div>
 
     <!-- Feature 1: Smart Opportunity Detection -->
-    <div class="grid md:grid-cols-2 gap-12 items-center mb-20">
-      <div>
-        <svg class="w-10 h-10 text-[#0e639c] mb-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <circle cx="12" cy="12" r="10" />
-          <circle cx="12" cy="12" r="6" />
-          <circle cx="12" cy="12" r="2" />
-          <line x1="12" y1="2" x2="12" y2="6" />
-          <line x1="12" y1="18" x2="12" y2="22" />
-          <line x1="2" y1="12" x2="6" y2="12" />
-          <line x1="18" y1="12" x2="22" y2="12" />
-        </svg>
-        <h3 class="text-2xl font-semibold text-white">Smart Opportunity Detection</h3>
-        <p class="text-[#a0a0a0] mt-3 leading-relaxed">
-          Automatically compares active listings against sold comps to calculate real profit potential — eBay fees included. Sort by profit, filter by budget, and find deals across all your product categories.
-        </p>
-      </div>
-      <div class="rounded-lg overflow-hidden border border-[#3c3c3c] shadow-xl">
-        <img
-          src="/screenshots/opportunities.png"
-          alt="Opportunities table showing profit calculations for eBay listings"
-          class="w-full"
-          loading="lazy"
-        />
+    <div class="fade-up mb-28">
+      <div class="grid md:grid-cols-[1fr,1.8fr] gap-10 items-start">
+        <div class="md:sticky md:top-28 py-4">
+          <div class="flex items-center gap-3 mb-5">
+            <div class="w-10 h-10 rounded-lg bg-[#38bdf8]/10 border border-[#38bdf8]/20 flex items-center justify-center">
+              <svg class="w-5 h-5 text-[#38bdf8]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="10" />
+                <circle cx="12" cy="12" r="6" />
+                <circle cx="12" cy="12" r="2" />
+                <line x1="12" y1="2" x2="12" y2="6" />
+                <line x1="12" y1="18" x2="12" y2="22" />
+                <line x1="2" y1="12" x2="6" y2="12" />
+                <line x1="18" y1="12" x2="22" y2="12" />
+              </svg>
+            </div>
+            <span class="tag">Opportunities</span>
+          </div>
+          <h3 class="font-['Outfit',sans-serif] text-2xl md:text-3xl font-600 text-white leading-snug mb-4">
+            Smart Opportunity Detection
+          </h3>
+          <p class="text-[#8b8d95] leading-relaxed text-[0.95rem]">
+            Automatically compares active listings against sold comps to calculate real profit potential — eBay fees included. Sort by profit, filter by budget, and find deals across all your product categories.
+          </p>
+        </div>
+        <div class="screenshot-glow rounded-xl overflow-hidden">
+          <img
+            src="/screenshots/opportunities.png"
+            alt="Opportunities table showing profit calculations for eBay listings"
+            class="w-full rounded-xl"
+          />
+        </div>
       </div>
     </div>
 
     <!-- Feature 2: Variant-Level Price Matching -->
-    <div class="grid md:grid-cols-2 gap-12 items-center mb-20">
-      <div class="md:order-2">
-        <svg class="w-10 h-10 text-[#0e639c] mb-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <circle cx="12" cy="6" r="3" />
-          <circle cx="5" cy="18" r="3" />
-          <circle cx="19" cy="18" r="3" />
-          <line x1="12" y1="9" x2="5" y2="15" />
-          <line x1="12" y1="9" x2="19" y2="15" />
-          <line x1="5" y1="18" x2="19" y2="18" />
-        </svg>
-        <h3 class="text-2xl font-semibold text-white">Variant-Level Price Matching</h3>
-        <p class="text-[#a0a0a0] mt-3 leading-relaxed">
-          Our proprietary ML model matches listings at the variant level — not just by search keyword. A "PS5 Disc Edition" won't be priced against a "PS5 Digital" like other tools do. Each comparable shows a similarity score so you know exactly how relevant it is.
-        </p>
-      </div>
-      <div class="md:order-1 rounded-lg overflow-hidden border border-[#3c3c3c] shadow-xl">
-        <img
-          src="/screenshots/listing-detail.png"
-          alt="Listing detail view showing comparable items with similarity scores"
-          class="w-full"
-          loading="lazy"
-        />
+    <div class="fade-up mb-28">
+      <div class="grid md:grid-cols-[1.8fr,1fr] gap-10 items-start">
+        <div class="screenshot-glow rounded-xl overflow-hidden md:order-1">
+          <img
+            src="/screenshots/listing-detail.png"
+            alt="Listing detail view showing comparable items with similarity scores"
+            class="w-full rounded-xl"
+          />
+        </div>
+        <div class="md:sticky md:top-28 py-4 md:order-2">
+          <div class="flex items-center gap-3 mb-5">
+            <div class="w-10 h-10 rounded-lg bg-[#22c55e]/10 border border-[#22c55e]/20 flex items-center justify-center">
+              <svg class="w-5 h-5 text-[#22c55e]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="6" r="3" />
+                <circle cx="5" cy="18" r="3" />
+                <circle cx="19" cy="18" r="3" />
+                <line x1="12" y1="9" x2="5" y2="15" />
+                <line x1="12" y1="9" x2="19" y2="15" />
+                <line x1="5" y1="18" x2="19" y2="18" />
+              </svg>
+            </div>
+            <span class="tag-green tag">Key Differentiator</span>
+          </div>
+          <h3 class="font-['Outfit',sans-serif] text-2xl md:text-3xl font-600 text-white leading-snug mb-4">
+            Variant-Level Price Matching
+          </h3>
+          <p class="text-[#8b8d95] leading-relaxed text-[0.95rem]">
+            Our proprietary ML model matches listings at the <strong class="text-[#c8cad0] font-medium">variant level</strong> — not just by search keyword. A "PS5 Disc Edition" won't be priced against a "PS5 Digital" like other tools do. Each comparable shows a similarity score so you know exactly how relevant it is.
+          </p>
+        </div>
       </div>
     </div>
 
     <!-- Feature 3: Automated Scraping -->
-    <div class="grid md:grid-cols-2 gap-12 items-center mb-20">
-      <div>
-        <svg class="w-10 h-10 text-[#0e639c] mb-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <polyline points="13 2 13 9 20 9" />
-          <line x1="13" y1="2" x2="20" y2="9" />
-          <line x1="13" y1="9" x2="7" y2="22" />
-          <line x1="7" y1="22" x2="11" y2="15" />
-          <line x1="11" y1="15" x2="4" y2="15" />
-          <line x1="4" y1="15" x2="13" y2="2" />
-        </svg>
-        <h3 class="text-2xl font-semibold text-white">Automated Scraping</h3>
-        <p class="text-[#a0a0a0] mt-3 leading-relaxed">
-          Set up search jobs, hit "Start Scrape," and let Market Maker crawl eBay for active and sold listings across all your product categories. Track progress in real-time with live stats on throughput, ETA, and completion rates.
-        </p>
-      </div>
-      <div class="rounded-lg overflow-hidden border border-[#3c3c3c] shadow-xl">
-        <img
-          src="/screenshots/history.png"
-          alt="Index view showing scrape history with a running job and progress bar"
-          class="w-full"
-          loading="lazy"
-        />
+    <div class="fade-up mb-28">
+      <div class="grid md:grid-cols-[1fr,1.8fr] gap-10 items-start">
+        <div class="md:sticky md:top-28 py-4">
+          <div class="flex items-center gap-3 mb-5">
+            <div class="w-10 h-10 rounded-lg bg-[#f59e0b]/10 border border-[#f59e0b]/20 flex items-center justify-center">
+              <svg class="w-5 h-5 text-[#f59e0b]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+              </svg>
+            </div>
+            <span class="tag" style="border-color: rgba(245,158,11,0.25); color: #f59e0b; background: rgba(245,158,11,0.06);">Automation</span>
+          </div>
+          <h3 class="font-['Outfit',sans-serif] text-2xl md:text-3xl font-600 text-white leading-snug mb-4">
+            Automated Scraping
+          </h3>
+          <p class="text-[#8b8d95] leading-relaxed text-[0.95rem]">
+            Set up search jobs, hit "Start Scrape," and let Market Maker crawl eBay for active and sold listings across all your product categories. Track progress in real-time with live stats on throughput, ETA, and completion rates.
+          </p>
+        </div>
+        <div class="screenshot-glow rounded-xl overflow-hidden">
+          <img
+            src="/screenshots/history.png"
+            alt="Index view showing scrape history with a running job and progress bar"
+            class="w-full rounded-xl"
+          />
+        </div>
       </div>
     </div>
 
     <!-- Feature 4: Real-Time Dashboard -->
-    <div class="grid md:grid-cols-2 gap-12 items-center">
-      <div class="md:order-2">
-        <svg class="w-10 h-10 text-[#0e639c] mb-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <rect x="3" y="12" width="4" height="9" rx="1" />
-          <rect x="10" y="7" width="4" height="14" rx="1" />
-          <rect x="17" y="3" width="4" height="18" rx="1" />
-        </svg>
-        <h3 class="text-2xl font-semibold text-white">Real-Time Dashboard</h3>
-        <p class="text-[#a0a0a0] mt-3 leading-relaxed">
-          Track listings growth, profit by condition, days-to-sell estimates, and top-performing search jobs — all in one dark-themed command center. See the big picture at a glance with KPI cards and interactive charts.
-        </p>
-      </div>
-      <div class="md:order-1 rounded-lg overflow-hidden border border-[#3c3c3c] shadow-xl">
-        <img
-          src="/screenshots/dashboard.png"
-          alt="Dashboard overview with KPI cards, charts for listings growth, profit by condition, and scatter plots"
-          class="w-full"
-          loading="lazy"
-        />
+    <div class="fade-up">
+      <div class="grid md:grid-cols-[1.8fr,1fr] gap-10 items-start">
+        <div class="screenshot-glow rounded-xl overflow-hidden md:order-1">
+          <img
+            src="/screenshots/dashboard.png"
+            alt="Dashboard overview with KPI cards, charts for listings growth, profit by condition, and scatter plots"
+            class="w-full rounded-xl"
+          />
+        </div>
+        <div class="md:sticky md:top-28 py-4 md:order-2">
+          <div class="flex items-center gap-3 mb-5">
+            <div class="w-10 h-10 rounded-lg bg-[#a78bfa]/10 border border-[#a78bfa]/20 flex items-center justify-center">
+              <svg class="w-5 h-5 text-[#a78bfa]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="12" width="4" height="9" rx="1" />
+                <rect x="10" y="7" width="4" height="14" rx="1" />
+                <rect x="17" y="3" width="4" height="18" rx="1" />
+              </svg>
+            </div>
+            <span class="tag" style="border-color: rgba(167,139,250,0.25); color: #a78bfa; background: rgba(167,139,250,0.06);">Analytics</span>
+          </div>
+          <h3 class="font-['Outfit',sans-serif] text-2xl md:text-3xl font-600 text-white leading-snug mb-4">
+            Real-Time Dashboard
+          </h3>
+          <p class="text-[#8b8d95] leading-relaxed text-[0.95rem]">
+            Track listings growth, profit by condition, days-to-sell estimates, and top-performing search jobs — all in one dark-themed command center. See the big picture at a glance with KPI cards and interactive charts.
+          </p>
+        </div>
       </div>
     </div>
 

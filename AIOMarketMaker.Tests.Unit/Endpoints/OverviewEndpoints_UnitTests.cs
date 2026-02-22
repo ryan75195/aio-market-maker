@@ -84,7 +84,6 @@ public class OverviewEndpoints_UnitTests
             Assert.That(response.LastScrape, Is.Null);
             Assert.That(response.CumulativeGrowth, Is.Empty);
             Assert.That(response.TopJobsByOpportunities, Is.Empty);
-            Assert.That(response.RecentRuns, Is.Empty);
         });
     }
 
@@ -183,36 +182,4 @@ public class OverviewEndpoints_UnitTests
         });
     }
 
-    [Test]
-    public async Task Should_return_at_most_5_recent_runs()
-    {
-        var job = new ScrapeJob { SearchTerm = "test" };
-        _db.ScrapeJobs.Add(job);
-        await _db.SaveChangesAsync();
-
-        for (int i = 0; i < 8; i++)
-        {
-            _db.ScrapeRuns.Add(new ScrapeRun
-            {
-                StartedUtc = new DateTime(2026, 1, 1 + i, 10, 0, 0, DateTimeKind.Utc),
-                Status = "Completed",
-                JobId = job.Id,
-                ListingsAddedActive = i,
-                ListingsAddedSold = 0
-            });
-        }
-        await _db.SaveChangesAsync();
-
-        var response = await CallOverview();
-
-        var runs = response.RecentRuns.ToList();
-
-        Assert.Multiple(() =>
-        {
-            Assert.That(runs, Has.Count.EqualTo(5));
-            // Should be ordered by most recent first
-            Assert.That(runs[0].StartedUtc, Is.EqualTo(new DateTime(2026, 1, 8, 10, 0, 0, DateTimeKind.Utc)));
-            Assert.That(runs[4].StartedUtc, Is.EqualTo(new DateTime(2026, 1, 4, 10, 0, 0, DateTimeKind.Utc)));
-        });
-    }
 }
