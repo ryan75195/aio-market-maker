@@ -61,6 +61,7 @@ public static class ListingEndpoints
     private static async Task<IResult> GetActiveListings(
         EtlDbContext db,
         IListingPredictionService predictionService,
+        ISemanticSearchService semanticSearchService,
         int page = 1,
         int pageSize = 50,
         string sortBy = "potentialProfit",
@@ -69,14 +70,33 @@ public static class ListingEndpoints
         int minComps = 0,
         decimal priceBand = 0,
         decimal feePercent = 0,
-        bool matchCondition = true)
+        bool matchCondition = true,
+        decimal maxPrice = 0,
+        string? searchQuery = null)
     {
-        var filters = new PredictionFilters(priceBand, feePercent, matchCondition, minComps);
+        var filters = new PredictionFilters(priceBand, feePercent, matchCondition, minComps, maxPrice);
         var jobIdList = ParseJobIds(jobIds);
+
+        List<int>? searchListingIds = null;
+        if (!string.IsNullOrWhiteSpace(searchQuery))
+        {
+            var searchResult = await semanticSearchService.Search(searchQuery, 5000);
+            var matchedEbayIds = searchResult.Hits.Select(h => h.ListingId).ToHashSet();
+            searchListingIds = await db.Listings
+                .Where(l => l.ListingStatus == "Active" && matchedEbayIds.Contains(l.ListingId))
+                .Select(l => l.Id)
+                .ToListAsync();
+
+            if (searchListingIds.Count == 0)
+            {
+                return Results.Ok(new PagedResponse<OpportunityListing>(
+                    Enumerable.Empty<OpportunityListing>(), 0, page, pageSize, 0));
+            }
+        }
 
         var paged = await predictionService.GetPredictions(
             filters, jobIdList.Count > 0 ? jobIdList : null,
-            sortBy, sortDir, page, pageSize);
+            sortBy, sortDir, page, pageSize, searchListingIds);
 
         if (paged.TotalCount == 0)
         {

@@ -126,12 +126,7 @@
             <button class="btn" @click="loadOpportunities" :disabled="opportunitiesLoading">Refresh</button>
           </div>
 
-          <div v-if="opportunitiesLoading" class="view-loading">
-            <div class="loading-spinner"></div>
-            <span>Loading opportunities...</span>
-          </div>
-
-          <div v-else class="view-fill">
+          <div class="view-fill">
           <div class="filter-row">
 
           <!-- Category Filter Dropdown -->
@@ -169,20 +164,42 @@
             </div>
           </div>
 
+          <!-- Semantic Search -->
+          <div class="search-filter">
+            <input type="text" v-model="opportunitySearchQuery" placeholder="Search listings..."
+                   @keyup.enter="searchOpportunities()" :disabled="opportunitySearchLoading">
+            <button class="btn small" @click="searchOpportunities()" :disabled="opportunitySearchLoading || !opportunitySearchQuery.trim()">
+              {{ opportunitySearchLoading ? 'Searching...' : 'Search' }}
+            </button>
+            <button v-if="opportunitySearchQuery" class="btn small" @click="clearSearch()">Clear</button>
           </div>
 
+          <!-- Budget Filter -->
+          <div class="budget-filter">
+            <label>Budget:</label>
+            <input type="number" v-model.number="opportunityBudget" min="0" step="10" placeholder="Max price"
+                   @change="opportunityPage = 1; loadOpportunities()">
+          </div>
+
+          </div>
+
+          <div class="table-container" style="position: relative; flex: 1; overflow: auto;">
+          <div v-if="opportunitiesLoading" class="table-loading-overlay">
+            <div class="loading-spinner"></div>
+          </div>
           <table class="data-table">
             <colgroup>
+              <col style="width: 7%">
+              <col style="width: 22%">
+              <col style="width: 10%">
               <col style="width: 8%">
-              <col style="width: 24%">
-              <col style="width: 12%">
-              <col style="width: 9%">
-              <col style="width: 9%">
-              <col style="width: 6%">
-              <col style="width: 9%">
+              <col style="width: 8%">
+              <col style="width: 5%">
+              <col style="width: 8%">
+              <col style="width: 5%">
               <col style="width: 7%">
-              <col style="width: 9%">
-              <col style="width: 7%">
+              <col style="width: 10%">
+              <col style="width: 5%">
             </colgroup>
             <thead>
               <tr>
@@ -195,6 +212,7 @@
                 <th class="sortable" @click="sortOpportunities('potentialProfit')">Profit{{ sortIndicator('potentialProfit') }}</th>
                 <th class="sortable" @click="sortOpportunities('estimatedDaysToSell')">Days{{ sortIndicator('estimatedDaysToSell') }}</th>
                 <th class="sortable" @click="sortOpportunities('condition')">Cond{{ sortIndicator('condition') }}</th>
+                <th class="sortable" @click="sortOpportunities('createdUtc')">Discovered{{ sortIndicator('createdUtc') }}</th>
                 <th>Link</th>
               </tr>
             </thead>
@@ -223,12 +241,13 @@
                   <span v-else>-</span>
                 </td>
                 <td>{{ listing.condition || '-' }}</td>
+                <td class="date-cell">{{ formatShortDate(listing.createdUtc) }}</td>
                 <td>
                   <a v-if="listing.url" :href="listing.url" target="_blank" class="btn small" @click.stop>eBay</a>
                 </td>
               </tr>
               <tr v-if="opportunities.length === 0 && !opportunitiesLoading">
-                <td colspan="10" class="empty">No active listings found</td>
+                <td colspan="11" class="empty">No active listings found</td>
               </tr>
             </tbody>
           </table>
@@ -244,6 +263,7 @@
             <span class="page-info">Page {{ opportunityPage }} of {{ opportunityTotalPages }}</span>
           </div>
           </div>
+          </div>
         </div>
 
         <!-- Listing Detail View -->
@@ -254,6 +274,7 @@
             <div class="detail-header">
               <button class="btn" @click="backToOpportunities">&larr; Back</button>
               <h1 class="detail-title">{{ listingDetail.listing.title || 'Untitled' }}</h1>
+              <span class="listing-id-badge">{{ listingDetail.listing.listingId }}</span>
               <a v-if="listingDetail.listing.url" :href="listingDetail.listing.url" target="_blank" class="btn">View on eBay</a>
             </div>
 
