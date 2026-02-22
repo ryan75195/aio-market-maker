@@ -1,0 +1,655 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Listing Detail - AIOMarketMaker</title>
+  <style>
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: #1e1e1e;
+  color: #e0e0e0;
+  line-height: 1.5;
+}
+
+.layout {
+  display: flex;
+  height: 100vh;
+}
+
+.sidebar {
+  width: 220px;
+  background: #252526;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid #3c3c3c;
+}
+
+.logo {
+  font-size: 18px;
+  font-weight: 600;
+  margin-bottom: 30px;
+  color: #fff;
+}
+
+.nav-items {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  flex: 1;
+}
+
+.nav-items button {
+  background: transparent;
+  border: none;
+  color: #b0b0b0;
+  padding: 10px 15px;
+  text-align: left;
+  cursor: pointer;
+  border-radius: 5px;
+  font-size: 14px;
+}
+
+.nav-items button.active {
+  background: #0e639c;
+  color: #fff;
+}
+
+.config-status {
+  font-size: 12px;
+  color: #808080;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.status-dot.connected {
+  background: #4a4;
+}
+
+.content {
+  flex: 1;
+  padding: 20px;
+  overflow: hidden;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+.view {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.view-fill {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.btn {
+  background: #3c3c3c;
+  border: none;
+  color: #e0e0e0;
+  padding: 8px 16px;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: background 0.2s;
+}
+
+.btn.small {
+  padding: 5px 10px;
+  font-size: 12px;
+}
+
+.btn.danger {
+  background: #dc2626;
+  color: white;
+}
+
+.detail-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+  flex-shrink: 0;
+}
+
+.detail-header h1 {
+  flex: 1;
+  font-size: 1.3rem;
+  margin: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.detail-title {
+  min-width: 0;
+}
+
+.listing-id-badge {
+  font-size: 12px;
+  color: #888;
+  background: #2a2a2a;
+  padding: 2px 8px;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+
+.detail-anchor {
+  display: flex;
+  gap: 16px;
+  background: #1e1e2e;
+  border: 1px solid #333;
+  border-radius: 8px;
+  padding: 14px;
+  margin-bottom: 12px;
+  flex-shrink: 0;
+}
+
+.detail-anchor-image {
+  flex-shrink: 0;
+  width: 150px;
+  height: 150px;
+}
+
+.image-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  background: rgba(255,255,255,0.05);
+  border-radius: 4px;
+  color: #666;
+  font-size: 0.8rem;
+}
+
+.image-placeholder.small {
+  height: 80px;
+}
+
+.detail-anchor-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.detail-meta {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.detail-meta-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.meta-label {
+  font-size: 0.75rem;
+  color: #888;
+  text-transform: uppercase;
+}
+
+.meta-value {
+  font-size: 0.95rem;
+}
+
+.detail-metrics {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.metric-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 8px 16px;
+  background: rgba(255,255,255,0.05);
+  border-radius: 6px;
+}
+
+.metric-value {
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+.metric-label {
+  font-size: 0.7rem;
+  color: #888;
+  text-transform: uppercase;
+}
+
+.detail-description {
+  margin-top: 8px;
+}
+
+.description-text {
+  max-height: 200px;
+  overflow-y: auto;
+  font-size: 0.85rem;
+  color: #ccc;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  margin-top: 4px;
+}
+
+.detail-comps-header {
+  margin-bottom: 8px;
+  flex-shrink: 0;
+}
+
+.detail-comps-header h2 {
+  font-size: 1.1rem;
+  margin: 0;
+}
+
+.comp-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 10px;
+  flex: 1;
+  min-height: 0;
+  align-content: start;
+}
+
+.comp-grid.scrollable {
+  overflow-y: auto;
+}
+
+.comp-card {
+  background: #1e1e2e;
+  border: 1px solid #333;
+  border-radius: 8px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.comp-image {
+  width: 100%;
+  height: 90px;
+}
+
+.comp-info {
+  flex: 1;
+}
+
+.comp-title {
+  font-weight: 600;
+  font-size: 0.9rem;
+  margin-bottom: 4px;
+}
+
+.comp-description {
+  font-size: 0.8rem;
+  color: #aaa;
+  line-height: 1.4;
+  margin-bottom: 8px;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.comp-meta {
+  display: flex;
+  gap: 12px;
+  font-size: 0.8rem;
+  color: #ccc;
+}
+
+.comp-price {
+  font-weight: 600;
+  color: #22c55e;
+}
+
+.comp-condition {
+  color: #888;
+}
+
+.comp-score {
+  color: #60a5fa;
+}
+
+.comp-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 8px;
+  padding: 8px 0;
+  flex-shrink: 0;
+}
+
+.page-btn {
+  background: #3c3c3c;
+  border: none;
+  color: #b0b0b0;
+  padding: 6px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.page-btn.active {
+  background: #0e639c;
+  color: #fff;
+}
+
+.page-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.page-info {
+  color: #808080;
+  font-size: 13px;
+  margin-left: 12px;
+}
+
+/* Image placeholders that look like product images */
+.product-image-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(135deg, #2a2a3a 0%, #1e1e2e 100%);
+  border-radius: 4px;
+  color: #555;
+  font-size: 2rem;
+}
+
+.product-image-placeholder.small-icon {
+  font-size: 1.5rem;
+}
+  </style>
+</head>
+<body>
+  <div class="layout">
+    <nav class="sidebar">
+      <div class="logo">AIOMarketMaker</div>
+      <div class="nav-items">
+        <button>Overview</button>
+        <button class="active">Opportunities</button>
+        <button>Index</button>
+        <button>Settings</button>
+      </div>
+      <div class="config-status">
+        <span class="status-dot connected"></span>
+        Local
+      </div>
+    </nav>
+
+    <main class="content">
+      <div class="view">
+        <div class="view-fill">
+          <!-- Header -->
+          <div class="detail-header">
+            <button class="btn">&larr; Back</button>
+            <h1 class="detail-title">Sony PS5 Disc Edition 825GB - White</h1>
+            <span class="listing-id-badge">295018374</span>
+            <button class="btn">View on eBay</button>
+          </div>
+
+          <!-- Anchor Listing Card -->
+          <div class="detail-anchor">
+            <div class="detail-anchor-image">
+              <div class="product-image-placeholder">
+                <svg width="60" height="60" viewBox="0 0 24 24" fill="none" stroke="#555" stroke-width="1.5">
+                  <rect x="2" y="3" width="20" height="18" rx="2"/>
+                  <circle cx="8" cy="10" r="2"/>
+                  <path d="M2 17l5-5 4 4 4-6 7 7"/>
+                </svg>
+              </div>
+            </div>
+            <div class="detail-anchor-info">
+              <div class="detail-meta">
+                <div class="detail-meta-item">
+                  <span class="meta-label">Price</span>
+                  <span class="meta-value">&pound;320.00 + &pound;12.99 shipping</span>
+                </div>
+                <div class="detail-meta-item">
+                  <span class="meta-label">Condition</span>
+                  <span class="meta-value">Used</span>
+                </div>
+                <div class="detail-meta-item">
+                  <span class="meta-label">Status</span>
+                  <span class="meta-value">Active</span>
+                </div>
+                <div class="detail-meta-item">
+                  <span class="meta-label">Job</span>
+                  <span class="meta-value">ps5 console</span>
+                </div>
+              </div>
+              <div class="detail-metrics">
+                <div class="metric-card">
+                  <span class="metric-value">&pound;410.50</span>
+                  <span class="metric-label">Avg Sold</span>
+                </div>
+                <div class="metric-card">
+                  <span class="metric-value">12</span>
+                  <span class="metric-label">Comps</span>
+                </div>
+                <div class="metric-card">
+                  <span class="metric-value" style="color: #22c55e;">+&pound;48.18</span>
+                  <span class="metric-label">Profit</span>
+                </div>
+                <div class="metric-card">
+                  <span class="metric-value">5d</span>
+                  <span class="metric-label">Days to Sell</span>
+                </div>
+              </div>
+              <div class="detail-description">
+                <span class="meta-label">Description</span>
+                <div class="description-text">Sony PlayStation 5 Disc Edition 825GB. Console only, no controller or cables included. In excellent condition with minimal signs of use. Factory reset and ready for new owner. Firmware up to date.</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Comparables Section -->
+          <div class="detail-comps-header">
+            <h2>Comparables (12)</h2>
+          </div>
+          <div class="comp-grid scrollable">
+            <!-- Comp 1 -->
+            <div class="comp-card">
+              <div class="comp-image">
+                <div class="product-image-placeholder small-icon">
+                  <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#555" stroke-width="1.5">
+                    <rect x="2" y="3" width="20" height="18" rx="2"/>
+                    <circle cx="8" cy="10" r="2"/>
+                    <path d="M2 17l5-5 4 4 4-6 7 7"/>
+                  </svg>
+                </div>
+              </div>
+              <div class="comp-info">
+                <div class="comp-title">PS5 Disc Edition Console 825GB White</div>
+                <div class="comp-description">Sony PlayStation 5 disc edition in great condition. Fully working, factory reset. Collection or delivery available.</div>
+                <div class="comp-meta">
+                  <span class="comp-price">&pound;425.00</span>
+                  <span class="comp-condition">Used</span>
+                  <span class="comp-score">Score: 0.94</span>
+                </div>
+              </div>
+              <div class="comp-actions">
+                <a class="btn small">eBay</a>
+                <button class="btn small danger">Dismiss</button>
+              </div>
+            </div>
+
+            <!-- Comp 2 -->
+            <div class="comp-card">
+              <div class="comp-image">
+                <div class="product-image-placeholder small-icon">
+                  <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#555" stroke-width="1.5">
+                    <rect x="2" y="3" width="20" height="18" rx="2"/>
+                    <circle cx="8" cy="10" r="2"/>
+                    <path d="M2 17l5-5 4 4 4-6 7 7"/>
+                  </svg>
+                </div>
+              </div>
+              <div class="comp-info">
+                <div class="comp-title">PlayStation 5 Disc Version + Controller</div>
+                <div class="comp-description">PS5 disc version with one DualSense controller. Excellent condition, works perfectly. Slight mark on side panel but barely noticeable.</div>
+                <div class="comp-meta">
+                  <span class="comp-price">&pound;415.00</span>
+                  <span class="comp-condition">Used</span>
+                  <span class="comp-score">Score: 0.91</span>
+                </div>
+              </div>
+              <div class="comp-actions">
+                <a class="btn small">eBay</a>
+                <button class="btn small danger">Dismiss</button>
+              </div>
+            </div>
+
+            <!-- Comp 3 -->
+            <div class="comp-card">
+              <div class="comp-image">
+                <div class="product-image-placeholder small-icon">
+                  <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#555" stroke-width="1.5">
+                    <rect x="2" y="3" width="20" height="18" rx="2"/>
+                    <circle cx="8" cy="10" r="2"/>
+                    <path d="M2 17l5-5 4 4 4-6 7 7"/>
+                  </svg>
+                </div>
+              </div>
+              <div class="comp-info">
+                <div class="comp-title">Sony PS5 825GB Disc Edition - Barely Used</div>
+                <div class="comp-description">Bought at launch, barely played. Comes with original box and all cables. Disc drive works perfectly.</div>
+                <div class="comp-meta">
+                  <span class="comp-price">&pound;400.00</span>
+                  <span class="comp-condition">Used</span>
+                  <span class="comp-score">Score: 0.88</span>
+                </div>
+              </div>
+              <div class="comp-actions">
+                <a class="btn small">eBay</a>
+                <button class="btn small danger">Dismiss</button>
+              </div>
+            </div>
+
+            <!-- Comp 4 -->
+            <div class="comp-card">
+              <div class="comp-image">
+                <div class="product-image-placeholder small-icon">
+                  <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#555" stroke-width="1.5">
+                    <rect x="2" y="3" width="20" height="18" rx="2"/>
+                    <circle cx="8" cy="10" r="2"/>
+                    <path d="M2 17l5-5 4 4 4-6 7 7"/>
+                  </svg>
+                </div>
+              </div>
+              <div class="comp-info">
+                <div class="comp-title">PS5 Disc Console White 825GB CFI-1216A</div>
+                <div class="comp-description">PlayStation 5 disc console. Newer model CFI-1216A revision. In good working order with DualSense controller.</div>
+                <div class="comp-meta">
+                  <span class="comp-price">&pound;395.00</span>
+                  <span class="comp-condition">Used</span>
+                  <span class="comp-score">Score: 0.86</span>
+                </div>
+              </div>
+              <div class="comp-actions">
+                <a class="btn small">eBay</a>
+                <button class="btn small danger">Dismiss</button>
+              </div>
+            </div>
+
+            <!-- Comp 5 -->
+            <div class="comp-card">
+              <div class="comp-image">
+                <div class="product-image-placeholder small-icon">
+                  <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#555" stroke-width="1.5">
+                    <rect x="2" y="3" width="20" height="18" rx="2"/>
+                    <circle cx="8" cy="10" r="2"/>
+                    <path d="M2 17l5-5 4 4 4-6 7 7"/>
+                  </svg>
+                </div>
+              </div>
+              <div class="comp-info">
+                <div class="comp-title">Sony PlayStation 5 Disc 825GB White Bundle</div>
+                <div class="comp-description">PS5 disc edition bundle with 2 controllers and charging dock. All in excellent condition, smoke-free home.</div>
+                <div class="comp-meta">
+                  <span class="comp-price">&pound;450.00</span>
+                  <span class="comp-condition">Used</span>
+                  <span class="comp-score">Score: 0.84</span>
+                </div>
+              </div>
+              <div class="comp-actions">
+                <a class="btn small">eBay</a>
+                <button class="btn small danger">Dismiss</button>
+              </div>
+            </div>
+
+            <!-- Comp 6 -->
+            <div class="comp-card">
+              <div class="comp-image">
+                <div class="product-image-placeholder small-icon">
+                  <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#555" stroke-width="1.5">
+                    <rect x="2" y="3" width="20" height="18" rx="2"/>
+                    <circle cx="8" cy="10" r="2"/>
+                    <path d="M2 17l5-5 4 4 4-6 7 7"/>
+                  </svg>
+                </div>
+              </div>
+              <div class="comp-info">
+                <div class="comp-title">PS5 Console Disc Edition 825 GB - Boxed</div>
+                <div class="comp-description">Complete in box PS5 disc edition. Includes HDMI cable, power cable, and DualSense controller. Fully tested and working.</div>
+                <div class="comp-meta">
+                  <span class="comp-price">&pound;380.00</span>
+                  <span class="comp-condition">Used</span>
+                  <span class="comp-score">Score: 0.82</span>
+                </div>
+              </div>
+              <div class="comp-actions">
+                <a class="btn small">eBay</a>
+                <button class="btn small danger">Dismiss</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="pagination">
+            <button class="page-btn" disabled>Prev</button>
+            <button class="page-btn active">1</button>
+            <button class="page-btn">2</button>
+            <button class="page-btn">Next</button>
+            <span class="page-info">Page 1 of 2</span>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+</body>
+</html>
