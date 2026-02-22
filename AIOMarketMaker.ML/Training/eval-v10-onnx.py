@@ -30,14 +30,7 @@ from sklearn.metrics import (
 MODEL_PATH = Path("E:/Dev/ml-training/variant-classifier/v10/onnx/model.onnx")
 DATA_PATH = Path("data/labeled_pairs_v10.csv")
 MAX_LENGTH = 512
-MAX_DESC = 200  # Match .NET inference truncation
 BATCH_SIZE = 32
-
-
-def truncate(text: str, max_len: int) -> str:
-    if not text:
-        return ""
-    return text[:max_len]
 
 
 def main():
@@ -74,8 +67,8 @@ def main():
         texts_a = []
         texts_b = []
         for row in batch:
-            a = f"{row['anchor_title']} | {truncate(row.get('anchor_desc', ''), MAX_DESC)}"
-            b = f"{row['neighbor_title']} | {truncate(row.get('neighbor_desc', ''), MAX_DESC)}"
+            a = f"{row['anchor_title']} | {row.get('anchor_desc', '')}"
+            b = f"{row['neighbor_title']} | {row.get('neighbor_desc', '')}"
             texts_a.append(a)
             texts_b.append(b)
             all_labels.append(int(row["label"]))

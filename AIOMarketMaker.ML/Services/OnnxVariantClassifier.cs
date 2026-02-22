@@ -87,8 +87,8 @@ public class OnnxVariantClassifier : IVariantClassifierClient, IDisposable
         for (var i = 0; i < pairList.Count; i++)
         {
             var pair = pairList[i];
-            var textA = $"{pair.TitleA} | {Truncate(pair.DescriptionA, MaxDescriptionLength)}";
-            var textB = $"{pair.TitleB} | {Truncate(pair.DescriptionB, MaxDescriptionLength)}";
+            var textA = $"{pair.TitleA} | {pair.DescriptionA}";
+            var textB = $"{pair.TitleB} | {pair.DescriptionB}";
             var (inputIds, attentionMask, actualLength) = TokenizePairInternal(textA, textB);
             tokenizedPairs[i] = (inputIds, attentionMask, actualLength);
 
@@ -232,24 +232,6 @@ public class OnnxVariantClassifier : IVariantClassifierClient, IDisposable
         }
 
         return (combined.ToArray(), mask, realLength);
-    }
-
-    /// <summary>
-    /// Max description chars to keep. Seller boilerplate templates (10K+ chars of
-    /// "Huge Discounts Quality Products Save...") drown out actual product info
-    /// within the 256-token window. The first ~200 chars typically contain the
-    /// real product description; beyond that is mostly template noise.
-    /// </summary>
-    private const int MaxDescriptionLength = 200;
-
-    private static string Truncate(string text, int maxLength)
-    {
-        if (string.IsNullOrEmpty(text) || text.Length <= maxLength)
-        {
-            return text;
-        }
-
-        return text[..maxLength];
     }
 
     public void Dispose()
