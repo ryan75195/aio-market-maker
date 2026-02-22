@@ -122,7 +122,7 @@ builder.Services.AddSingleton<IListingIndexingService, ListingIndexingService>()
 // Pricing analysis service
 builder.Services.AddSingleton<IPricingAnalysisService, PricingAnalysisService>();
 
-// Variant classifier (local ONNX model)
+// Variant classifier (local ONNX model + ensemble calibration)
 var classifierConfig = new OnnxClassifierConfig(
     ModelPath: configuration.GetValue<string>("VariantClassifier:ModelPath") ?? "models/variant-classifier/model.onnx",
     VocabPath: configuration.GetValue<string>("VariantClassifier:VocabPath") ?? "models/variant-classifier/vocab.json",
@@ -130,6 +130,17 @@ var classifierConfig = new OnnxClassifierConfig(
     MaxLength: configuration.GetValue<int?>("VariantClassifier:MaxLength") ?? 256);
 builder.Services.AddSingleton(classifierConfig);
 builder.Services.AddSingleton<VariantModelRunner>();
+builder.Services.AddSingleton<IVariantModelRunner>(sp => sp.GetRequiredService<VariantModelRunner>());
+
+var ensembleLogitWeight = configuration.GetValue<float>("VariantClassifier:Ensemble:LogitWeight");
+if (ensembleLogitWeight != 0)
+{
+    builder.Services.AddSingleton(new EnsembleConfig(
+        LogitWeight: ensembleLogitWeight,
+        SimilarityWeight: configuration.GetValue<float>("VariantClassifier:Ensemble:SimilarityWeight"),
+        Intercept: configuration.GetValue<float>("VariantClassifier:Ensemble:Intercept")));
+}
+builder.Services.AddSingleton<IVariantClassifierClient, VariantClassifier>();
 
 // ComparablesEtlService
 builder.Services.AddScoped<IComparablesEtlService, ComparablesEtlService>();

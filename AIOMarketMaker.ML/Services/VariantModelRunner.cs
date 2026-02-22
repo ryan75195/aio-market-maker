@@ -18,7 +18,7 @@ public record EnsembleConfig(
     float SimilarityWeight,
     float Intercept);
 
-internal interface IVariantModelRunner
+public interface IVariantModelRunner
 {
     Task<IReadOnlyList<PairResult>> Classify(IEnumerable<ClassifyPairRequest> pairs, CancellationToken ct = default);
     Task<bool> IsHealthy(CancellationToken ct = default);
