@@ -25,6 +25,9 @@ createApp({
       selectedListingId: null,
       listingDetail: null,
       listingDetailLoading: false,
+      descriptionExpanded: false,
+      compareComp: null,
+      compareIndex: -1,
       historyMode: 'batches',
       batches: [],
       selectedBatch: null,
@@ -1147,6 +1150,8 @@ createApp({
     async loadListingDetail(id) {
       this.listingDetailLoading = true;
       this.compPage = 1;
+      this.descriptionExpanded = false;
+      this.closeCompare();
       try {
         const qs = this.listingDetailParams();
         const data = await this.apiCall(`/listings/${id}${qs ? '?' + qs : ''}`);
@@ -1183,6 +1188,39 @@ createApp({
       } catch (err) {
         this.showToast(`Failed to dismiss: ${err.message}`, 'error');
       }
+    },
+
+    openCompare(comp) {
+      const idx = this.listingDetail.comparables.findIndex(c => c.relationshipId === comp.relationshipId);
+      this.compareIndex = idx >= 0 ? idx : 0;
+      this.compareComp = this.listingDetail.comparables[this.compareIndex];
+    },
+
+    closeCompare() {
+      this.compareComp = null;
+      this.compareIndex = -1;
+    },
+
+    compareNav(direction) {
+      const next = this.compareIndex + direction;
+      if (next >= 0 && next < this.listingDetail.comparables.length) {
+        this.compareIndex = next;
+        this.compareComp = this.listingDetail.comparables[next];
+      }
+    },
+
+    async dismissAndNav(relationshipId) {
+      const compsBeforeDismiss = this.listingDetail.comparables.length;
+      await this.dismissComparable(relationshipId);
+      const comps = this.listingDetail.comparables;
+      if (comps.length === 0) {
+        this.closeCompare();
+        return;
+      }
+      // Stay at same index, or clamp to end
+      const idx = Math.min(this.compareIndex, comps.length - 1);
+      this.compareIndex = idx;
+      this.compareComp = comps[idx];
     },
 
     parseImages(imagesJson) {

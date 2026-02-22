@@ -1,29 +1,29 @@
-<section class="relative pt-32 pb-24 px-6 overflow-hidden">
+<section class="relative pt-24 pb-12 md:pt-32 md:pb-16 px-5 md:px-6 overflow-hidden">
   <!-- Ambient glow -->
   <div class="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[500px] bg-[radial-gradient(ellipse,rgba(14,99,156,0.15),transparent_70%)] pointer-events-none"></div>
 
   <div class="max-w-7xl mx-auto">
     <!-- Tagline -->
-    <div class="fade-up flex justify-center mb-8">
+    <div class="fade-up flex justify-center mb-5 md:mb-8">
       <span class="tag">AI-Powered eBay Arbitrage</span>
     </div>
 
     <!-- Headline -->
-    <h1 class="fade-up text-center font-['Outfit',sans-serif] text-5xl md:text-6xl lg:text-7xl font-800 text-white leading-[1.05] tracking-tight max-w-4xl mx-auto">
+    <h1 class="fade-up text-center font-['Outfit',sans-serif] text-[2.25rem] leading-[1.1] sm:text-5xl md:text-6xl lg:text-7xl font-800 text-white md:leading-[1.05] tracking-tight max-w-4xl mx-auto">
       Find Underpriced Listings
       <span class="bg-gradient-to-r from-[#38bdf8] via-[#0ea5e9] to-[#22c55e] bg-clip-text text-transparent"> Before Anyone Else</span>
     </h1>
 
     <!-- Subhead -->
-    <p class="fade-up text-center text-lg md:text-xl text-[#8b8d95] leading-relaxed mt-6 max-w-2xl mx-auto">
+    <p class="fade-up text-center text-base md:text-xl text-[#8b8d95] leading-relaxed mt-4 md:mt-6 max-w-2xl mx-auto px-2">
       Market Maker scans eBay, matches comparables at the <em class="text-[#c8cad0] not-italic font-medium">variant level</em> using ML, and surfaces profit opportunities — so you can flip smarter, not harder.
     </p>
 
     <!-- CTA -->
-    <div class="fade-up flex justify-center mt-10">
+    <div class="fade-up flex justify-center mt-8 md:mt-10">
       <a
         href="#waitlist"
-        class="group relative inline-flex items-center gap-2 px-8 py-3.5 rounded-xl text-lg font-semibold text-white overflow-hidden transition-all duration-300 hover:shadow-[0_0_30px_rgba(56,189,248,0.25)] hover:-translate-y-0.5"
+        class="group relative inline-flex items-center gap-2 px-7 py-3 md:px-8 md:py-3.5 rounded-xl text-base md:text-lg font-semibold text-white overflow-hidden transition-all duration-300 hover:shadow-[0_0_30px_rgba(56,189,248,0.25)] hover:-translate-y-0.5"
       >
         <span class="absolute inset-0 bg-gradient-to-r from-[#0e639c] via-[#1d8cd7] to-[#38bdf8] opacity-90 group-hover:opacity-100 transition-opacity"></span>
         <span class="relative">Join the Waitlist</span>
@@ -31,16 +31,166 @@
       </a>
     </div>
 
-    <!-- Hero Screenshot -->
-    <div class="fade-up mt-16 max-w-6xl mx-auto">
-      <div class="screenshot-glow rounded-xl overflow-hidden">
-        <img
-          src="/screenshots/opportunities.png"
-          alt="Market Maker opportunities view showing eBay listings with profit calculations"
-          class="w-full rounded-xl"
-          loading="eager"
-        />
+    <!-- Animated Stats -->
+    <div class="hero-stats mt-12 md:mt-16 grid grid-cols-3 gap-3 md:gap-5 max-w-2xl mx-auto">
+
+      <!-- Listings Scanned -->
+      <div class="stat-card group relative p-4 md:p-6 rounded-xl bg-white/[0.03] border border-white/[0.06] text-center overflow-hidden transition-colors duration-500 hover:border-[#38bdf8]/20 hover:bg-white/[0.05]">
+        <div class="stat-glow absolute inset-0 opacity-0 transition-opacity duration-700 bg-[radial-gradient(ellipse_at_center,rgba(56,189,248,0.06),transparent_70%)]"></div>
+        <div class="relative">
+          <span
+            class="stat-number block font-['JetBrains_Mono',monospace] text-2xl sm:text-3xl md:text-4xl font-medium text-white tabular-nums tracking-tight"
+            data-target="12847"
+            data-prefix=""
+            data-suffix=""
+          >0</span>
+          <span class="block mt-1.5 md:mt-2 text-[0.65rem] md:text-xs text-[#8b8d95] font-['DM_Sans',sans-serif] uppercase tracking-[0.1em]">Listings Scanned</span>
+        </div>
       </div>
+
+      <!-- Profit Found -->
+      <div class="stat-card group relative p-4 md:p-6 rounded-xl bg-white/[0.03] border border-white/[0.06] text-center overflow-hidden transition-colors duration-500 hover:border-[#22c55e]/20 hover:bg-white/[0.05]">
+        <div class="stat-glow absolute inset-0 opacity-0 transition-opacity duration-700 bg-[radial-gradient(ellipse_at_center,rgba(34,197,94,0.06),transparent_70%)]"></div>
+        <div class="relative">
+          <span
+            class="stat-number block font-['JetBrains_Mono',monospace] text-2xl sm:text-3xl md:text-4xl font-medium text-[#22c55e] tabular-nums tracking-tight"
+            data-target="18420"
+            data-prefix="£"
+            data-suffix=""
+          >£0</span>
+          <span class="block mt-1.5 md:mt-2 text-[0.65rem] md:text-xs text-[#8b8d95] font-['DM_Sans',sans-serif] uppercase tracking-[0.1em]">Profit Found</span>
+        </div>
+      </div>
+
+      <!-- Match Accuracy -->
+      <div class="stat-card group relative p-4 md:p-6 rounded-xl bg-white/[0.03] border border-white/[0.06] text-center overflow-hidden transition-colors duration-500 hover:border-[#38bdf8]/20 hover:bg-white/[0.05]">
+        <div class="stat-glow absolute inset-0 opacity-0 transition-opacity duration-700 bg-[radial-gradient(ellipse_at_center,rgba(56,189,248,0.06),transparent_70%)]"></div>
+        <div class="relative">
+          <span
+            class="stat-number block font-['JetBrains_Mono',monospace] text-2xl sm:text-3xl md:text-4xl font-medium text-white tabular-nums tracking-tight"
+            data-target="93"
+            data-prefix=""
+            data-suffix="%"
+          >0%</span>
+          <span class="block mt-1.5 md:mt-2 text-[0.65rem] md:text-xs text-[#8b8d95] font-['DM_Sans',sans-serif] uppercase tracking-[0.1em]">Match Accuracy</span>
+        </div>
+      </div>
+
     </div>
+
+    <!-- Scroll Indicator -->
+    <div class="scroll-hint mt-12 md:mt-16 flex flex-col items-center gap-2 opacity-0">
+      <span class="text-[0.65rem] text-[#555] font-['JetBrains_Mono',monospace] uppercase tracking-[0.15em]">See how it works</span>
+      <svg class="scroll-chevron w-5 h-5 text-[#38bdf8]/50" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="6 9 12 15 18 9" />
+      </svg>
+    </div>
+
   </div>
 </section>
+
+<style>
+  /* Stat cards stagger in */
+  .stat-card {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  .stat-card.revealed {
+    opacity: 1;
+    transform: translateY(0);
+    transition: opacity 0.6s cubic-bezier(0.16, 1, 0.3, 1), transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .stat-card.revealed .stat-glow {
+    opacity: 1;
+  }
+  .stat-card:nth-child(1).revealed { transition-delay: 0ms; }
+  .stat-card:nth-child(2).revealed { transition-delay: 150ms; }
+  .stat-card:nth-child(3).revealed { transition-delay: 300ms; }
+
+  /* Scroll indicator */
+  .scroll-hint.visible {
+    opacity: 1;
+    transition: opacity 1s ease 1.5s;
+  }
+
+  .scroll-chevron {
+    animation: bounce-down 2s ease-in-out infinite;
+  }
+
+  @keyframes bounce-down {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(6px); }
+  }
+</style>
+
+<script>
+  // Count-up animation
+  function animateCounter(el, target, prefix, suffix, duration) {
+    const start = performance.now();
+
+    function easeOutExpo(t) {
+      return t === 1 ? 1 : 1 - Math.pow(2, -10 * t);
+    }
+
+    function formatNumber(n) {
+      return n.toLocaleString('en-GB');
+    }
+
+    function tick(now) {
+      const elapsed = now - start;
+      const progress = Math.min(elapsed / duration, 1);
+      const eased = easeOutExpo(progress);
+      const current = Math.round(eased * target);
+      el.textContent = prefix + formatNumber(current) + suffix;
+
+      if (progress < 1) {
+        requestAnimationFrame(tick);
+      }
+    }
+
+    requestAnimationFrame(tick);
+  }
+
+  // Trigger stats when visible
+  const statsContainer = document.querySelector('.hero-stats');
+  const scrollHint = document.querySelector('.scroll-hint');
+  let statsTriggered = false;
+
+  if (statsContainer) {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting && !statsTriggered) {
+            statsTriggered = true;
+
+            // Reveal cards with stagger
+            const cards = statsContainer.querySelectorAll('.stat-card');
+            cards.forEach((card) => card.classList.add('revealed'));
+
+            // Start counters after first card fades in
+            setTimeout(() => {
+              const numbers = statsContainer.querySelectorAll('.stat-number');
+              const durations = [2000, 2500, 1500];
+              numbers.forEach((el, i) => {
+                const target = parseInt(el.dataset.target, 10);
+                const prefix = el.dataset.prefix || '';
+                const suffix = el.dataset.suffix || '';
+                animateCounter(el, target, prefix, suffix, durations[i]);
+              });
+            }, 200);
+
+            // Show scroll hint after counters
+            if (scrollHint) {
+              scrollHint.classList.add('visible');
+            }
+
+            observer.disconnect();
+          }
+        });
+      },
+      { threshold: 0.3 }
+    );
+
+    observer.observe(statsContainer);
+  }
+</script>

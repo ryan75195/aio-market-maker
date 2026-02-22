@@ -68,11 +68,18 @@ const {
       .screenshot-glow::after {
         content: '';
         position: absolute;
-        inset: -40px;
-        border-radius: 40px;
+        inset: -20px;
+        border-radius: 24px;
         background: radial-gradient(ellipse at center, rgba(14,99,156,0.15) 0%, transparent 70%);
         pointer-events: none;
         z-index: -1;
+      }
+
+      @media (min-width: 768px) {
+        .screenshot-glow::after {
+          inset: -40px;
+          border-radius: 40px;
+        }
       }
 
       /* Scroll-triggered fade-in animations */

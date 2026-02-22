@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://unpkg.com; style-src 'self' 'unsafe-inline'; img-src 'self' https://i.ebayimg.com data:; connect-src *;">
-  <title>AIOMarketMaker</title>
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://unpkg.com; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src *;">
+  <title>Market Maker</title>
   <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
   <script src="https://unpkg.com/chart.js@4/dist/chart.umd.js"></script>
   <link rel="stylesheet" href="styles.css">
@@ -13,7 +13,27 @@
   <div id="app">
     <div class="layout">
       <nav class="sidebar">
-        <div class="logo">AIOMarketMaker</div>
+        <div class="logo">
+          <svg width="100%" viewBox="0 4 200 72" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <linearGradient id="mm-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="#48cae4"/>
+                <stop offset="100%" stop-color="#0077b6"/>
+              </linearGradient>
+            </defs>
+            <line x1="8" y1="24" x2="24" y2="40" stroke="#0077b6" stroke-width="1.5" opacity="0.4"/>
+            <line x1="8" y1="56" x2="24" y2="40" stroke="#0077b6" stroke-width="1.5" opacity="0.4"/>
+            <line x1="24" y1="40" x2="44" y2="28" stroke="#00b4d8" stroke-width="1.5" opacity="0.6"/>
+            <line x1="24" y1="40" x2="44" y2="52" stroke="#00b4d8" stroke-width="1.5" opacity="0.6"/>
+            <circle cx="8" cy="24" r="4" fill="#0077b6" opacity="0.5"/>
+            <circle cx="8" cy="56" r="4" fill="#0077b6" opacity="0.5"/>
+            <circle cx="24" cy="40" r="6" fill="url(#mm-grad)"/>
+            <circle cx="44" cy="28" r="4" fill="#48cae4" opacity="0.7"/>
+            <circle cx="44" cy="52" r="4" fill="#48cae4" opacity="0.7"/>
+            <text x="60" y="36" font-family="'Segoe UI', system-ui, sans-serif" font-size="28" font-weight="700" fill="#e8e8e8" letter-spacing="-0.5">Market</text>
+            <text x="60" y="62" font-family="'Segoe UI', system-ui, sans-serif" font-size="28" font-weight="300" fill="#48cae4" letter-spacing="-0.5">Maker</text>
+          </svg>
+        </div>
         <div class="nav-items">
           <button :class="{ active: currentView === 'overview' }" @click="currentView = 'overview'; loadOverview()">Overview</button>
           <button :class="{ active: currentView === 'opportunities' }" @click="currentView = 'opportunities'; loadOpportunities()">Opportunities</button>
@@ -262,95 +282,252 @@
 
         <!-- Listing Detail View -->
         <div v-if="currentView === 'listing-detail'" class="view">
-          <div v-if="listingDetailLoading" class="loading">Loading...</div>
-          <div v-else-if="listingDetail" class="view-fill">
+          <div v-if="listingDetailLoading" class="view-loading">
+            <div class="loading-spinner"></div>
+            <span>Loading listing...</span>
+          </div>
+          <div v-else-if="listingDetail" class="view-fill detail-view">
+
+            <!-- Top Bar -->
+            <div class="detail-topbar">
+              <button class="btn detail-back-btn" @click="backToOpportunities">
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M10 12L6 8l4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                Opportunities
+              </button>
+              <div class="detail-topbar-right">
+                <span class="listing-id-badge">{{ listingDetail.listing.listingId }}</span>
+                <a v-if="listingDetail.listing.url" :href="listingDetail.listing.url" target="_blank" class="btn detail-ebay-btn">
+                  View on eBay
+                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M4.5 1.5H2a.5.5 0 00-.5.5v8a.5.5 0 00.5.5h8a.5.5 0 00.5-.5V7.5M7 1.5h3.5V5M6 6l4.5-4.5" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                </a>
+              </div>
+            </div>
+
+            <!-- Scrollable body -->
+            <div class="detail-body">
+
+              <!-- Hero: Title + Tags -->
+              <div class="detail-hero">
+                <div class="detail-hero-info">
+                  <h1 class="detail-hero-title">{{ listingDetail.listing.title || 'Untitled' }}</h1>
+                  <div class="detail-hero-tags">
+                    <span class="detail-tag condition">{{ listingDetail.listing.condition || 'Unknown' }}</span>
+                    <span class="detail-tag status" :class="listingDetail.listing.listingStatus?.toLowerCase()">{{ listingDetail.listing.listingStatus || 'Unknown' }}</span>
+                    <span v-if="listingDetail.listing.searchTerm" class="detail-tag job">{{ listingDetail.listing.searchTerm }}</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Pricing Strip -->
+              <div class="detail-pricing-strip">
+                <div class="pricing-block primary">
+                  <span class="pricing-label">Buy Price</span>
+                  <span class="pricing-value">{{ formatPrice(listingDetail.listing.price, listingDetail.listing.currency) }}
+                    <span v-if="listingDetail.listing.shippingCost" class="pricing-shipping">+ {{ formatPrice(listingDetail.listing.shippingCost, listingDetail.listing.currency) }} ship</span>
+                  </span>
+                </div>
+                <div class="pricing-divider">
+                  <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M7 4l6 6-6 6" stroke="#555" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                </div>
+                <div class="pricing-block">
+                  <span class="pricing-label">Avg Sold</span>
+                  <span class="pricing-value">{{ formatPrice(listingDetail.listing.averageSoldPrice, listingDetail.listing.currency) || '-' }}</span>
+                </div>
+                <div class="pricing-divider">
+                  <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M4 10h12M12 6l4 4-4 4" stroke="#555" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                </div>
+                <div class="pricing-block" :class="{ profit: (listingDetail.listing.potentialProfit || 0) >= 0, loss: (listingDetail.listing.potentialProfit || 0) < 0 }">
+                  <span class="pricing-label">Profit</span>
+                  <span class="pricing-value">
+                    {{ listingDetail.listing.potentialProfit != null ? (listingDetail.listing.potentialProfit >= 0 ? '+' : '') + formatPrice(listingDetail.listing.potentialProfit, listingDetail.listing.currency) : '-' }}
+                  </span>
+                </div>
+                <div class="pricing-stat-group">
+                  <div class="pricing-stat">
+                    <span class="pricing-stat-value">{{ listingDetail.listing.similarSoldCount || 0 }}</span>
+                    <span class="pricing-stat-label">comps</span>
+                  </div>
+                  <div class="pricing-stat">
+                    <span class="pricing-stat-value">{{ listingDetail.listing.estimatedDaysToSell != null ? listingDetail.listing.estimatedDaysToSell + 'd' : '-' }}</span>
+                    <span class="pricing-stat-label">to sell</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Description (collapsible) -->
+              <div v-if="listingDetail.listing.description" class="detail-description-section">
+                <button class="detail-section-toggle" @click="descriptionExpanded = !descriptionExpanded">
+                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none" :style="{ transform: descriptionExpanded ? 'rotate(90deg)' : '' }"><path d="M5 3l4 4-4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                  Description
+                </button>
+                <div v-if="descriptionExpanded" class="detail-description-body">
+                  {{ listingDetail.listing.description }}
+                </div>
+              </div>
+
+              <!-- Comparables -->
+              <div class="detail-comps-section">
+                <div class="detail-comps-bar">
+                  <h2>Comparable Sales</h2>
+                  <span class="detail-comps-count">{{ listingDetail.comparables.length }}</span>
+                </div>
+
+                <div v-if="listingDetail.comparables.length === 0" class="detail-comps-empty">
+                  No comparable sold listings found
+                </div>
+
+                <div v-else class="comp-list">
+                  <div v-for="comp in paginatedComps" :key="comp.relationshipId" class="comp-row">
+                    <div class="comp-row-body">
+                      <div class="comp-row-title">{{ comp.title || 'Untitled' }}</div>
+                      <div class="comp-row-details">
+                        <span v-if="comp.condition" class="comp-row-tag">{{ comp.condition }}</span>
+                        <span v-if="comp.soldDateUtc" class="comp-row-date">Sold {{ formatShortDate(comp.soldDateUtc) }}</span>
+                      </div>
+                    </div>
+                    <div class="comp-row-price">
+                      {{ formatPrice(comp.price, listingDetail.listing.currency) }}
+                    </div>
+                    <div class="comp-row-score">
+                      <div class="score-bar">
+                        <div class="score-bar-fill" :style="{ width: (comp.similarityScore != null ? Math.round(comp.similarityScore * 100) : 0) + '%' }"></div>
+                      </div>
+                      <span class="score-text">{{ comp.similarityScore != null ? (comp.similarityScore * 100).toFixed(0) + '%' : '-' }}</span>
+                    </div>
+                    <div class="comp-row-actions">
+                      <button class="comp-action-compare" @click.stop="openCompare(comp)" title="Compare side-by-side">
+                        <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 1v12M1 3h4v8H1zM9 3h4v8H9z" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                      </button>
+                      <a v-if="comp.url" :href="comp.url" target="_blank" class="comp-action-link" title="View on eBay">
+                        <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M5.25 1.75H2.33a.58.58 0 00-.58.58v9.34c0 .32.26.58.58.58h9.34c.32 0 .58-.26.58-.58V8.75M8.17 1.75h4.08v4.08M6.42 7.58L12.25 1.75" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                      </a>
+                      <button class="comp-action-dismiss" @click.stop="dismissComparable(comp.relationshipId)" title="Dismiss comparable">
+                        <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M3.5 3.5l7 7M10.5 3.5l-7 7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Comp Pagination -->
+                <div v-if="compTotalPages > 1" class="pagination">
+                  <button class="page-btn" :disabled="compPage <= 1" @click="goToCompPage(compPage - 1)">Prev</button>
+                  <template v-for="p in compPageRange" :key="p">
+                    <span v-if="p === '...'" class="page-ellipsis">...</span>
+                    <button v-else class="page-btn" :class="{ active: p === compPage }" @click="goToCompPage(p)">{{ p }}</button>
+                  </template>
+                  <button class="page-btn" :disabled="compPage >= compTotalPages" @click="goToCompPage(compPage + 1)">Next</button>
+                  <span class="page-info">Page {{ compPage }} of {{ compTotalPages }}</span>
+                </div>
+              </div>
+
+            </div>
+          </div>
+        </div>
+
+        <!-- Comparison Overlay -->
+        <div v-if="compareComp" class="compare-overlay" @keydown.escape="closeCompare">
+          <div class="compare-chrome">
+
             <!-- Header -->
-            <div class="detail-header">
-              <button class="btn" @click="backToOpportunities">&larr; Back</button>
-              <h1 class="detail-title">{{ listingDetail.listing.title || 'Untitled' }}</h1>
-              <span class="listing-id-badge">{{ listingDetail.listing.listingId }}</span>
-              <a v-if="listingDetail.listing.url" :href="listingDetail.listing.url" target="_blank" class="btn">View on eBay</a>
-            </div>
-
-            <!-- Anchor Listing Card -->
-            <div class="detail-anchor">
-              <div class="detail-anchor-image">
-                <img v-if="getFirstImage(listingDetail.listing.images)" :src="getFirstImage(listingDetail.listing.images)" alt="Listing image">
-                <div v-else class="image-placeholder">No Image</div>
+            <div class="compare-header">
+              <div class="compare-nav">
+                <button class="compare-nav-btn" :disabled="compareIndex <= 0" @click="compareNav(-1)" title="Previous comp">
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M10 12L6 8l4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                </button>
+                <span class="compare-position">{{ compareIndex + 1 }} / {{ listingDetail.comparables.length }}</span>
+                <button class="compare-nav-btn" :disabled="compareIndex >= listingDetail.comparables.length - 1" @click="compareNav(1)" title="Next comp">
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M6 4l4 4-4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                </button>
               </div>
-              <div class="detail-anchor-info">
-                <div class="detail-meta">
-                  <div class="detail-meta-item">
-                    <span class="meta-label">Price</span>
-                    <span class="meta-value">{{ formatPrice(listingDetail.listing.price, listingDetail.listing.currency) }}
-                      <span v-if="listingDetail.listing.shippingCost"> + {{ formatPrice(listingDetail.listing.shippingCost, listingDetail.listing.currency) }} shipping</span>
-                    </span>
-                  </div>
-                  <div class="detail-meta-item">
-                    <span class="meta-label">Condition</span>
-                    <span class="meta-value">{{ listingDetail.listing.condition || '-' }}</span>
-                  </div>
-                  <div class="detail-meta-item">
-                    <span class="meta-label">Status</span>
-                    <span class="meta-value">{{ listingDetail.listing.listingStatus || '-' }}</span>
-                  </div>
-                  <div class="detail-meta-item">
-                    <span class="meta-label">Job</span>
-                    <span class="meta-value">{{ listingDetail.listing.searchTerm || '-' }}</span>
-                  </div>
-                </div>
-                <div class="detail-metrics">
-                  <div class="metric-card">
-                    <span class="metric-value">{{ formatPrice(listingDetail.listing.averageSoldPrice, listingDetail.listing.currency) || '-' }}</span>
-                    <span class="metric-label">Avg Sold</span>
-                  </div>
-                  <div class="metric-card">
-                    <span class="metric-value">{{ listingDetail.listing.similarSoldCount || 0 }}</span>
-                    <span class="metric-label">Comps</span>
-                  </div>
-                  <div class="metric-card">
-                    <span class="metric-value" :style="{ color: (listingDetail.listing.potentialProfit || 0) >= 0 ? '#22c55e' : '#ef4444' }">
-                      {{ listingDetail.listing.potentialProfit != null ? (listingDetail.listing.potentialProfit >= 0 ? '+' : '') + formatPrice(listingDetail.listing.potentialProfit, listingDetail.listing.currency) : '-' }}
-                    </span>
-                    <span class="metric-label">Profit</span>
-                  </div>
-                  <div class="metric-card">
-                    <span class="metric-value">{{ listingDetail.listing.estimatedDaysToSell != null ? listingDetail.listing.estimatedDaysToSell + 'd' : '-' }}</span>
-                    <span class="metric-label">Days to Sell</span>
-                  </div>
-                </div>
-                <div v-if="listingDetail.listing.description" class="detail-description">
-                  <span class="meta-label">Description</span>
-                  <div class="description-text">{{ listingDetail.listing.description }}</div>
-                </div>
+              <div class="compare-header-actions">
+                <button class="btn small danger" @click="dismissAndNav(compareComp.relationshipId)">Dismiss Comp</button>
+                <button class="compare-close-btn" @click="closeCompare" title="Close">
+                  <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M4.5 4.5l9 9M13.5 4.5l-9 9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+                </button>
               </div>
             </div>
 
-            <!-- Comparables Section -->
-            <div class="detail-comps-header">
-              <h2>Comparables ({{ listingDetail.comparables.length }})</h2>
+            <!-- Score bar -->
+            <div class="compare-score-strip">
+              <span class="compare-score-label">Similarity</span>
+              <div class="compare-score-bar">
+                <div class="compare-score-fill" :style="{ width: (compareComp.similarityScore != null ? Math.round(compareComp.similarityScore * 100) : 0) + '%' }"></div>
+              </div>
+              <span class="compare-score-pct">{{ compareComp.similarityScore != null ? (compareComp.similarityScore * 100).toFixed(0) + '%' : '-' }}</span>
             </div>
-            <div v-if="listingDetail.comparables.length === 0" class="empty">No comparables found</div>
-            <div v-else class="comp-grid scrollable">
-              <div v-for="comp in listingDetail.comparables" :key="comp.relationshipId" class="comp-card">
-                <div class="comp-image">
-                  <img v-if="getFirstImage(comp.images)" :src="getFirstImage(comp.images)" alt="Comp image">
-                  <div v-else class="image-placeholder small">No Image</div>
-                </div>
-                <div class="comp-info">
-                  <div class="comp-title">{{ comp.title || 'Untitled' }}</div>
-                  <div v-if="comp.description" class="comp-description">{{ truncate(comp.description, 150) }}</div>
-                  <div class="comp-meta">
-                    <span class="comp-price">{{ formatPrice(comp.price, listingDetail.listing.currency) }}</span>
-                    <span v-if="comp.condition" class="comp-condition">{{ comp.condition }}</span>
-                    <span class="comp-score">Score: {{ comp.similarityScore != null ? comp.similarityScore.toFixed(2) : '-' }}</span>
+
+            <!-- Two-column comparison -->
+            <div class="compare-columns">
+
+              <!-- Anchor column -->
+              <div class="compare-col">
+                <div class="compare-col-label">Active Listing</div>
+                <div class="compare-col-body">
+                  <div class="compare-field">
+                    <span class="compare-field-label">Title</span>
+                    <span class="compare-field-value">{{ listingDetail.listing.title || '-' }}</span>
+                  </div>
+                  <div class="compare-field">
+                    <span class="compare-field-label">Price</span>
+                    <span class="compare-field-value compare-price">{{ formatPrice(listingDetail.listing.price, listingDetail.listing.currency) }}
+                      <span v-if="listingDetail.listing.shippingCost" class="compare-shipping">+ {{ formatPrice(listingDetail.listing.shippingCost, listingDetail.listing.currency) }} ship</span>
+                    </span>
+                  </div>
+                  <div class="compare-field" :class="{ 'compare-mismatch': listingDetail.listing.condition !== compareComp.condition }">
+                    <span class="compare-field-label">Condition</span>
+                    <span class="compare-field-value">{{ listingDetail.listing.condition || '-' }}</span>
+                  </div>
+                  <div class="compare-field">
+                    <span class="compare-field-label">Status</span>
+                    <span class="compare-field-value">{{ listingDetail.listing.listingStatus || '-' }}</span>
+                  </div>
+                  <div class="compare-field compare-field-desc">
+                    <span class="compare-field-label">Description</span>
+                    <div v-if="listingDetail.listing.description" class="compare-desc-text">{{ listingDetail.listing.description }}</div>
+                    <div v-else class="compare-desc-empty">No description available</div>
                   </div>
                 </div>
-                <div class="comp-actions">
-                  <a v-if="comp.url" :href="comp.url" target="_blank" class="btn small">eBay</a>
-                  <button class="btn small danger" @click="dismissComparable(comp.relationshipId)">Dismiss</button>
+              </div>
+
+              <!-- Divider -->
+              <div class="compare-divider"></div>
+
+              <!-- Comp column -->
+              <div class="compare-col">
+                <div class="compare-col-label">Comparable Sale</div>
+                <div class="compare-col-body">
+                  <div class="compare-field">
+                    <span class="compare-field-label">Title</span>
+                    <span class="compare-field-value">{{ compareComp.title || '-' }}</span>
+                  </div>
+                  <div class="compare-field">
+                    <span class="compare-field-label">Sold Price</span>
+                    <span class="compare-field-value compare-price">{{ formatPrice(compareComp.price, listingDetail.listing.currency) }}
+                      <span v-if="compareComp.soldDateUtc" class="compare-sold-date">sold {{ formatShortDate(compareComp.soldDateUtc) }}</span>
+                    </span>
+                  </div>
+                  <div class="compare-field" :class="{ 'compare-mismatch': listingDetail.listing.condition !== compareComp.condition }">
+                    <span class="compare-field-label">Condition</span>
+                    <span class="compare-field-value">{{ compareComp.condition || '-' }}</span>
+                  </div>
+                  <div class="compare-field">
+                    <span class="compare-field-label">eBay</span>
+                    <a v-if="compareComp.url" :href="compareComp.url" target="_blank" class="compare-field-link">View listing</a>
+                    <span v-else class="compare-field-value">-</span>
+                  </div>
+                  <div class="compare-field compare-field-desc">
+                    <span class="compare-field-label">Description</span>
+                    <div v-if="compareComp.description" class="compare-desc-text">{{ compareComp.description }}</div>
+                    <div v-else class="compare-desc-empty">No description available</div>
+                  </div>
                 </div>
               </div>
+            </div>
+
+            <!-- Explanation -->
+            <div v-if="compareComp.explanation" class="compare-explanation">
+              <span class="compare-explanation-label">Match Reasoning</span>
+              <p class="compare-explanation-text">{{ compareComp.explanation }}</p>
             </div>
 
           </div>
