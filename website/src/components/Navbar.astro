@@ -1,17 +1,23 @@
 <nav class="fixed top-0 w-full z-50 bg-[#0a0a0f]/80 backdrop-blur-xl border-b border-white/[0.06]">
-  <div class="max-w-7xl mx-auto flex items-center justify-between px-6 py-4">
-    <div class="flex items-center gap-2.5">
-      <div class="w-7 h-7 rounded-md bg-gradient-to-br from-[#38bdf8] to-[#0e639c] flex items-center justify-center">
-        <svg class="w-4 h-4 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-          <polyline points="22 7 13.5 15.5 8.5 10.5 2 17" />
-          <polyline points="16 7 22 7 22 13" />
-        </svg>
-      </div>
-      <span class="text-lg font-bold text-white tracking-tight font-['Outfit',sans-serif]">Market Maker</span>
-    </div>
+  <div class="max-w-7xl mx-auto flex items-center justify-between px-4 py-3 md:px-6 md:py-4">
+    <a href="/" class="flex items-center gap-2">
+      <svg class="h-6 w-6 md:h-7 md:w-7" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
+        <defs><linearGradient id="nav-mm-grad" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#48cae4"/><stop offset="100%" stop-color="#0077b6"/></linearGradient></defs>
+        <line x1="8" y1="12" x2="24" y2="24" stroke="#0077b6" stroke-width="2" opacity="0.4"/>
+        <line x1="8" y1="36" x2="24" y2="24" stroke="#0077b6" stroke-width="2" opacity="0.4"/>
+        <line x1="24" y1="24" x2="40" y2="14" stroke="#00b4d8" stroke-width="2" opacity="0.6"/>
+        <line x1="24" y1="24" x2="40" y2="34" stroke="#00b4d8" stroke-width="2" opacity="0.6"/>
+        <circle cx="8" cy="12" r="5" fill="#0077b6" opacity="0.5"/>
+        <circle cx="8" cy="36" r="5" fill="#0077b6" opacity="0.5"/>
+        <circle cx="24" cy="24" r="7" fill="url(#nav-mm-grad)"/>
+        <circle cx="40" cy="14" r="5" fill="#48cae4" opacity="0.7"/>
+        <circle cx="40" cy="34" r="5" fill="#48cae4" opacity="0.7"/>
+      </svg>
+      <span class="text-base md:text-lg font-bold text-white tracking-tight font-['Outfit',sans-serif]">Market Maker</span>
+    </a>
     <a
       href="#waitlist"
-      class="group relative px-5 py-2 rounded-lg text-sm font-medium text-white overflow-hidden transition-all duration-300 hover:shadow-[0_0_20px_rgba(56,189,248,0.3)]"
+      class="group relative px-4 py-1.5 md:px-5 md:py-2 rounded-lg text-sm font-medium text-white overflow-hidden transition-all duration-300 hover:shadow-[0_0_20px_rgba(56,189,248,0.3)]"
     >
       <span class="absolute inset-0 bg-gradient-to-r from-[#0e639c] to-[#38bdf8] opacity-90 group-hover:opacity-100 transition-opacity"></span>
       <span class="relative">Join Waitlist</span>
