@@ -192,7 +192,8 @@ public class ComparablesEtlService : IComparablesEtlService
                 var b = allListingsById[p.CanonicalKey.Item2];
                 return new ClassifyPairRequest(
                     a.Title ?? "", a.Description ?? "",
-                    b.Title ?? "", b.Description ?? "");
+                    b.Title ?? "", b.Description ?? "",
+                    p.Score);
             }).ToList();
 
             var results = await _classifier.Classify(requests, ct);
