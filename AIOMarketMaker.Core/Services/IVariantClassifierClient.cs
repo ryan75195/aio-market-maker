@@ -13,6 +13,7 @@ public record ClassifyPairRequest(
     string TitleA,
     string DescriptionA,
     string TitleB,
-    string DescriptionB);
+    string DescriptionB,
+    float? SimilarityScore = null);
 
-public record PairResult(bool IsComparable, float Confidence, string? Reason = null);
+public record PairResult(bool IsComparable, float Confidence, string? Reason = null, float? LogitDiff = null);
