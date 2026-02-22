@@ -1,0 +1,519 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Opportunities - AIOMarketMaker</title>
+  <style>
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: #1e1e1e;
+  color: #e0e0e0;
+  line-height: 1.5;
+}
+
+.layout {
+  display: flex;
+  height: 100vh;
+}
+
+.sidebar {
+  width: 220px;
+  background: #252526;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid #3c3c3c;
+}
+
+.logo {
+  font-size: 18px;
+  font-weight: 600;
+  margin-bottom: 30px;
+  color: #fff;
+}
+
+.nav-items {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  flex: 1;
+}
+
+.nav-items button {
+  background: transparent;
+  border: none;
+  color: #b0b0b0;
+  padding: 10px 15px;
+  text-align: left;
+  cursor: pointer;
+  border-radius: 5px;
+  font-size: 14px;
+}
+
+.nav-items button:hover {
+  background: #3c3c3c;
+  color: #fff;
+}
+
+.nav-items button.active {
+  background: #0e639c;
+  color: #fff;
+}
+
+.config-status {
+  font-size: 12px;
+  color: #808080;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #f44;
+}
+
+.status-dot.connected {
+  background: #4a4;
+}
+
+.content {
+  flex: 1;
+  padding: 20px;
+  overflow: hidden;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+.view {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.view-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  flex-shrink: 0;
+}
+
+.view-header h1 {
+  font-size: 24px;
+  font-weight: 500;
+}
+
+.header-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.btn {
+  background: #3c3c3c;
+  border: none;
+  color: #e0e0e0;
+  padding: 8px 16px;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: background 0.2s;
+}
+
+.btn:hover {
+  background: #4c4c4c;
+}
+
+.btn.primary {
+  background: #0e639c;
+  color: #fff;
+}
+
+.btn.small {
+  padding: 5px 10px;
+  font-size: 12px;
+}
+
+.count-badge {
+  background: #3c3c3c;
+  padding: 4px 12px;
+  border-radius: 12px;
+  font-size: 13px;
+  color: #b0b0b0;
+  margin-left: 15px;
+}
+
+.view-fill {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.filter-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+  flex-shrink: 0;
+  align-items: center;
+}
+
+.filter-dropdown-wrapper {
+  position: relative;
+  margin-bottom: 0;
+}
+
+.filter-dropdown-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.dropdown-caret {
+  font-size: 10px;
+  color: #808080;
+}
+
+.search-filter {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.search-filter input[type="text"] {
+  width: 200px;
+  padding: 6px 8px;
+  background: #2a2a2a;
+  border: 1px solid #444;
+  border-radius: 4px;
+  color: #e0e0e0;
+  font-size: 13px;
+}
+
+.budget-filter {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.budget-filter label {
+  font-size: 13px;
+  color: #aaa;
+}
+
+.budget-filter input {
+  width: 100px;
+  padding: 6px 8px;
+  background: #2a2a2a;
+  border: 1px solid #444;
+  border-radius: 4px;
+  color: #e0e0e0;
+  font-size: 13px;
+}
+
+.data-table {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+  background: #252526;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.data-table th,
+.data-table td {
+  padding: 8px 10px;
+  text-align: left;
+  border-bottom: 1px solid #3c3c3c;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.data-table th {
+  background: #2d2d2d;
+  font-weight: 500;
+  font-size: 12px;
+  text-transform: uppercase;
+  color: #808080;
+}
+
+.data-table td {
+  font-size: 13px;
+}
+
+.data-table th.sortable {
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.title-cell { }
+
+.price-cell {
+  font-weight: 500;
+  color: #4ade80;
+}
+
+.data-table td.number {
+  text-align: left;
+  font-variant-numeric: tabular-nums;
+}
+
+.pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 8px;
+  padding: 8px 0;
+  flex-shrink: 0;
+}
+
+.page-btn {
+  background: #3c3c3c;
+  border: none;
+  color: #b0b0b0;
+  padding: 6px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 13px;
+  transition: background 0.2s;
+}
+
+.page-btn.active {
+  background: #0e639c;
+  color: #fff;
+}
+
+.page-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.page-info {
+  color: #808080;
+  font-size: 13px;
+  margin-left: 12px;
+}
+
+.date-cell {
+  font-size: 12px;
+  color: #808080;
+}
+  </style>
+</head>
+<body>
+  <div class="layout">
+    <nav class="sidebar">
+      <div class="logo">AIOMarketMaker</div>
+      <div class="nav-items">
+        <button>Overview</button>
+        <button class="active">Opportunities</button>
+        <button>Index</button>
+        <button>Settings</button>
+      </div>
+      <div class="config-status">
+        <span class="status-dot connected"></span>
+        Local
+      </div>
+    </nav>
+
+    <main class="content">
+      <div class="view">
+        <div class="view-header">
+          <h1>Opportunities</h1>
+          <span class="count-badge">342 active listings</span>
+          <button class="btn">Refresh</button>
+        </div>
+
+        <div class="view-fill">
+          <div class="filter-row">
+            <div class="filter-dropdown-wrapper">
+              <button class="btn filter-dropdown-btn">Category: All <span class="dropdown-caret">&#9660;</span></button>
+            </div>
+            <div class="filter-dropdown-wrapper">
+              <button class="btn filter-dropdown-btn">Filter: All <span class="dropdown-caret">&#9660;</span></button>
+            </div>
+            <div class="search-filter">
+              <input type="text" placeholder="Search listings...">
+              <button class="btn small">Search</button>
+            </div>
+            <div class="budget-filter">
+              <label>Budget:</label>
+              <input type="number" placeholder="Max price">
+            </div>
+          </div>
+
+          <div class="table-container" style="position: relative; flex: 1; overflow: auto;">
+            <table class="data-table">
+              <colgroup>
+                <col style="width: 7%">
+                <col style="width: 22%">
+                <col style="width: 10%">
+                <col style="width: 8%">
+                <col style="width: 8%">
+                <col style="width: 5%">
+                <col style="width: 8%">
+                <col style="width: 5%">
+                <col style="width: 7%">
+                <col style="width: 10%">
+                <col style="width: 5%">
+              </colgroup>
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th class="sortable">Title</th>
+                  <th class="sortable">Job</th>
+                  <th class="sortable">Price</th>
+                  <th class="sortable">Avg Sold</th>
+                  <th class="sortable">Comps</th>
+                  <th class="sortable">Profit &#9660;</th>
+                  <th class="sortable">Days</th>
+                  <th class="sortable">Cond</th>
+                  <th class="sortable">Discovered</th>
+                  <th>Link</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr style="cursor: pointer;">
+                  <td>385920174</td>
+                  <td class="title-cell" title="DJI Mini 3 Pro Drone with RC Controller">DJI Mini 3 Pro Drone with RC Controller</td>
+                  <td>dji drone</td>
+                  <td class="price-cell">&pound;450.00</td>
+                  <td class="price-cell">&pound;580.00</td>
+                  <td class="number">5</td>
+                  <td class="price-cell" style="color: #22c55e;">+&pound;53.25</td>
+                  <td>9d</td>
+                  <td>Used</td>
+                  <td class="date-cell">14 Feb 2026</td>
+                  <td><a class="btn small">eBay</a></td>
+                </tr>
+                <tr style="cursor: pointer;">
+                  <td>295018374</td>
+                  <td class="title-cell" title="Sony PS5 Disc Edition 825GB White">Sony PS5 Disc Edition 825GB White</td>
+                  <td>ps5 console</td>
+                  <td class="price-cell">&pound;320.00</td>
+                  <td class="price-cell">&pound;410.50</td>
+                  <td class="number">12</td>
+                  <td class="price-cell" style="color: #22c55e;">+&pound;48.18</td>
+                  <td>5d</td>
+                  <td>Used</td>
+                  <td class="date-cell">18 Feb 2026</td>
+                  <td><a class="btn small">eBay</a></td>
+                </tr>
+                <tr style="cursor: pointer;">
+                  <td>402958173</td>
+                  <td class="title-cell" title="Apple AirPods Pro 2nd Gen USB-C MagSafe">Apple AirPods Pro 2nd Gen USB-C MagSafe</td>
+                  <td>airpods pro</td>
+                  <td class="price-cell">&pound;145.00</td>
+                  <td class="price-cell">&pound;198.00</td>
+                  <td class="number">8</td>
+                  <td class="price-cell" style="color: #22c55e;">+&pound;33.78</td>
+                  <td>3d</td>
+                  <td>New</td>
+                  <td class="date-cell">19 Feb 2026</td>
+                  <td><a class="btn small">eBay</a></td>
+                </tr>
+                <tr style="cursor: pointer;">
+                  <td>318204756</td>
+                  <td class="title-cell" title="Bose QC45 Noise Cancelling Headphones">Bose QC45 Noise Cancelling Headphones</td>
+                  <td>headphones</td>
+                  <td class="price-cell">&pound;150.00</td>
+                  <td class="price-cell">&pound;210.00</td>
+                  <td class="number">7</td>
+                  <td class="price-cell" style="color: #22c55e;">+&pound;32.22</td>
+                  <td>4d</td>
+                  <td>New</td>
+                  <td class="date-cell">17 Feb 2026</td>
+                  <td><a class="btn small">eBay</a></td>
+                </tr>
+                <tr style="cursor: pointer;">
+                  <td>275931048</td>
+                  <td class="title-cell" title="Samsung Galaxy S24 Ultra 256GB Titanium Black">Samsung Galaxy S24 Ultra 256GB Titanium Black</td>
+                  <td>samsung galaxy</td>
+                  <td class="price-cell">&pound;680.00</td>
+                  <td class="price-cell">&pound;820.00</td>
+                  <td class="number">9</td>
+                  <td class="price-cell" style="color: #22c55e;">+&pound;31.45</td>
+                  <td>6d</td>
+                  <td>New</td>
+                  <td class="date-cell">16 Feb 2026</td>
+                  <td><a class="btn small">eBay</a></td>
+                </tr>
+                <tr style="cursor: pointer;">
+                  <td>394017283</td>
+                  <td class="title-cell" title="iPad Air 5th Gen 64GB WiFi Space Grey">iPad Air 5th Gen 64GB WiFi Space Grey</td>
+                  <td>ipad air</td>
+                  <td class="price-cell">&pound;340.00</td>
+                  <td class="price-cell">&pound;425.00</td>
+                  <td class="number">11</td>
+                  <td class="price-cell" style="color: #22c55e;">+&pound;28.69</td>
+                  <td>8d</td>
+                  <td>Used</td>
+                  <td class="date-cell">15 Feb 2026</td>
+                  <td><a class="btn small">eBay</a></td>
+                </tr>
+                <tr style="cursor: pointer;">
+                  <td>310492875</td>
+                  <td class="title-cell" title="Xbox Series X 1TB Console Black">Xbox Series X 1TB Console Black</td>
+                  <td>xbox series x</td>
+                  <td class="price-cell">&pound;290.00</td>
+                  <td class="price-cell">&pound;365.00</td>
+                  <td class="number">6</td>
+                  <td class="price-cell" style="color: #22c55e;">+&pound;26.69</td>
+                  <td>4d</td>
+                  <td>Used</td>
+                  <td class="date-cell">20 Feb 2026</td>
+                  <td><a class="btn small">eBay</a></td>
+                </tr>
+                <tr style="cursor: pointer;">
+                  <td>284019375</td>
+                  <td class="title-cell" title="Nintendo Switch OLED White 64GB">Nintendo Switch OLED White 64GB</td>
+                  <td>nintendo switch</td>
+                  <td class="price-cell">&pound;215.00</td>
+                  <td class="price-cell">&pound;275.00</td>
+                  <td class="number">15</td>
+                  <td class="price-cell" style="color: #22c55e;">+&pound;23.56</td>
+                  <td>7d</td>
+                  <td>Used</td>
+                  <td class="date-cell">13 Feb 2026</td>
+                  <td><a class="btn small">eBay</a></td>
+                </tr>
+              </tbody>
+            </table>
+
+            <div class="pagination">
+              <button class="page-btn" disabled>Prev</button>
+              <button class="page-btn active">1</button>
+              <button class="page-btn">2</button>
+              <button class="page-btn">3</button>
+              <button class="page-btn">4</button>
+              <button class="page-btn">5</button>
+              <span style="color: #808080; padding: 0 4px;">...</span>
+              <button class="page-btn">18</button>
+              <button class="page-btn">Next</button>
+              <span class="page-info">Page 1 of 18</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+</body>
+</html>
