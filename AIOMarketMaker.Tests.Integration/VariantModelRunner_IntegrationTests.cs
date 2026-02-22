@@ -822,4 +822,39 @@ public class VariantModelRunner_IntegrationTests
         var healthy = await _classifier.IsHealthy();
         Assert.That(healthy, Is.True);
     }
+
+    // --- Ensemble calibration (end-to-end with real model) ---
+
+    [Test]
+    public async Task Should_produce_calibrated_confidence_with_ensemble()
+    {
+        var ensemble = new EnsembleConfig(
+            LogitWeight: 2.4910f,
+            SimilarityWeight: 0.4324f,
+            Intercept: -2.6254f);
+
+        var classifier = new VariantClassifier(
+            _classifier,
+            ensemble,
+            Mock.Of<ILogger<VariantClassifier>>());
+
+        var pair = new ClassifyPairRequest(
+            "Dyson V15 Detect Absolute Cordless Vacuum",
+            "Brand new Dyson V15 with laser dust detection",
+            "Dyson V15 Detect Absolute Cordless Vacuum Cleaner",
+            "Dyson V15 Detect Absolute - new in box",
+            SimilarityScore: 0.92f);
+
+        var results = await classifier.Classify([pair]);
+        var result = results[0];
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.IsComparable, Is.True);
+            Assert.That(result.Confidence, Is.GreaterThan(0.95f),
+                "High logit diff + high similarity should produce high calibrated confidence");
+            Assert.That(result.LogitDiff, Is.Not.Null,
+                "LogitDiff should be populated from model runner");
+        });
+    }
 }
