@@ -8,7 +8,7 @@ namespace AIOMarketMaker.Tests.Unit.Services;
 
 [TestFixture]
 [Category("Unit")]
-public class OnnxVariantClassifier_UnitTests
+public class VariantModelRunner_UnitTests
 {
     [Test]
     public void Should_throw_when_model_file_missing()
@@ -19,7 +19,7 @@ public class OnnxVariantClassifier_UnitTests
             MergesPath: "/nonexistent/merges.txt");
 
         var ex = Assert.Throws<FileNotFoundException>(() =>
-            new OnnxVariantClassifier(config, Mock.Of<ILogger<OnnxVariantClassifier>>()));
+            new VariantModelRunner(config, Mock.Of<ILogger<VariantModelRunner>>()));
 
         Assert.Multiple(() =>
         {
@@ -34,7 +34,7 @@ public class OnnxVariantClassifier_UnitTests
         var vocabPath = FindModelFile("vocab.json");
         var mergesPath = FindModelFile("merges.txt");
 
-        var (inputIds, attentionMask, _) = OnnxVariantClassifier.TokenizePair(
+        var (inputIds, attentionMask, _) = VariantModelRunner.TokenizePair(
             vocabPath, mergesPath,
             "Dyson V15 Detect Absolute | Cordless vacuum cleaner with laser dust detection",
             "Dyson V15 Detect Absolute | Brand new cordless vacuum with laser illuminate technology",
@@ -74,7 +74,7 @@ public class OnnxVariantClassifier_UnitTests
         // Create very long text that would exceed 256 tokens
         var longText = string.Join(" ", Enumerable.Repeat("premium quality professional grade", 50));
 
-        var (inputIds, attentionMask, _) = OnnxVariantClassifier.TokenizePair(
+        var (inputIds, attentionMask, _) = VariantModelRunner.TokenizePair(
             vocabPath, mergesPath, longText, longText, maxLength: 64);
 
         Assert.Multiple(() =>
@@ -89,7 +89,7 @@ public class OnnxVariantClassifier_UnitTests
     public void Should_apply_softmax_correctly()
     {
         // Reference from Python ONNX: logits [-2.284080, 3.348258] -> probs [0.003567, 0.996433]
-        var probs = OnnxVariantClassifier.Softmax([-2.284080f, 3.348258f]);
+        var probs = VariantModelRunner.Softmax([-2.284080f, 3.348258f]);
 
         Assert.Multiple(() =>
         {
@@ -108,7 +108,7 @@ public class OnnxVariantClassifier_UnitTests
             { 1.5f, -1.5f }
         };
 
-        var results = OnnxVariantClassifier.BatchSoftmax(batchLogits);
+        var results = VariantModelRunner.BatchSoftmax(batchLogits);
 
         Assert.Multiple(() =>
         {

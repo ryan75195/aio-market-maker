@@ -13,7 +13,18 @@ public record OnnxClassifierConfig(
     int MaxLength = 256,
     int BatchSize = 128);
 
-public class OnnxVariantClassifier : IVariantClassifierClient, IDisposable
+public record EnsembleConfig(
+    float LogitWeight,
+    float SimilarityWeight,
+    float Intercept);
+
+internal interface IVariantModelRunner
+{
+    Task<IReadOnlyList<PairResult>> Classify(IEnumerable<ClassifyPairRequest> pairs, CancellationToken ct = default);
+    Task<bool> IsHealthy(CancellationToken ct = default);
+}
+
+public class VariantModelRunner : IVariantModelRunner, IDisposable
 {
     private const long BosId = 0;  // <s>
     private const long EosId = 2;  // </s>
@@ -24,10 +35,10 @@ public class OnnxVariantClassifier : IVariantClassifierClient, IDisposable
     private readonly InferenceSession _session;
     private readonly CodeGenTokenizer _tokenizer;
     private readonly int _maxLength;
-    private readonly ILogger<OnnxVariantClassifier> _logger;
+    private readonly ILogger<VariantModelRunner> _logger;
     private readonly bool _isHealthy;
 
-    public OnnxVariantClassifier(OnnxClassifierConfig config, ILogger<OnnxVariantClassifier> logger)
+    public VariantModelRunner(OnnxClassifierConfig config, ILogger<VariantModelRunner> logger)
     {
         _maxLength = config.MaxLength;
         _logger = logger;
@@ -130,7 +141,8 @@ public class OnnxVariantClassifier : IVariantClassifierClient, IDisposable
             var probs = Softmax(logits);
             var isComparable = probs[1] > probs[0];
             var confidence = probs.Max();
-            results.Add(new PairResult(isComparable, confidence));
+            var logitDiff = logits[1] - logits[0];
+            results.Add(new PairResult(isComparable, confidence, LogitDiff: logitDiff));
         }
 
         return Task.FromResult<IReadOnlyList<PairResult>>(results);

@@ -10,11 +10,11 @@ namespace AIOMarketMaker.Tests.Integration;
 [TestFixture]
 [Category("Integration")]
 [Explicit("Requires ONNX model files at E:/Dev/ml-training/variant-classifier/v8/onnx/")]
-public class OnnxVariantClassifier_IntegrationTests
+public class VariantModelRunner_IntegrationTests
 {
     private const string ModelDir = "E:/Dev/ml-training/variant-classifier/v8/onnx";
 
-    private static OnnxVariantClassifier _classifier = null!;
+    private static VariantModelRunner _classifier = null!;
 
     [OneTimeSetUp]
     public void OneTimeSetUp()
@@ -24,7 +24,7 @@ public class OnnxVariantClassifier_IntegrationTests
             VocabPath: Path.Combine(ModelDir, "vocab.json"),
             MergesPath: Path.Combine(ModelDir, "merges.txt"));
 
-        _classifier = new OnnxVariantClassifier(config, Mock.Of<ILogger<OnnxVariantClassifier>>());
+        _classifier = new VariantModelRunner(config, Mock.Of<ILogger<VariantModelRunner>>());
     }
 
     [OneTimeTearDown]

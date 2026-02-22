@@ -129,7 +129,7 @@ var classifierConfig = new OnnxClassifierConfig(
     MergesPath: configuration.GetValue<string>("VariantClassifier:MergesPath") ?? "models/variant-classifier/merges.txt",
     MaxLength: configuration.GetValue<int?>("VariantClassifier:MaxLength") ?? 256);
 builder.Services.AddSingleton(classifierConfig);
-builder.Services.AddSingleton<IVariantClassifierClient, OnnxVariantClassifier>();
+builder.Services.AddSingleton<VariantModelRunner>();
 
 // ComparablesEtlService
 builder.Services.AddScoped<IComparablesEtlService, ComparablesEtlService>();
