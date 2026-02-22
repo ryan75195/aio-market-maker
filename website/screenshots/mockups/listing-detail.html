@@ -171,22 +171,15 @@ body {
   flex-shrink: 0;
   width: 150px;
   height: 150px;
+  border-radius: 6px;
+  overflow: hidden;
+  background: #2a2a2a;
 }
 
-.image-placeholder {
-  display: flex;
-  align-items: center;
-  justify-content: center;
+.detail-anchor-image img {
   width: 100%;
   height: 100%;
-  background: rgba(255,255,255,0.05);
-  border-radius: 4px;
-  color: #666;
-  font-size: 0.8rem;
-}
-
-.image-placeholder.small {
-  height: 80px;
+  object-fit: cover;
 }
 
 .detail-anchor-info {
@@ -292,7 +285,16 @@ body {
 
 .comp-image {
   width: 100%;
-  height: 90px;
+  height: 100px;
+  border-radius: 4px;
+  overflow: hidden;
+  background: #2a2a2a;
+}
+
+.comp-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 .comp-info {
@@ -377,23 +379,6 @@ body {
   font-size: 13px;
   margin-left: 12px;
 }
-
-/* Image placeholders that look like product images */
-.product-image-placeholder {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 100%;
-  height: 100%;
-  background: linear-gradient(135deg, #2a2a3a 0%, #1e1e2e 100%);
-  border-radius: 4px;
-  color: #555;
-  font-size: 2rem;
-}
-
-.product-image-placeholder.small-icon {
-  font-size: 1.5rem;
-}
   </style>
 </head>
 <body>
@@ -418,7 +403,7 @@ body {
           <!-- Header -->
           <div class="detail-header">
             <button class="btn">&larr; Back</button>
-            <h1 class="detail-title">Sony PS5 Disc Edition 825GB - White</h1>
+            <h1 class="detail-title">Sony PS5 Disc Edition 825GB Console Only - White</h1>
             <span class="listing-id-badge">295018374</span>
             <button class="btn">View on eBay</button>
           </div>
@@ -426,13 +411,7 @@ body {
           <!-- Anchor Listing Card -->
           <div class="detail-anchor">
             <div class="detail-anchor-image">
-              <div class="product-image-placeholder">
-                <svg width="60" height="60" viewBox="0 0 24 24" fill="none" stroke="#555" stroke-width="1.5">
-                  <rect x="2" y="3" width="20" height="18" rx="2"/>
-                  <circle cx="8" cy="10" r="2"/>
-                  <path d="M2 17l5-5 4 4 4-6 7 7"/>
-                </svg>
-              </div>
+              <img src="images/paymore_1.jpg" alt="PS5 Disc Edition Console" />
             </div>
             <div class="detail-anchor-info">
               <div class="detail-meta">
@@ -455,52 +434,46 @@ body {
               </div>
               <div class="detail-metrics">
                 <div class="metric-card">
-                  <span class="metric-value">&pound;410.50</span>
+                  <span class="metric-value">&pound;385.50</span>
                   <span class="metric-label">Avg Sold</span>
                 </div>
                 <div class="metric-card">
-                  <span class="metric-value">12</span>
+                  <span class="metric-value">8</span>
                   <span class="metric-label">Comps</span>
                 </div>
                 <div class="metric-card">
-                  <span class="metric-value" style="color: #22c55e;">+&pound;48.18</span>
+                  <span class="metric-value" style="color: #22c55e;">+&pound;27.83</span>
                   <span class="metric-label">Profit</span>
                 </div>
                 <div class="metric-card">
-                  <span class="metric-value">5d</span>
+                  <span class="metric-value">4d</span>
                   <span class="metric-label">Days to Sell</span>
                 </div>
               </div>
               <div class="detail-description">
                 <span class="meta-label">Description</span>
-                <div class="description-text">Sony PlayStation 5 Disc Edition 825GB. Console only, no controller or cables included. In excellent condition with minimal signs of use. Factory reset and ready for new owner. Firmware up to date.</div>
+                <div class="description-text">Sony PlayStation 5 Disc Edition 825GB. Console only — no controller, cables, or accessories. In excellent condition with minimal signs of use. Factory reset and ready for new owner. Firmware up to date.</div>
               </div>
             </div>
           </div>
 
           <!-- Comparables Section -->
           <div class="detail-comps-header">
-            <h2>Comparables (12)</h2>
+            <h2>Comparables (8)</h2>
           </div>
           <div class="comp-grid scrollable">
             <!-- Comp 1 -->
             <div class="comp-card">
               <div class="comp-image">
-                <div class="product-image-placeholder small-icon">
-                  <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#555" stroke-width="1.5">
-                    <rect x="2" y="3" width="20" height="18" rx="2"/>
-                    <circle cx="8" cy="10" r="2"/>
-                    <path d="M2 17l5-5 4 4 4-6 7 7"/>
-                  </svg>
-                </div>
+                <img src="images/ebay_b.jpg" alt="PS5 Console" />
               </div>
               <div class="comp-info">
-                <div class="comp-title">PS5 Disc Edition Console 825GB White</div>
-                <div class="comp-description">Sony PlayStation 5 disc edition in great condition. Fully working, factory reset. Collection or delivery available.</div>
+                <div class="comp-title">PS5 Disc Edition Console Only 825GB White</div>
+                <div class="comp-description">Sony PlayStation 5 disc edition, console only. No controller or cables. Fully working, factory reset. Minor scuff on base, not noticeable when standing.</div>
                 <div class="comp-meta">
-                  <span class="comp-price">&pound;425.00</span>
+                  <span class="comp-price">&pound;395.00</span>
                   <span class="comp-condition">Used</span>
-                  <span class="comp-score">Score: 0.94</span>
+                  <span class="comp-score">Score: 0.96</span>
                 </div>
               </div>
               <div class="comp-actions">
@@ -512,21 +485,15 @@ body {
             <!-- Comp 2 -->
             <div class="comp-card">
               <div class="comp-image">
-                <div class="product-image-placeholder small-icon">
-                  <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#555" stroke-width="1.5">
-                    <rect x="2" y="3" width="20" height="18" rx="2"/>
-                    <circle cx="8" cy="10" r="2"/>
-                    <path d="M2 17l5-5 4 4 4-6 7 7"/>
-                  </svg>
-                </div>
+                <img src="images/ebay_d.jpg" alt="PS5 Console" />
               </div>
               <div class="comp-info">
-                <div class="comp-title">PlayStation 5 Disc Version + Controller</div>
-                <div class="comp-description">PS5 disc version with one DualSense controller. Excellent condition, works perfectly. Slight mark on side panel but barely noticeable.</div>
+                <div class="comp-title">Sony PlayStation 5 825GB Disc - Console Only</div>
+                <div class="comp-description">PS5 disc edition console only. No accessories included. Excellent condition, barely used. Disc drive works perfectly. Collection or delivery available.</div>
                 <div class="comp-meta">
-                  <span class="comp-price">&pound;415.00</span>
+                  <span class="comp-price">&pound;390.00</span>
                   <span class="comp-condition">Used</span>
-                  <span class="comp-score">Score: 0.91</span>
+                  <span class="comp-score">Score: 0.94</span>
                 </div>
               </div>
               <div class="comp-actions">
@@ -538,21 +505,15 @@ body {
             <!-- Comp 3 -->
             <div class="comp-card">
               <div class="comp-image">
-                <div class="product-image-placeholder small-icon">
-                  <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#555" stroke-width="1.5">
-                    <rect x="2" y="3" width="20" height="18" rx="2"/>
-                    <circle cx="8" cy="10" r="2"/>
-                    <path d="M2 17l5-5 4 4 4-6 7 7"/>
-                  </svg>
-                </div>
+                <img src="images/paymore_2.jpg" alt="PS5 Console" />
               </div>
               <div class="comp-info">
-                <div class="comp-title">Sony PS5 825GB Disc Edition - Barely Used</div>
-                <div class="comp-description">Bought at launch, barely played. Comes with original box and all cables. Disc drive works perfectly.</div>
+                <div class="comp-title">PS5 Disc Console 825GB CFI-1216A - Unit Only</div>
+                <div class="comp-description">PlayStation 5 disc console, unit only. Newer CFI-1216A revision. No controller or cables. In good working order, recently factory reset. Smoke-free home.</div>
                 <div class="comp-meta">
-                  <span class="comp-price">&pound;400.00</span>
+                  <span class="comp-price">&pound;388.00</span>
                   <span class="comp-condition">Used</span>
-                  <span class="comp-score">Score: 0.88</span>
+                  <span class="comp-score">Score: 0.92</span>
                 </div>
               </div>
               <div class="comp-actions">
@@ -564,21 +525,15 @@ body {
             <!-- Comp 4 -->
             <div class="comp-card">
               <div class="comp-image">
-                <div class="product-image-placeholder small-icon">
-                  <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#555" stroke-width="1.5">
-                    <rect x="2" y="3" width="20" height="18" rx="2"/>
-                    <circle cx="8" cy="10" r="2"/>
-                    <path d="M2 17l5-5 4 4 4-6 7 7"/>
-                  </svg>
-                </div>
+                <img src="images/ebay_f.jpg" alt="PS5 Console" />
               </div>
               <div class="comp-info">
-                <div class="comp-title">PS5 Disc Console White 825GB CFI-1216A</div>
-                <div class="comp-description">PlayStation 5 disc console. Newer model CFI-1216A revision. In good working order with DualSense controller.</div>
+                <div class="comp-title">Sony PS5 Disc Edition Console Only - Boxed</div>
+                <div class="comp-description">PS5 disc edition console only with original box. No controller or cables included. Bought at launch, barely played. Disc drive in perfect working order.</div>
                 <div class="comp-meta">
-                  <span class="comp-price">&pound;395.00</span>
+                  <span class="comp-price">&pound;400.00</span>
                   <span class="comp-condition">Used</span>
-                  <span class="comp-score">Score: 0.86</span>
+                  <span class="comp-score">Score: 0.91</span>
                 </div>
               </div>
               <div class="comp-actions">
@@ -590,21 +545,15 @@ body {
             <!-- Comp 5 -->
             <div class="comp-card">
               <div class="comp-image">
-                <div class="product-image-placeholder small-icon">
-                  <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#555" stroke-width="1.5">
-                    <rect x="2" y="3" width="20" height="18" rx="2"/>
-                    <circle cx="8" cy="10" r="2"/>
-                    <path d="M2 17l5-5 4 4 4-6 7 7"/>
-                  </svg>
-                </div>
+                <img src="images/ebay_c.jpg" alt="PS5 Console" />
               </div>
               <div class="comp-info">
-                <div class="comp-title">Sony PlayStation 5 Disc 825GB White Bundle</div>
-                <div class="comp-description">PS5 disc edition bundle with 2 controllers and charging dock. All in excellent condition, smoke-free home.</div>
+                <div class="comp-title">PlayStation 5 Disc 825GB White Console Only</div>
+                <div class="comp-description">Pre-owned PS5 disc edition, console unit only. No accessories. Tested and fully functional. Small cosmetic mark on top panel, otherwise excellent condition.</div>
                 <div class="comp-meta">
-                  <span class="comp-price">&pound;450.00</span>
+                  <span class="comp-price">&pound;375.00</span>
                   <span class="comp-condition">Used</span>
-                  <span class="comp-score">Score: 0.84</span>
+                  <span class="comp-score">Score: 0.89</span>
                 </div>
               </div>
               <div class="comp-actions">
@@ -616,21 +565,15 @@ body {
             <!-- Comp 6 -->
             <div class="comp-card">
               <div class="comp-image">
-                <div class="product-image-placeholder small-icon">
-                  <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#555" stroke-width="1.5">
-                    <rect x="2" y="3" width="20" height="18" rx="2"/>
-                    <circle cx="8" cy="10" r="2"/>
-                    <path d="M2 17l5-5 4 4 4-6 7 7"/>
-                  </svg>
-                </div>
+                <img src="images/paymore_3.jpg" alt="PS5 Console" />
               </div>
               <div class="comp-info">
-                <div class="comp-title">PS5 Console Disc Edition 825 GB - Boxed</div>
-                <div class="comp-description">Complete in box PS5 disc edition. Includes HDMI cable, power cable, and DualSense controller. Fully tested and working.</div>
+                <div class="comp-title">PS5 825GB Disc Edition - Console No Accessories</div>
+                <div class="comp-description">Mint condition PS5 disc edition. Console only, no controller, no cables, no box. Selling as upgrading to PS5 Pro. Firmware up to date, factory reset.</div>
                 <div class="comp-meta">
-                  <span class="comp-price">&pound;380.00</span>
+                  <span class="comp-price">&pound;370.00</span>
                   <span class="comp-condition">Used</span>
-                  <span class="comp-score">Score: 0.82</span>
+                  <span class="comp-score">Score: 0.87</span>
                 </div>
               </div>
               <div class="comp-actions">

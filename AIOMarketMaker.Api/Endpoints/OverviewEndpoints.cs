@@ -11,18 +11,19 @@ public record OverviewResponse(
     int Opportunities, decimal AggregateProfit,
     LastScrapeResponse? LastScrape,
     IEnumerable<CumulativeGrowthEntry> CumulativeGrowth,
+    IEnumerable<OpportunitiesByDayEntry> OpportunitiesByDay,
     IEnumerable<TopJobOpportunityEntry> TopJobsByOpportunities,
     IEnumerable<ConditionProfitEntry> AvgProfitByCondition,
-    IEnumerable<DaysToSellEntry> AvgDaysToSellByJob,
     IEnumerable<PriceVsProfitEntry> PriceVsProfitPoints,
-    IEnumerable<TopOpportunityResponse> TopOpportunities,
-    IEnumerable<RecentRunResponse> RecentRuns);
+    IEnumerable<TopOpportunityResponse> TopOpportunities);
 
 public record LastScrapeResponse(
     DateTime StartedUtc, string? Status, string? JobSearchTerm,
     int ListingsAddedActive, int ListingsAddedSold);
 
 public record CumulativeGrowthEntry(string Date, int Cumulative);
+
+public record OpportunitiesByDayEntry(string Date, int Count);
 
 public record TopJobOpportunityEntry(int JobId, string? SearchTerm, int OpportunityCount, decimal TotalProfit);
 
@@ -61,7 +62,7 @@ public static class OverviewEndpoints
         var agg = await predictionService.GetAggregates(filters);
         var lastScrape = await GetLastScrape(db);
         var cumulativeGrowth = await GetCumulativeGrowth(db);
-        var recentRuns = await GetRecentRuns(db);
+        var opportunitiesByDay = await GetOpportunitiesByDay(db, filters);
 
         var response = new OverviewResponse(
             TotalListings: statusCounts.Total,
@@ -72,20 +73,18 @@ public static class OverviewEndpoints
             AggregateProfit: agg.AggregateProfit,
             LastScrape: lastScrape,
             CumulativeGrowth: cumulativeGrowth,
+            OpportunitiesByDay: opportunitiesByDay,
             TopJobsByOpportunities: agg.TopJobsByOpportunities
                 .Select(j => new TopJobOpportunityEntry(j.JobId, j.SearchTerm, j.OpportunityCount, j.TotalProfit)),
             AvgProfitByCondition: agg.AvgProfitByCondition
                 .Select(c => new ConditionProfitEntry(c.Condition, c.AvgProfit, c.Count)),
-            AvgDaysToSellByJob: agg.AvgDaysToSellByJob
-                .Select(d => new DaysToSellEntry(d.JobId, d.SearchTerm, d.AvgDaysToSell)),
             PriceVsProfitPoints: agg.PriceVsProfitPoints
                 .Select(p => new PriceVsProfitEntry(p.Price, p.PotentialProfit, p.Condition)),
             TopOpportunities: agg.TopOpportunities
                 .Select(o => new TopOpportunityResponse(
                     o.ListingId, o.Title, o.Price, o.Currency,
                     o.AverageSoldPrice, o.PotentialProfit, o.SimilarSoldCount,
-                    o.Condition, o.Url)),
-            RecentRuns: recentRuns);
+                    o.Condition, o.Url)));
 
         return Results.Ok(response);
     }
@@ -173,38 +172,35 @@ public static class OverviewEndpoints
         return result;
     }
 
-    // -- Recent runs (last 5) --
+    // -- Opportunities by day --
 
-    private static async Task<IEnumerable<RecentRunResponse>> GetRecentRuns(EtlDbContext db)
+    private static async Task<IEnumerable<OpportunitiesByDayEntry>> GetOpportunitiesByDay(
+        EtlDbContext db, PredictionFilters filters)
     {
-        var runs = await db.ScrapeRuns
-            .OrderByDescending(r => r.StartedUtc)
-            .Take(5)
-            .ToListAsync();
-
-        if (runs.Count == 0)
+        var conn = db.Database.GetDbConnection();
+        if (conn.State != ConnectionState.Open)
         {
-            return Enumerable.Empty<RecentRunResponse>();
+            await conn.OpenAsync();
         }
 
-        var jobIds = runs
-            .Where(r => r.JobId.HasValue)
-            .Select(r => r.JobId!.Value)
-            .Distinct()
-            .ToList();
+        var isSqlite = conn.GetType().Name.Contains("Sqlite");
+        var dateCast = isSqlite ? "DATE(l.CreatedUtc)" : "CAST(l.CreatedUtc AS DATE)";
+        var minComps = filters.MinComps > 0 ? filters.MinComps : 1;
 
-        var jobNames = await db.ScrapeJobs
-            .Where(j => jobIds.Contains(j.Id))
-            .ToDictionaryAsync(j => j.Id, j => j.SearchTerm);
+        var sql = $@"
+            SELECT {dateCast} AS OpDate, COUNT(*) AS OpCount
+            FROM Listings l
+            WHERE l.ListingStatus = 'Active'
+              AND (SELECT COUNT(*) FROM ListingRelationships lr WHERE lr.ListingIdA = l.Id) >= {minComps}
+            GROUP BY {dateCast}
+            ORDER BY OpDate";
 
-        return runs.Select(r => new RecentRunResponse(
-            r.Id, r.StartedUtc,
-            r.JobId.HasValue ? jobNames.GetValueOrDefault(r.JobId.Value) : null,
-            r.Status, r.ListingsAddedActive, r.ListingsAddedSold,
-            r.ListingsFailed));
+        return await ExecuteQuery(db, sql, reader => new OpportunitiesByDayEntry(
+            isSqlite ? reader.GetString(0) : reader.GetDateTime(0).ToString("yyyy-MM-dd"),
+            reader.GetInt32(1)));
     }
 
-    // -- SQL helper (used by GetCumulativeGrowth for cross-database date grouping) --
+    // -- SQL helper (used by raw SQL queries for cross-database date grouping) --
 
     private static async Task<List<T>> ExecuteQuery<T>(
         EtlDbContext db, string sql, Func<DbDataReader, T> map)

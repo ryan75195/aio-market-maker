@@ -25,12 +25,113 @@ const {
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+      href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,700&family=JetBrains+Mono:wght@400;500&family=Outfit:wght@300;400;500;600;700;800&display=swap"
       rel="stylesheet"
     />
     <title>{title}</title>
   </head>
-  <body class="bg-[#1e1e1e] text-[#e0e0e0] font-['Inter',sans-serif] antialiased">
+  <body class="bg-[#0a0a0f] text-[#c8cad0] font-['DM_Sans',sans-serif] antialiased overflow-x-hidden">
     <slot />
+
+    <style is:global>
+      /* Dot grid background texture */
+      body::before {
+        content: '';
+        position: fixed;
+        inset: 0;
+        background-image: radial-gradient(circle, rgba(255,255,255,0.03) 1px, transparent 1px);
+        background-size: 32px 32px;
+        pointer-events: none;
+        z-index: 0;
+      }
+
+      body > * {
+        position: relative;
+        z-index: 1;
+      }
+
+      /* Glow effect for screenshot containers */
+      .screenshot-glow {
+        position: relative;
+      }
+      .screenshot-glow::before {
+        content: '';
+        position: absolute;
+        inset: -1px;
+        border-radius: 12px;
+        padding: 1px;
+        background: linear-gradient(135deg, rgba(56,189,248,0.4), rgba(14,99,156,0.2), rgba(34,197,94,0.3));
+        -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+        -webkit-mask-composite: xor;
+        mask-composite: exclude;
+      }
+      .screenshot-glow::after {
+        content: '';
+        position: absolute;
+        inset: -40px;
+        border-radius: 40px;
+        background: radial-gradient(ellipse at center, rgba(14,99,156,0.15) 0%, transparent 70%);
+        pointer-events: none;
+        z-index: -1;
+      }
+
+      /* Scroll-triggered fade-in animations */
+      .fade-up {
+        opacity: 0;
+        transform: translateY(30px);
+        transition: opacity 0.7s cubic-bezier(0.16, 1, 0.3, 1), transform 0.7s cubic-bezier(0.16, 1, 0.3, 1);
+      }
+      .fade-up.visible {
+        opacity: 1;
+        transform: translateY(0);
+      }
+
+      /* Staggered children */
+      .stagger > .fade-up:nth-child(1) { transition-delay: 0ms; }
+      .stagger > .fade-up:nth-child(2) { transition-delay: 120ms; }
+      .stagger > .fade-up:nth-child(3) { transition-delay: 240ms; }
+      .stagger > .fade-up:nth-child(4) { transition-delay: 360ms; }
+
+      /* Accent colors */
+      .text-accent { color: #38bdf8; }
+      .text-profit { color: #22c55e; }
+
+      /* Tag pill */
+      .tag {
+        display: inline-block;
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 0.7rem;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        padding: 4px 10px;
+        border-radius: 4px;
+        border: 1px solid rgba(56,189,248,0.25);
+        color: #38bdf8;
+        background: rgba(56,189,248,0.06);
+      }
+
+      /* Green variant */
+      .tag-green {
+        border-color: rgba(34,197,94,0.25);
+        color: #22c55e;
+        background: rgba(34,197,94,0.06);
+      }
+    </style>
+
+    <script>
+      // Scroll-triggered animations
+      const observer = new IntersectionObserver(
+        (entries) => {
+          entries.forEach((entry) => {
+            if (entry.isIntersecting) {
+              entry.target.classList.add('visible');
+            }
+          });
+        },
+        { threshold: 0.1, rootMargin: '0px 0px -40px 0px' }
+      );
+
+      document.querySelectorAll('.fade-up').forEach((el) => observer.observe(el));
+    </script>
   </body>
 </html>
