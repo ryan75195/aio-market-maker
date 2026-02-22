@@ -221,6 +221,29 @@ namespace AIOMarketMaker.Tests.Unit.Parsers
             Assert.That(isError, Is.False);
         }
 
+        [Test]
+        public async Task Should_not_mark_listing_as_sold_when_seller_stats_contain_sold()
+        {
+            // A listing that is NOT sold but has "67 sold" in the seller info area
+            var html = @"
+                <html><body>
+                <li class=""s-card"" data-viewport>
+                    <a class=""s-card__link"" href=""https://www.ebay.co.uk/itm/365953172239""></a>
+                    <span class=""s-card__title"">Rolex Submariner Date Hulk - 116610LV</span>
+                    <span class=""s-item__price"">£13,950.00</span>
+                    <span class=""s-item__seller-info"">67 sold</span>
+                </li>
+                </body></html>";
+
+            var doc = await LoadDocumentAsync(html);
+            var parser = (EbaySearchParser)_serviceUnderTest;
+            var results = parser.ParseSearchResults(doc).ToList();
+
+            Assert.That(results, Has.Count.EqualTo(1));
+            Assert.That(results[0].IsSold, Is.False,
+                "Listing should NOT be marked as sold when 'sold' only appears in seller stats");
+        }
+
         private async Task<IDocument> LoadTestHtmlDocumentAsync(string testCaseName)
         {
             var dataDir = TestDataPaths.Search;

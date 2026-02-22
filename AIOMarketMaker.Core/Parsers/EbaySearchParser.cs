@@ -87,14 +87,8 @@ namespace AIOMarketMaker.Core.Parsers
 
         private bool IsSoldListing(IElement li)
         {
-            // Check for sold indicators in various places
             var soldTag = li.QuerySelector(".s-item__title--tagblock, .POSITIVE, [class*='sold']");
-            if (soldTag != null && soldTag.TextContent.Contains("Sold", StringComparison.OrdinalIgnoreCase))
-                return true;
-
-            // Also check the entire item text for "Sold" date pattern
-            var fullText = li.TextContent;
-            return fullText.Contains("Sold", StringComparison.OrdinalIgnoreCase);
+            return soldTag != null && soldTag.TextContent.Contains("Sold", StringComparison.OrdinalIgnoreCase);
         }
 
         public string ExtractTitle(IElement li)
