@@ -82,7 +82,7 @@ public class ScrapeJobProcessor : IScrapeJobProcessor
 
         try
         {
-            await ExecuteScrape(run, job.Id, job.SearchTerm);
+            await ExecuteScrape(run, job);
             _logger.LogInformation("Scrape completed: RunId={RunId}", run.Id);
         }
         catch (Exception ex)
@@ -95,7 +95,7 @@ public class ScrapeJobProcessor : IScrapeJobProcessor
         }
     }
 
-    private async Task ExecuteScrape(ScrapeRun scrapeRun, int jobId, string searchTerm)
+    private async Task ExecuteScrape(ScrapeRun scrapeRun, ScrapeJobConfig job)
     {
         // Reset progress counters — ensures clean state on recovery restarts
         scrapeRun.ListingsProcessed = 0;
@@ -109,10 +109,13 @@ public class ScrapeJobProcessor : IScrapeJobProcessor
         await _dbContext.SaveChangesAsync();
 
         const int maxPages = 100;
+        var maxSoldPages = CalculateMaxSoldPages(job.LastRunUtc, maxPages);
+        _logger.LogInformation("Smart lookback: LastRunUtc={LastRun}, maxSoldPages={MaxSoldPages}",
+            job.LastRunUtc, maxSoldPages);
 
-        var soldSummaries = await SearchSoldListings(scrapeRun, searchTerm, maxPages);
-        var activeSummaries = await SearchActiveListings(scrapeRun, searchTerm, maxPages);
-        var classified = await ClassifyListings(scrapeRun, activeSummaries, soldSummaries, jobId);
+        var soldSummaries = await SearchSoldListings(scrapeRun, job.SearchTerm, maxSoldPages);
+        var activeSummaries = await SearchActiveListings(scrapeRun, job.SearchTerm, maxPages);
+        var classified = await ClassifyListings(scrapeRun, activeSummaries, soldSummaries, job.Id);
 
         if (classified.ToUpdateFromSummary.Count > 0)
         {
@@ -121,11 +124,11 @@ public class ScrapeJobProcessor : IScrapeJobProcessor
 
         if (classified.ToScrape.Count > 0)
         {
-            await FetchAndProcessDescriptions(scrapeRun, classified.ToScrape, classified.ExistingListings, jobId);
+            await FetchAndProcessDescriptions(scrapeRun, classified.ToScrape, classified.ExistingListings, job.Id);
         }
 
         // Always mark complete — no more "waiting for callbacks"
-        await MarkCompleted(scrapeRun);
+        await MarkCompleted(scrapeRun, job.Id);
     }
 
     private async Task<List<IEbayProductSummary>> SearchSoldListings(
@@ -567,12 +570,35 @@ public class ScrapeJobProcessor : IScrapeJobProcessor
         await _dbContext.SaveChangesAsync();
     }
 
-    private async Task MarkCompleted(ScrapeRun scrapeRun)
+    private async Task MarkCompleted(ScrapeRun scrapeRun, int jobId)
     {
         scrapeRun.Status = "Completed";
         scrapeRun.CurrentPhase = "Completed";
         scrapeRun.CompletedUtc = DateTime.UtcNow;
+
+        var job = await _dbContext.ScrapeJobs.FindAsync(jobId);
+        if (job != null)
+        {
+            job.LastRunUtc = DateTime.UtcNow;
+        }
+
         await _dbContext.SaveChangesAsync();
+    }
+
+    public static int CalculateMaxSoldPages(DateTime? lastRunUtc, int defaultMaxPages = 100)
+    {
+        if (lastRunUtc == null)
+        {
+            return defaultMaxPages;
+        }
+
+        var daysSinceLastRun = (int)Math.Ceiling((DateTime.UtcNow - lastRunUtc.Value).TotalDays);
+        var lookbackDays = Math.Max(1, daysSinceLastRun + 1); // +1 buffer
+
+        // Heuristic: ~2 pages per day of sold results for typical searches
+        // Minimum 5 pages to handle high-volume searches
+        var calculatedPages = Math.Max(5, lookbackDays * 2);
+        return Math.Min(calculatedPages, defaultMaxPages);
     }
 
     private async Task<List<IEbayProductSummary>> SearchListings(string searchTerm, bool sold, int maxPages)

@@ -684,4 +684,30 @@ public class ScrapeJobProcessor_UnitTests
         Assert.That(listing.Price, Is.EqualTo(120m),
             "Price should not change — terminal listings are skipped entirely");
     }
+
+    [TestCase(null, 100, Description = "Null LastRunUtc uses default")]
+    [TestCase(-1, 6, Description = "1 day ago: ceil(~1) = 2, lookback = 3, max(5, 3*2) = 6")]
+    [TestCase(-3, 10, Description = "3 days ago: ceil(~3) = 4, lookback = 5, max(5, 5*2) = 10")]
+    [TestCase(-30, 64, Description = "30 days ago: ceil(~30) = 31, lookback = 32, max(5, 32*2) = 64")]
+    [TestCase(-90, 100, Description = "90 days ago: min(184, 100) = 100")]
+    public void Should_calculate_max_sold_pages_from_lookback(int? daysAgo, int expectedPages)
+    {
+        var lastRunUtc = daysAgo.HasValue ? DateTime.UtcNow.AddDays(daysAgo.Value) : (DateTime?)null;
+        var result = ScrapeJobProcessor.CalculateMaxSoldPages(lastRunUtc);
+        Assert.That(result, Is.EqualTo(expectedPages));
+    }
+
+    [Test]
+    public async Task Should_update_job_LastRunUtc_on_successful_completion()
+    {
+        var run = CreateAndSeedScrapeRun();
+        var job = CreateJobConfig();
+
+        await CreateProcessor().Execute(run, job);
+
+        var updatedJob = await _dbContext.ScrapeJobs.FindAsync(1);
+        Assert.That(updatedJob!.LastRunUtc, Is.Not.Null,
+            "Job LastRunUtc should be updated after successful run");
+        Assert.That(updatedJob.LastRunUtc, Is.EqualTo(DateTime.UtcNow).Within(TimeSpan.FromSeconds(5)));
+    }
 }
