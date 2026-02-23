@@ -59,11 +59,11 @@ public class StartupRecoveryService : IHostedService
 
         var jobs = await db.ScrapeJobs
             .Where(j => jobIds.Contains(j.Id))
-            .ToDictionaryAsync(j => j.Id, j => j.SearchTerm, ct);
+            .ToDictionaryAsync(j => j.Id, j => new ScrapeJobConfig(j.Id, j.SearchTerm, j.LastRunUtc), ct);
 
         return orphanedRuns
             .Where(r => r.JobId.HasValue && jobs.ContainsKey(r.JobId.Value))
-            .Select(r => new OrphanedRun(r.Id, new ScrapeJobConfig(r.JobId!.Value, jobs[r.JobId.Value])))
+            .Select(r => new OrphanedRun(r.Id, jobs[r.JobId.Value]))
             .ToList();
     }
 

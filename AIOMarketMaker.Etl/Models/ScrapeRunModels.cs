@@ -12,6 +12,6 @@ public record ScrapeRunResult(int JobId, int RunId, string Status);
 
 public record ManualScrapeResponse(string InstanceId, int RunId, IEnumerable<ScrapeRunResult> Results);
 
-public record ScrapeJobConfig(int Id, string SearchTerm);
+public record ScrapeJobConfig(int Id, string SearchTerm, DateTime? LastRunUtc = null);
 
 public record StartedScrapeRun(int RunId, int JobId, string Status, string InstanceId);

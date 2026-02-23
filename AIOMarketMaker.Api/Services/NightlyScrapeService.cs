@@ -57,7 +57,7 @@ public class NightlyScrapeService : BackgroundService
         var db = scope.ServiceProvider.GetRequiredService<EtlDbContext>();
 
         var jobs = await db.ScrapeJobs.WhereEffectivelyEnabled()
-            .Select(j => new ScrapeJobConfig(j.Id, j.SearchTerm))
+            .Select(j => new ScrapeJobConfig(j.Id, j.SearchTerm, j.LastRunUtc))
             .ToListAsync(ct);
 
         _logger.LogInformation("Found {Count} enabled jobs for nightly scrape", jobs.Count);
