@@ -277,7 +277,6 @@ All reusable components ("lego blocks") in the AIOMarketMaker + AIOWebScraper sc
 | Block | What It Does | Key Method |
 |-------|-------------|------------|
 | **EbayScraper** | Searches eBay, fetches listings, parses results | `SearchActiveListings(...)`, `GetItemsFromListings(ids)` |
-| **JobRunner** | Full end-to-end scrape job (search->fetch->parse->save) | `RunJob(jobId)` -> `JobRunResult` |
 | **StatusRefreshRunner** | Re-scrapes active listings for status changes | `RefreshActiveListingsAsync(jobId)` |
 | **JobOrchestrator** | Parallel batch URL processing with retry | `RunAsync(urls, jobId)` |
 | **SimpleQueueWorker** | Polls queue, fetches HTML, calls callback | `ExecuteAsync(ct)` |
@@ -291,16 +290,6 @@ All reusable components ("lego blocks") in the AIOMarketMaker + AIOWebScraper sc
   - `Task<IEnumerable<EbayProductSummary>> SearchActiveListings(string query, BuyingFormat buyingFormat, Condition condition, int itemLimit = 500)`
   - `Task<IEnumerable<EbayProductSummary>> SearchSoldListings(string query, BuyingFormat buyingFormat, Condition condition, DateTime startDate, DateTime endDate)`
   - `Task<IEnumerable<EbayProduct>> GetItemsFromListings(string[] itemIds)`
-
-### JobRunner
-
-- **Implements:** `IJobRunner`
-- **File:** `AIOMarketMaker.Core/Services/JobRunner.cs`
-- **Dependencies:** `EtlDbContext`, `IEbayScraper`, `IConfiguration`, `ILogger<JobRunner>`
-- **Methods:**
-  - `Task<JobRunResult> RunJob(int jobId, CancellationToken ct = default)`
-  - `Task<JobRunResult> RunJob(ScrapeJob job, CancellationToken ct = default)`
-- **Result:** `JobRunResult(int JobId, bool Success, int ListingsFound, int NewListingsFetched, int StatusUpdates, string? Error)`
 
 ### SimpleQueueWorker
 

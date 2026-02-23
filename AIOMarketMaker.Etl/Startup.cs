@@ -122,8 +122,6 @@ namespace AIOMarketMaker.Etl
                         client.BaseAddress = new Uri(scraperBaseUrl);
                     });
 
-                    // Job runner
-                    services.AddScoped<IJobRunner, JobRunner>();
                 })
                 .Build();
         }
