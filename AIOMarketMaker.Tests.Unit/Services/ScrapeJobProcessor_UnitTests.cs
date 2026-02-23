@@ -610,4 +610,78 @@ public class ScrapeJobProcessor_UnitTests
         var saved = await _dbContext.ScrapeRuns.FindAsync(run.Id);
         Assert.That(saved!.BatchId, Is.Null);
     }
+
+    [Test]
+    public async Task Should_not_regress_sold_listing_back_to_active_on_rescrape()
+    {
+        var run = CreateAndSeedScrapeRun();
+        var job = CreateJobConfig();
+
+        // Listing already Sold in DB
+        _dbContext.Listings.Add(new Listing
+        {
+            ListingId = "REGRESS1", ScrapeJobId = 1,
+            Title = "Previously Sold", ListingStatus = "Sold",
+            Price = 100m, Condition = "USED"
+        });
+        await _dbContext.SaveChangesAsync();
+
+        // Search returns this listing as active (eBay sometimes shows sold items in active results)
+        var activeSummary = CreateSummary("REGRESS1", price: 95m, isSold: false);
+
+        var callCount = 0;
+        _searchParserMock
+            .Setup(p => p.ParseSearchResults(It.IsAny<IDocument>()))
+            .Returns(() =>
+            {
+                callCount++;
+                return callCount == 2
+                    ? new[] { activeSummary }
+                    : Enumerable.Empty<IEbayProductSummary>();
+            });
+
+        await CreateProcessor().Execute(run, job);
+
+        var listing = await _dbContext.Listings.FirstAsync(l => l.ListingId == "REGRESS1");
+        Assert.That(listing.ListingStatus, Is.EqualTo("Sold"),
+            "Status should NOT regress from Sold back to Active");
+    }
+
+    [Test]
+    public async Task Should_use_safe_status_transitions_when_saving_from_summaries()
+    {
+        var run = CreateAndSeedScrapeRun();
+        var job = CreateJobConfig();
+
+        // Pre-existing listing already marked Sold
+        _dbContext.Listings.Add(new Listing
+        {
+            ListingId = "CONCURRENT1", ScrapeJobId = 1,
+            Title = "Concurrent Update", ListingStatus = "Sold",
+            Price = 120m, Condition = "USED"
+        });
+        await _dbContext.SaveChangesAsync();
+
+        // This listing appears in sold search results — classify routes to ToScrape
+        var soldSummary = CreateSummary("CONCURRENT1", price: 110m, isSold: true);
+
+        var callCount = 0;
+        _searchParserMock
+            .Setup(p => p.ParseSearchResults(It.IsAny<IDocument>()))
+            .Returns(() =>
+            {
+                callCount++;
+                return callCount == 1
+                    ? new[] { soldSummary }
+                    : Enumerable.Empty<IEbayProductSummary>();
+            });
+
+        await CreateProcessor().Execute(run, job);
+
+        var listing = await _dbContext.Listings.FirstAsync(l => l.ListingId == "CONCURRENT1");
+        Assert.That(listing.ListingStatus, Is.EqualTo("Sold"),
+            "Status should remain Sold — terminal listings are filtered in classify");
+        Assert.That(listing.Price, Is.EqualTo(120m),
+            "Price should not change — terminal listings are skipped entirely");
+    }
 }

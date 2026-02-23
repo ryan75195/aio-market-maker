@@ -366,19 +366,23 @@ public class ScrapeJobProcessor : IScrapeJobProcessor
                 existing.ShippingCost = summary.ShippingCost;
                 existing.Url = summary.Url;
                 existing.Condition = concrete?.Condition?.ToString();
-                existing.ListingStatus = newStatus;
                 existing.PurchaseFormat = concrete?.BuyingFormat?.ToString();
                 existing.Images = images;
                 existing.EndDateUtc = concrete?.EndDateUtc;
                 existing.DescriptionStatus = "pending";
                 existing.UpdatedUtc = DateTime.UtcNow;
 
-                if (oldStatus != newStatus)
+                if (ListingStatusHelper.CanUpdateStatus(existing.ListingStatus, newStatus))
+                {
+                    existing.ListingStatus = newStatus;
+                }
+
+                if (oldStatus != existing.ListingStatus)
                 {
                     _dbContext.ListingStatusHistory.Add(new ListingStatusHistory
                     {
                         ListingId = existing.Id,
-                        ListingStatus = newStatus,
+                        ListingStatus = existing.ListingStatus ?? oldStatus ?? "Unknown",
                         Price = summary.Price,
                         RecordedUtc = DateTime.UtcNow,
                         Source = "StatusUpdate"
