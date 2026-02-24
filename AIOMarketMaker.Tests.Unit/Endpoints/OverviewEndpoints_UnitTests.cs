@@ -6,6 +6,7 @@ using AIOMarketMaker.Core.Services;
 using AIOMarketMaker.Tests.Common;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.HttpResults;
+using Microsoft.Extensions.Options;
 
 namespace AIOMarketMaker.Tests.Unit.Endpoints;
 
@@ -33,9 +34,10 @@ public class OverviewEndpoints_UnitTests
             "GetOverview",
             BindingFlags.NonPublic | BindingFlags.Static);
 
-        var service = new ListingPredictionService(_db);
+        var service = new ListingPredictionService(_db, Options.Create(new PricingOptions()));
+        var pricingOptions = Options.Create(new PricingOptions());
         var resultTask = (Task<IResult>)method!.Invoke(null,
-            new object[] { _db, service, 3, 13.25m, true })!;
+            new object[] { _db, service, pricingOptions, (int?)3, (decimal?)13.25m, true })!;
         var result = await resultTask;
 
         var okResult = (Ok<OverviewResponse>)result;

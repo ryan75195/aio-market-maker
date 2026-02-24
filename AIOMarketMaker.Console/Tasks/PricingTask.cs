@@ -8,7 +8,6 @@ namespace AIOMarketMaker.Console.Tasks;
 public class PricingTask : ITask
 {
     private readonly ISemanticSearchService _searchService;
-    private readonly IPricingAnalysisService _pricingService;
     private readonly EtlDbContext _dbContext;
 
     public string Name => "pricing";
@@ -16,11 +15,9 @@ public class PricingTask : ITask
 
     public PricingTask(
         ISemanticSearchService searchService,
-        IPricingAnalysisService pricingService,
         EtlDbContext dbContext)
     {
         _searchService = searchService;
-        _pricingService = pricingService;
         _dbContext = dbContext;
     }
 
@@ -32,7 +29,6 @@ public class PricingTask : ITask
             return 1;
         }
 
-        // Parse arguments
         var query = args[0];
         var soldOnly = args.Any(a => a.Equals("--sold-only", StringComparison.OrdinalIgnoreCase));
         var topK = 50;
@@ -52,7 +48,6 @@ public class PricingTask : ITask
         System.Console.WriteLine($"Options: topK={topK}, soldOnly={soldOnly}");
         System.Console.WriteLine();
 
-        // Get semantic search results
         var result = await _searchService.Search(query, topK: topK, ct: ct);
 
         if (result.Hits.Count == 0)
@@ -61,7 +56,6 @@ public class PricingTask : ITask
             return 0;
         }
 
-        // Get listing details
         var listingIds = result.Hits.Select(h => h.ListingId).ToList();
         var listings = await _dbContext.Listings
             .Where(l => listingIds.Contains(l.ListingId))
@@ -70,25 +64,34 @@ public class PricingTask : ITask
         System.Console.WriteLine($"Found {result.Hits.Count} similar listings ({listings.Count} with details)");
         System.Console.WriteLine();
 
-        // Run pricing analysis
-        var options = new PricingAnalysisOptions
-        {
-            SoldOnly = soldOnly,
-            IqrMultiplier = 1.5,
-            SimilarityWeightPower = 2.0,
-            RecencyHalfLifeDays = 30.0
-        };
+        var listingDict = listings.ToDictionary(l => l.ListingId);
+        var hitsByListingId = result.Hits.ToDictionary(h => h.ListingId);
 
-        var analysis = _pricingService.Analyze(listings, result.Hits, options);
+        var pricedItems = listings
+            .Where(l => l.Price.HasValue && l.Price > 0)
+            .Where(l => !soldOnly || string.Equals(l.ListingStatus, "Sold", StringComparison.OrdinalIgnoreCase))
+            .Select(l => new PricedComparable(
+                l.Price!.Value,
+                hitsByListingId.TryGetValue(l.ListingId, out var hit) ? hit.Score : 0.5,
+                l.EndDateUtc))
+            .ToList();
 
-        if (analysis.SampleSize == 0)
+        if (pricedItems.Count == 0)
         {
             System.Console.WriteLine("No priced listings found for analysis.");
             return 0;
         }
 
-        // Print results
-        PrintAnalysis(analysis, listings, result.Hits);
+        var options = new PricingOptions();
+        var analysis = PricingCalculator.Analyze(pricedItems, options);
+
+        if (analysis.SampleSize == 0)
+        {
+            System.Console.WriteLine("No listings remaining after outlier removal.");
+            return 0;
+        }
+
+        PrintAnalysis(analysis, listings, result.Hits, listingDict);
 
         return 0;
     }
@@ -108,18 +111,16 @@ public class PricingTask : ITask
     }
 
     private static void PrintAnalysis(
-        PricingAnalysisResult analysis,
+        PricingResult analysis,
         List<Listing> listings,
-        IReadOnlyList<SemanticSearchHit> hits)
+        IReadOnlyList<SemanticSearchHit> hits,
+        Dictionary<string, Listing> listingDict)
     {
-        var listingDict = listings.ToDictionary(l => l.ListingId);
-
         System.Console.WriteLine("=" + new string('=', 79));
         System.Console.WriteLine("PRICING ANALYSIS RESULTS");
         System.Console.WriteLine("=" + new string('=', 79));
         System.Console.WriteLine();
 
-        // Summary stats
         System.Console.WriteLine("STATISTICS:");
         System.Console.WriteLine("-" + new string('-', 79));
         System.Console.WriteLine($"  Sample Size:      {analysis.SampleSize} listings");
@@ -127,65 +128,46 @@ public class PricingTask : ITask
         System.Console.WriteLine($"  Confidence:       {analysis.Confidence:P0}");
         System.Console.WriteLine();
 
-        // Pricing
         System.Console.WriteLine("PRICING:");
         System.Console.WriteLine("-" + new string('-', 79));
         System.Console.WriteLine($"  Mean:             {analysis.Mean:C}");
         System.Console.WriteLine($"  Median:           {analysis.Median:C}");
-        System.Console.WriteLine($"  Weighted Mean:    {analysis.WeightedMean:C}  (by similarity score)");
+        System.Console.WriteLine($"  Weighted Mean:    {analysis.WeightedMean:C}  (by classifier confidence)");
         if (analysis.RecencyWeightedMean.HasValue)
         {
-            System.Console.WriteLine($"  Recency Weighted: {analysis.RecencyWeightedMean:C}  (by similarity + recency)");
+            System.Console.WriteLine($"  Recency Weighted: {analysis.RecencyWeightedMean:C}  (by confidence + recency)");
         }
         System.Console.WriteLine();
         System.Console.WriteLine($"  Min:              {analysis.Min:C}");
         System.Console.WriteLine($"  Max:              {analysis.Max:C}");
         System.Console.WriteLine($"  Std Dev:          {analysis.StdDev:C}");
         System.Console.WriteLine();
-        System.Console.WriteLine($"  Price Range:      {analysis.PriceRange.Low:C} - {analysis.PriceRange.High:C}  (median +/- 1 std dev)");
-        System.Console.WriteLine();
 
-        // Recommendation
         System.Console.WriteLine("RECOMMENDED PRICE:");
         System.Console.WriteLine("-" + new string('-', 79));
         var recommendedPrice = analysis.RecencyWeightedMean ?? analysis.WeightedMean;
         System.Console.WriteLine($"  {recommendedPrice:C}");
         System.Console.WriteLine();
-        System.Console.WriteLine($"  This is the {(analysis.RecencyWeightedMean.HasValue ? "recency-weighted" : "similarity-weighted")} average,");
-        System.Console.WriteLine($"  which emphasizes listings most similar to your query{(analysis.RecencyWeightedMean.HasValue ? " and recent sales" : "")}.");
+        System.Console.WriteLine($"  This is the {(analysis.RecencyWeightedMean.HasValue ? "recency-weighted" : "confidence-weighted")} average,");
+        System.Console.WriteLine($"  which emphasizes listings most confidently matched{(analysis.RecencyWeightedMean.HasValue ? " and recent sales" : "")}.");
         System.Console.WriteLine();
 
-        // Outliers
-        if (analysis.Outliers.Count > 0)
-        {
-            System.Console.WriteLine("OUTLIERS (excluded from analysis):");
-            System.Console.WriteLine("-" + new string('-', 79));
-            foreach (var outlier in analysis.Outliers.OrderByDescending(o => o.Price))
-            {
-                var listing = listingDict.GetValueOrDefault(outlier.ListingId);
-                var title = listing?.Title ?? "(unknown)";
-                if (title.Length > 50) title = title[..47] + "...";
-                System.Console.WriteLine($"  {outlier.Price,10:C}  (score: {outlier.Score:F3})  {title}");
-            }
-            System.Console.WriteLine();
-        }
-
-        // Top matches
-        System.Console.WriteLine("TOP MATCHES (included in analysis):");
+        System.Console.WriteLine("TOP MATCHES:");
         System.Console.WriteLine("-" + new string('-', 79));
 
-        var includedIds = hits
-            .Where(h => !analysis.Outliers.Any(o => o.ListingId == h.ListingId))
-            .Take(10)
-            .ToList();
-
-        foreach (var hit in includedIds)
+        foreach (var hit in hits.Take(10))
         {
             var listing = listingDict.GetValueOrDefault(hit.ListingId);
-            if (listing == null) continue;
+            if (listing == null)
+            {
+                continue;
+            }
 
             var title = listing.Title ?? "(no title)";
-            if (title.Length > 45) title = title[..42] + "...";
+            if (title.Length > 45)
+            {
+                title = title[..42] + "...";
+            }
             var status = listing.ListingStatus ?? "?";
 
             System.Console.WriteLine($"  {listing.Price,10:C}  {status,-6}  (score: {hit.Score:F3})  {title}");

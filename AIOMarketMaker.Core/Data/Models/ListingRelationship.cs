@@ -8,6 +8,7 @@ public class ListingRelationship
     public bool IsComparable { get; set; }
     public string Explanation { get; set; } = string.Empty;
     public double SimilarityScore { get; set; }
+    public double? ClassifierConfidence { get; set; }
     public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
 
     public Listing ListingA { get; set; } = null!;

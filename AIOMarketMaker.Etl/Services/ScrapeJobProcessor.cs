@@ -28,6 +28,7 @@ public record ClassifiedListings(
 public class ScrapeJobProcessor : IScrapeJobProcessor
 {
     private static readonly HashSet<string> TerminalStatuses = new() { "Sold", "Ended", "OutOfStock" };
+    private static readonly IBrowsingContext SharedBrowsingContext = BrowsingContext.New(Configuration.Default);
 
     private readonly ILogger<ScrapeJobProcessor> _logger;
     private readonly EtlDbContext _dbContext;
@@ -263,8 +264,6 @@ public class ScrapeJobProcessor : IScrapeJobProcessor
 
                 scrapeRun.ListingsUpdated++;
                 updatedListings.Add(listing);
-                _logger.LogInformation("Updated listing {ListingId} from summary (price: {Price}, shipping: {Shipping})",
-                    summary.ListingId, summary.Price, summary.ShippingCost);
             }
             else
             {
@@ -335,15 +334,30 @@ public class ScrapeJobProcessor : IScrapeJobProcessor
             channel.Writer.Complete();
         });
 
-        // Consumer: process results sequentially as they arrive
+        // Consumer: process results with batched DB saves (1 round-trip per batch instead of per item)
+        const int saveBatchSize = 50;
+        var pendingIndex = new List<(Listing Listing, IEbayProductSummary Summary)>();
+        var processed = 0;
+
         await foreach (var result in channel.Reader.ReadAllAsync())
         {
-            await ProcessFetchedDescription(scrapeRun, result, jobId);
+            var listingToIndex = await ProcessFetchedDescription(scrapeRun, result, existingListings);
+            if (listingToIndex != null)
+            {
+                pendingIndex.Add((listingToIndex, result.Summary));
+            }
             scrapeRun.ListingsProcessed++;
+            processed++;
+
+            if (processed % saveBatchSize == 0)
+            {
+                await SaveAndIndex(scrapeRun, pendingIndex);
+                pendingIndex.Clear();
+            }
         }
 
         await producerTask;
-        await _dbContext.SaveChangesAsync();
+        await SaveAndIndex(scrapeRun, pendingIndex);
     }
 
     private async Task SaveListingsFromSummaries(
@@ -417,6 +431,12 @@ public class ScrapeJobProcessor : IScrapeJobProcessor
         }
         await _dbContext.SaveChangesAsync();
 
+        // Add newly created listings to dictionary for downstream lookup (avoids per-item DB queries)
+        foreach (var (listing, _) in newListings)
+        {
+            existingListings[listing.ListingId] = listing;
+        }
+
         // EF Core sets listing.Id after SaveChangesAsync — no need to query them back
         foreach (var (listing, summary) in newListings)
         {
@@ -434,21 +454,20 @@ public class ScrapeJobProcessor : IScrapeJobProcessor
         _logger.LogInformation("Saved {Count} listings for job {JobId}", summaries.Count, jobId);
     }
 
-    private async Task ProcessFetchedDescription(
-        ScrapeRun scrapeRun, DescriptionFetchResult result, int jobId)
+    private async Task<Listing?> ProcessFetchedDescription(
+        ScrapeRun scrapeRun, DescriptionFetchResult result,
+        Dictionary<string, Listing> allListings)
     {
         var summary = result.Summary;
-        var listing = await _dbContext.Listings
-            .FirstOrDefaultAsync(l => l.ListingId == summary.ListingId && l.ScrapeJobId == jobId);
 
-        if (listing == null)
+        if (string.IsNullOrEmpty(summary.ListingId) ||
+            !allListings.TryGetValue(summary.ListingId, out var listing))
         {
             _logger.LogWarning("Listing {ListingId} not found for description processing", summary.ListingId);
             scrapeRun.ListingsFailed++;
-            RecordIssue(scrapeRun, summary.ListingId!, "ListingNotFound", "DescriptionFetch",
+            RecordIssue(scrapeRun, summary.ListingId ?? "unknown", "ListingNotFound", "DescriptionFetch",
                 "Listing not found in database during description processing");
-            await _dbContext.SaveChangesAsync();
-            return;
+            return null;
         }
 
         if (result.Error != null)
@@ -457,11 +476,9 @@ public class ScrapeJobProcessor : IScrapeJobProcessor
             listing.DescriptionStatus = "missing";
             scrapeRun.ListingsFailed++;
             RecordIssue(scrapeRun, summary.ListingId!, "DescriptionFetchFailed", "DescriptionFetch", result.Error);
-            await _dbContext.SaveChangesAsync();
-            return;
+            return null;
         }
 
-        // Phase 1: Parse description
         string? description = null;
         try
         {
@@ -477,39 +494,51 @@ public class ScrapeJobProcessor : IScrapeJobProcessor
             listing.DescriptionStatus = "failed";
             scrapeRun.ListingsFailed++;
             RecordIssue(scrapeRun, summary.ListingId!, "ParseFailed", "Parse", ex);
-            await _dbContext.SaveChangesAsync();
-            return;
+            return null;
         }
 
         if (string.IsNullOrEmpty(description))
         {
             listing.DescriptionStatus = "missing";
-        }
-        else
-        {
-            listing.Description = description;
-            listing.DescriptionStatus = "complete";
+            IncrementAddedCounter(scrapeRun, summary);
+            return null;
         }
 
+        listing.Description = description;
+        listing.DescriptionStatus = "complete";
+        return listing;
+    }
+
+    private async Task SaveAndIndex(ScrapeRun scrapeRun,
+        List<(Listing Listing, IEbayProductSummary Summary)> toIndex)
+    {
         await _dbContext.SaveChangesAsync();
 
-        // Phase 2: Embed and index
-        if (listing.DescriptionStatus == "complete")
+        var hadErrors = false;
+        foreach (var (listing, summary) in toIndex)
         {
             try
             {
                 await _indexingService.Index(listing, embedContent: true);
+                IncrementAddedCounter(scrapeRun, summary);
             }
             catch (Exception ex)
             {
                 _logger.LogWarning(ex, "Failed to index listing {ListingId}", summary.ListingId);
                 scrapeRun.ListingsFailed++;
                 RecordIssue(scrapeRun, summary.ListingId!, "IndexingFailed", "Indexing", ex);
-                await _dbContext.SaveChangesAsync();
-                return;
+                hadErrors = true;
             }
         }
 
+        if (hadErrors)
+        {
+            await _dbContext.SaveChangesAsync();
+        }
+    }
+
+    private static void IncrementAddedCounter(ScrapeRun scrapeRun, IEbayProductSummary summary)
+    {
         if (summary.IsSold)
         {
             scrapeRun.ListingsAddedSold++;
@@ -556,8 +585,7 @@ public class ScrapeJobProcessor : IScrapeJobProcessor
 
     private static async Task<AngleSharp.Dom.IDocument> ParseHtml(string html)
     {
-        var context = BrowsingContext.New(Configuration.Default);
-        return await context.OpenAsync(req => req.Content(html));
+        return await SharedBrowsingContext.OpenAsync(req => req.Content(html));
     }
 
     private async Task SetPhase(ScrapeRun scrapeRun, string phase, string? status = null)
@@ -615,8 +643,7 @@ public class ScrapeJobProcessor : IScrapeJobProcessor
             _logger.LogInformation("Fetched {Type} page {Page} ({Bytes} bytes)",
                 sold ? "sold" : "active", page, html.Length);
 
-            var browsingContext = BrowsingContext.New(Configuration.Default);
-            var document = await browsingContext.OpenAsync(request => request.Content(html));
+            var document = await SharedBrowsingContext.OpenAsync(request => request.Content(html));
 
             var products = _searchParser.ParseSearchResults(document);
             var pageResults = products

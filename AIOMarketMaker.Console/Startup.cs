@@ -84,9 +84,6 @@ public static class HostHelper
                 });
                 services.AddSingleton<ISemanticSearchService, SemanticSearchService>();
 
-                // Pricing analysis service
-                services.AddSingleton<IPricingAnalysisService, PricingAnalysisService>();
-
                 // Task system
                 services.AddTaskRunner();
                 services.AddTask<SearchTask>();

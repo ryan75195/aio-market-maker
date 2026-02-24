@@ -32,13 +32,16 @@ public record ListingDetail(
     string? ListingStatus, string? SearchTerm,
     DateTime CreatedUtc,
     decimal? AverageSoldPrice, int SimilarSoldCount,
-    int? EstimatedDaysToSell, decimal? PotentialProfit);
+    int? EstimatedDaysToSell, decimal? PotentialProfit,
+    double Confidence = 0, int OutliersRemoved = 0,
+    decimal? MedianSoldPrice = null);
 
 public record ComparableListing(
     int RelationshipId, string ListingId, string? Title,
     string? Description, decimal? Price, string? Condition,
     string? Url, string? Images,
-    DateTime? SoldDateUtc, double SimilarityScore, string Explanation);
+    DateTime? SoldDateUtc, double SimilarityScore,
+    double? ClassifierConfidence, string Explanation);
 
 public record ListingDetailResponse(
     ListingDetail Listing, IEnumerable<ComparableListing> Comparables);
@@ -170,7 +173,8 @@ public static class ListingEndpoints
             c.RelationshipId, c.ListingId!, c.Title,
             c.Description, c.Price, c.Condition,
             c.Url, c.Images,
-            c.SoldDateUtc, c.SimilarityScore, c.Explanation));
+            c.SoldDateUtc, c.SimilarityScore, c.ClassifierConfidence,
+            c.Explanation));
 
         var detail = new ListingDetail(
             listing.Id, listing.ListingId, listing.Title, listing.Description,
@@ -179,7 +183,9 @@ public static class ListingEndpoints
             listing.ListingStatus, listing.ScrapeJob?.SearchTerm,
             listing.CreatedUtc,
             prediction?.AverageSoldPrice, prediction?.SimilarSoldCount ?? 0,
-            prediction?.EstimatedDaysToSell, prediction?.PotentialProfit);
+            prediction?.EstimatedDaysToSell, prediction?.PotentialProfit,
+            prediction?.Confidence ?? 0, prediction?.OutliersRemoved ?? 0,
+            prediction?.MedianSoldPrice);
 
         return Results.Ok(new ListingDetailResponse(detail, comparables));
     }

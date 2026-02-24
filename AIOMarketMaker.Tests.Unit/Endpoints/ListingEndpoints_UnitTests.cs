@@ -6,6 +6,7 @@ using AIOMarketMaker.Core.Services;
 using AIOMarketMaker.Tests.Common;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.HttpResults;
+using Microsoft.Extensions.Options;
 
 namespace AIOMarketMaker.Tests.Unit.Endpoints;
 
@@ -34,7 +35,7 @@ public class ListingEndpoints_UnitTests
             "GetListingDetail",
             BindingFlags.NonPublic | BindingFlags.Static);
 
-        var service = new ListingPredictionService(_db);
+        var service = new ListingPredictionService(_db, Options.Create(new PricingOptions()));
         var resultTask = (Task<IResult>)method!.Invoke(null,
             new object[] { _db, service, id, priceBand, feePercent, matchCondition })!;
         return await resultTask;
@@ -47,7 +48,7 @@ public class ListingEndpoints_UnitTests
             "DismissComparable",
             BindingFlags.NonPublic | BindingFlags.Static);
 
-        var service = new ListingPredictionService(_db);
+        var service = new ListingPredictionService(_db, Options.Create(new PricingOptions()));
         var resultTask = (Task<IResult>)method!.Invoke(null,
             new object[] { _db, service, listingId, relationshipId, priceBand, feePercent, matchCondition })!;
         return await resultTask;

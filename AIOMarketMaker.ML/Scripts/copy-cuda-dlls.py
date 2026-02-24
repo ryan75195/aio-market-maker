@@ -81,6 +81,12 @@ def main():
         proj = os.path.basename(os.path.dirname(os.path.dirname(os.path.dirname(target))))
         print(f"  {proj}: {copied} DLLs copied ({len(dlls) - copied} up-to-date)")
 
+        # Also copy to runtimes/win-x64/native/ where onnxruntime_providers_cuda.dll loads from
+        native_dir = os.path.join(target, "runtimes", "win-x64", "native")
+        if os.path.isdir(native_dir):
+            native_copied = copy_dlls(dlls, native_dir)
+            print(f"  {proj}/runtimes/native: {native_copied} DLLs copied ({len(dlls) - native_copied} up-to-date)")
+
     print("Done.")
 
 if __name__ == "__main__":

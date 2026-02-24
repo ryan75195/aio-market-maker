@@ -10,7 +10,7 @@ public record OnnxClassifierConfig(
     string ModelPath,
     string VocabPath,
     string MergesPath,
-    int MaxLength = 256,
+    int MaxLength = 512,
     int BatchSize = 128);
 
 public record EnsembleConfig(

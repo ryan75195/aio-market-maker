@@ -215,6 +215,7 @@ public class ComparablesEtlService : IComparablesEtlService
                     IsComparable = result.IsComparable,
                     Explanation = $"Model: confidence={result.Confidence:F3}",
                     SimilarityScore = pair.Score,
+                    ClassifierConfidence = result.Confidence,
                     CreatedUtc = DateTime.UtcNow
                 });
             }

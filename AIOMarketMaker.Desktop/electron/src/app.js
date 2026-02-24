@@ -28,6 +28,8 @@ createApp({
       descriptionExpanded: false,
       compareComp: null,
       compareIndex: -1,
+      // Shared confirm dialog
+      confirmDialog: null, // { title, message, confirmLabel, resolve }
       historyMode: 'batches',
       batches: [],
       selectedBatch: null,
@@ -375,6 +377,17 @@ createApp({
   },
 
   async mounted() {
+    this._onKeydown = (e) => {
+      if (e.key === 'Escape' && this.confirmDialog) {
+        this.resolveConfirm(false);
+        return;
+      }
+      if (!this.compareComp) { return; }
+      if (e.key === 'Escape') { this.closeCompare(); }
+      if (e.key === 'ArrowLeft') { this.compareNav(-1); }
+      if (e.key === 'ArrowRight') { this.compareNav(1); }
+    };
+    window.addEventListener('keydown', this._onKeydown);
     this._onResize = () => {
       this.windowHeight = window.innerHeight;
       clearTimeout(this._resizeTimer);
@@ -399,6 +412,7 @@ createApp({
   },
 
   beforeUnmount() {
+    window.removeEventListener('keydown', this._onKeydown);
     window.removeEventListener('resize', this._onResize);
     this.stopAutoRefresh();
   },
@@ -963,6 +977,12 @@ createApp({
         this.batches = result.items || [];
         this.batchTotalCount = result.totalCount || 0;
         this.batchTotalPages = result.totalPages || 0;
+        if (this.selectedBatch) {
+          const fresh = this.batches.find(b => b.id === this.selectedBatch.id);
+          if (fresh) {
+            this.selectedBatch = fresh;
+          }
+        }
       } catch (err) {
         this.showToast(`Failed to load history: ${err.message}`, 'error');
       } finally {
@@ -1176,6 +1196,13 @@ createApp({
     },
 
     async dismissComparable(relationshipId) {
+      const confirmed = await this.showConfirm(
+        'Dismiss Comparable',
+        'Remove this comparable from the analysis? This will affect pricing calculations.',
+        'Dismiss'
+      );
+      if (!confirmed) { return; }
+
       try {
         const qs = this.listingDetailParams();
         const data = await this.apiCall(
@@ -1430,6 +1457,9 @@ createApp({
     startAutoRefresh() {
       this.nowInterval = setInterval(() => { this.now = Date.now(); }, 1000);
       this.refreshInterval = setInterval(() => {
+        if (this.showJobsPanel) {
+          this.loadJobs();
+        }
         if (this.currentView === 'index') {
           const activeStatuses = ['Queued', 'Running', 'Indexing', 'Searching', 'Processing'];
           const hasActive = this.batches.some(b =>
@@ -1444,7 +1474,7 @@ createApp({
             }
           }
         }
-      }, 2000);
+      }, 1000);
     },
 
     stopAutoRefresh() {
@@ -1463,6 +1493,19 @@ createApp({
       setTimeout(() => {
         this.toast = null;
       }, 4000);
+    },
+
+    showConfirm(title, message, confirmLabel = 'Confirm') {
+      return new Promise(resolve => {
+        this.confirmDialog = { title, message, confirmLabel, resolve };
+      });
+    },
+
+    resolveConfirm(result) {
+      if (this.confirmDialog?.resolve) {
+        this.confirmDialog.resolve(result);
+      }
+      this.confirmDialog = null;
     },
 
     toggleSection(section) {

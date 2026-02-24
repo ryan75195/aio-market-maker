@@ -200,15 +200,12 @@ var host = new HostBuilder()
         // Listing indexing service
         services.AddSingleton<IListingIndexingService, ListingIndexingService>();
 
-        // Pricing analysis service
-        services.AddSingleton<IPricingAnalysisService, PricingAnalysisService>();
-
         // Variant classifier (local ONNX model + ensemble calibration)
         var classifierConfig = new OnnxClassifierConfig(
             ModelPath: configuration.GetValue<string>("VariantClassifier:ModelPath") ?? "models/variant-classifier/model.onnx",
             VocabPath: configuration.GetValue<string>("VariantClassifier:VocabPath") ?? "models/variant-classifier/vocab.json",
             MergesPath: configuration.GetValue<string>("VariantClassifier:MergesPath") ?? "models/variant-classifier/merges.txt",
-            MaxLength: configuration.GetValue<int?>("VariantClassifier:MaxLength") ?? 256);
+            MaxLength: configuration.GetValue<int?>("VariantClassifier:MaxLength") ?? 512);
         services.AddSingleton(classifierConfig);
         services.AddSingleton<VariantModelRunner>();
         services.AddSingleton<IVariantModelRunner>(sp => sp.GetRequiredService<VariantModelRunner>());
@@ -220,6 +217,10 @@ var host = new HostBuilder()
                 LogitWeight: ensembleLogitWeight,
                 SimilarityWeight: configuration.GetValue<float>("VariantClassifier:Ensemble:SimilarityWeight"),
                 Intercept: configuration.GetValue<float>("VariantClassifier:Ensemble:Intercept")));
+        }
+        else
+        {
+            services.AddSingleton<EnsembleConfig>(_ => null!);
         }
         services.AddSingleton<IVariantClassifierClient, VariantClassifier>();
 
@@ -303,6 +304,246 @@ if (args.Contains("--validate"))
 {
     await RunValidation(host, args);
     return;
+}
+
+if (args.Contains("--backfill-confidence"))
+{
+    await BackfillClassifierConfidence(host, args);
+    return;
+}
+
+static async Task BackfillClassifierConfidence(IHost host, string[] args)
+{
+    const int classifyBatchSize = 256; // matches ComparablesEtlService.ClassifyBatchSize
+    const int relBatchSize = 10_000;
+
+    // Catch native crashes that bypass managed exception handling
+    AppDomain.CurrentDomain.UnhandledException += (_, e) =>
+    {
+        Console.Error.WriteLine($"UNHANDLED: {e.ExceptionObject}");
+        Console.Error.Flush();
+    };
+
+    using var scope = host.Services.CreateScope();
+    var dbFactory = scope.ServiceProvider.GetRequiredService<IDbContextFactory<EtlDbContext>>();
+    var classifier = scope.ServiceProvider.GetRequiredService<IVariantClassifierClient>();
+
+    Console.WriteLine("=== Backfill ClassifierConfidence ===");
+    Console.WriteLine();
+
+    // Preload all listings into memory (titles + descriptions for classifier input)
+    Console.Write("Loading all listings into memory...");
+    await using var loadDb = await dbFactory.CreateDbContextAsync();
+    var allListings = await loadDb.Listings
+        .AsNoTracking()
+        .Select(l => new { l.Id, l.Title, l.Description })
+        .ToDictionaryAsync(l => l.Id);
+    Console.WriteLine($" {allListings.Count:N0} listings loaded.");
+
+    // Count total relationships (iterate all by ID to avoid slow NULL scan)
+    var totalRelationships = await loadDb.ListingRelationships.AsNoTracking().CountAsync();
+    var alreadyDone = await loadDb.ListingRelationships.AsNoTracking()
+        .CountAsync(r => r.ClassifierConfidence != null);
+    var totalToBackfill = totalRelationships - alreadyDone;
+
+    if (totalToBackfill == 0)
+    {
+        Console.WriteLine("All relationships already have ClassifierConfidence. Nothing to do.");
+        return;
+    }
+
+    Console.WriteLine($"Total relationships: {totalRelationships:N0}");
+    Console.WriteLine($"Already backfilled: {alreadyDone:N0}");
+    Console.WriteLine($"Remaining: {totalToBackfill:N0}");
+    Console.WriteLine($"Classify batch size: {classifyBatchSize}");
+    Console.WriteLine();
+
+    var limit = GetIntArg(args, "--limit");
+
+    // Warmup: classify a single dummy pair to verify CUDA works before starting bulk work
+    Console.Write("Warmup: testing classifier with 1 pair...");
+    Console.Out.Flush();
+    try
+    {
+        var warmupPair = new ClassifyPairRequest("Test Item A", "Description A", "Test Item B", "Description B", 0.9f);
+        var warmupResult = await classifier.Classify(new[] { warmupPair });
+        Console.WriteLine($" OK (confidence={warmupResult[0].Confidence:F3})");
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($" FAILED: {ex.GetType().Name}: {ex.Message}");
+        Console.WriteLine("Cannot proceed without a working classifier.");
+        return;
+    }
+
+    var processed = 0;
+    var updated = 0;
+    var skipped = 0;
+    var errors = 0;
+    var lastProcessedId = 0;
+    var sw = System.Diagnostics.Stopwatch.StartNew();
+
+    // Accumulate updates and flush every SaveEveryNPairs (mirrors ComparablesEtlService)
+    const int saveEveryNPairs = 5120;
+    var pendingUpdates = new List<(int Id, float Confidence)>();
+
+    try
+    {
+    while (true)
+    {
+        if (limit.HasValue && updated >= limit.Value)
+        {
+            break;
+        }
+
+        // Load relationships by ID (uses clustered index - instant)
+        await using var db = await dbFactory.CreateDbContextAsync();
+        var relBatch = await db.ListingRelationships
+            .AsNoTracking()
+            .Where(r => r.Id > lastProcessedId)
+            .OrderBy(r => r.Id)
+            .Take(relBatchSize)
+            .Select(r => new { r.Id, r.ListingIdA, r.ListingIdB, r.SimilarityScore, r.ClassifierConfidence })
+            .ToListAsync();
+
+        if (relBatch.Count == 0)
+        {
+            break;
+        }
+
+        lastProcessedId = relBatch[^1].Id;
+
+        // Filter to only rows needing backfill
+        var needsBackfill = relBatch.Where(r => r.ClassifierConfidence == null).ToList();
+        skipped += relBatch.Count - needsBackfill.Count;
+
+        if (needsBackfill.Count == 0)
+        {
+            processed += relBatch.Count;
+            continue;
+        }
+
+        // Process in classify-sized chunks
+        foreach (var chunk in needsBackfill.Chunk(classifyBatchSize))
+        {
+            var requests = new List<ClassifyPairRequest>();
+            var validIndices = new List<int>();
+
+            for (var i = 0; i < chunk.Length; i++)
+            {
+                var rel = chunk[i];
+                if (!allListings.TryGetValue(rel.ListingIdA, out var a) ||
+                    !allListings.TryGetValue(rel.ListingIdB, out var b))
+                {
+                    errors++;
+                    continue;
+                }
+
+                requests.Add(new ClassifyPairRequest(
+                    a.Title ?? "", a.Description ?? "",
+                    b.Title ?? "", b.Description ?? "",
+                    (float?)rel.SimilarityScore));
+                validIndices.Add(i);
+            }
+
+            if (requests.Count == 0)
+            {
+                processed += chunk.Length;
+                continue;
+            }
+
+            // Classify
+            IReadOnlyList<PairResult> results;
+            try
+            {
+                results = await classifier.Classify(requests);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"  Classifier error at ID {chunk[0].Id}: {ex.GetType().Name}: {ex.Message}");
+                errors += chunk.Length;
+                processed += chunk.Length;
+                continue;
+            }
+
+            // Accumulate results
+            for (var i = 0; i < results.Count; i++)
+            {
+                pendingUpdates.Add((chunk[validIndices[i]].Id, results[i].Confidence));
+            }
+
+            processed += chunk.Length;
+
+            // Flush to DB every saveEveryNPairs (mirrors ComparablesEtlService pattern)
+            if (pendingUpdates.Count >= saveEveryNPairs)
+            {
+                await FlushPendingUpdates(dbFactory, pendingUpdates);
+                updated += pendingUpdates.Count;
+                pendingUpdates.Clear();
+            }
+
+            // Progress logging every ~10,240 pairs (matches ComparablesEtlService)
+            var totalProcessed = updated + pendingUpdates.Count;
+            if (totalProcessed % 10240 < classifyBatchSize)
+            {
+                var elapsed = sw.Elapsed;
+                var rate = totalProcessed / elapsed.TotalSeconds;
+                var remaining = (totalToBackfill - totalProcessed) / Math.Max(rate, 0.1);
+                var eta = TimeSpan.FromSeconds(remaining);
+
+                Console.WriteLine(
+                    $"  {totalProcessed:N0}/{totalToBackfill:N0} updated | {skipped:N0} skipped | {errors:N0} errors | " +
+                    $"{rate:F0} pairs/sec | ETA {eta.Hours}h {eta.Minutes:D2}m {eta.Seconds:D2}s");
+            }
+        }
+    }
+
+    // Flush remaining
+    if (pendingUpdates.Count > 0)
+    {
+        await FlushPendingUpdates(dbFactory, pendingUpdates);
+        updated += pendingUpdates.Count;
+        pendingUpdates.Clear();
+    }
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine();
+        Console.WriteLine($"FATAL: {ex.GetType().Name}: {ex.Message}");
+        Console.WriteLine(ex.StackTrace);
+    }
+
+    sw.Stop();
+    Console.WriteLine();
+    Console.WriteLine("=== Summary ===");
+    Console.WriteLine($"Scanned:    {processed:N0}");
+    Console.WriteLine($"Updated:    {updated:N0}");
+    Console.WriteLine($"Skipped:    {skipped:N0} (already had confidence)");
+    Console.WriteLine($"Errors:     {errors:N0}");
+    Console.WriteLine($"Duration:   {sw.Elapsed.Hours}h {sw.Elapsed.Minutes:D2}m {sw.Elapsed.Seconds:D2}s");
+    Console.WriteLine($"Rate:       {(sw.Elapsed.TotalSeconds > 0 ? updated / sw.Elapsed.TotalSeconds : 0):F0} pairs/sec");
+}
+
+static async Task FlushPendingUpdates(IDbContextFactory<EtlDbContext> dbFactory, List<(int Id, float Confidence)> updates)
+{
+    // SQL Server's query optimizer can't handle huge CASE statements (>1000 rows blows the stack).
+    // Chunk into 512-row SQL statements.
+    const int sqlChunkSize = 512;
+
+    await using var updateDb = await dbFactory.CreateDbContextAsync();
+    foreach (var chunk in updates.Chunk(sqlChunkSize))
+    {
+        var sb = new System.Text.StringBuilder();
+        sb.Append("UPDATE ListingRelationships SET ClassifierConfidence = CASE Id ");
+        var ids = new List<string>(chunk.Length);
+        foreach (var (id, confidence) in chunk)
+        {
+            sb.Append($"WHEN {id} THEN {confidence.ToString(System.Globalization.CultureInfo.InvariantCulture)} ");
+            ids.Add(id.ToString());
+        }
+        sb.Append($"END WHERE Id IN ({string.Join(",", ids)})");
+        await updateDb.Database.ExecuteSqlRawAsync(sb.ToString());
+    }
 }
 
 static async Task RunValidation(IHost host, string[] args)

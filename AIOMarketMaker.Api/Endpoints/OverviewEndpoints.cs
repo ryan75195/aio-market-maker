@@ -1,6 +1,7 @@
 using System.Data;
 using System.Data.Common;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using AIOMarketMaker.Core.Data;
 using AIOMarketMaker.Core.Services;
 
@@ -53,11 +54,16 @@ public static class OverviewEndpoints
     private static async Task<IResult> GetOverview(
         EtlDbContext db,
         IListingPredictionService predictionService,
-        int minComps = 3,
-        decimal feePercent = 13.25m,
+        IOptions<PricingOptions> pricingOptions,
+        int? minComps = null,
+        decimal? feePercent = null,
         bool matchCondition = true)
     {
-        var filters = new PredictionFilters(FeePercent: feePercent, MatchCondition: matchCondition, MinComps: minComps);
+        var opts = pricingOptions.Value;
+        var filters = new PredictionFilters(
+            FeePercent: feePercent ?? (decimal)opts.FeePercent,
+            MatchCondition: matchCondition,
+            MinComps: minComps ?? opts.MinComps);
         var statusCounts = await GetStatusCounts(db);
         var agg = await predictionService.GetAggregates(filters);
         var lastScrape = await GetLastScrape(db);

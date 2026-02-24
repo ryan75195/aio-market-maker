@@ -425,7 +425,7 @@
         </div>
 
         <!-- Comparison Overlay -->
-        <div v-if="compareComp" class="compare-overlay" @keydown.escape="closeCompare">
+        <div v-if="compareComp" class="compare-overlay" @click.self="closeCompare">
           <div class="compare-chrome">
 
             <!-- Header -->
@@ -580,6 +580,7 @@
                 </template>
               </div>
 
+              <div class="jobs-panel-content">
               <!-- Job List View -->
               <template v-if="jobOverviewMode === 'jobs'">
               <table class="data-table">
@@ -731,11 +732,13 @@
                   No categories yet. Click "+ New Category" to create one.
                 </div>
               </template>
+              </div>
             </template>
 
             <!-- Batch list content (hidden when editing jobs) -->
             <template v-else>
 
+            <div class="index-panel-content">
             <div v-if="runStats" class="stats-banner">
               <div class="stat">
                 <span class="stat-value">{{ runStats.activeCount - runStats.queuedCount }}</span>
@@ -817,6 +820,7 @@
               <span class="page-info">Page {{ batchPage }} of {{ batchTotalPages }}</span>
             </div>
 
+            </div>
             </template>
             </template>
           </div>
@@ -832,6 +836,7 @@
               </h1>
             </div>
 
+            <div class="index-panel-content">
             <table class="data-table history-table">
               <colgroup>
                 <col style="width: 4%">
@@ -919,6 +924,7 @@
                 </template>
               </tbody>
             </table>
+            </div>
           </div>
         </div>
 
@@ -1122,6 +1128,17 @@
                 <button type="submit" class="btn primary">{{ editingJob ? 'Update' : 'Create' }}</button>
               </div>
             </form>
+          </div>
+        </div>
+        <!-- Confirm Dialog -->
+        <div v-if="confirmDialog" class="confirm-overlay" @click.self="resolveConfirm(false)">
+          <div class="confirm-box">
+            <div class="confirm-title">{{ confirmDialog.title }}</div>
+            <p class="confirm-message">{{ confirmDialog.message }}</p>
+            <div class="confirm-actions">
+              <button class="btn" @click="resolveConfirm(false)">Cancel</button>
+              <button class="btn danger" @click="resolveConfirm(true)">{{ confirmDialog.confirmLabel }}</button>
+            </div>
           </div>
         </div>
       </main>

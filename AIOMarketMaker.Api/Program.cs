@@ -16,6 +16,20 @@ using Serilog.Formatting.Compact;
 
 // Configure Serilog with optional file sink
 var logSessionPath = Environment.GetEnvironmentVariable("LOG_SESSION_PATH");
+if (string.IsNullOrEmpty(logSessionPath))
+{
+    var repoRoot = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
+    var logsDir = Path.Combine(repoRoot, "logs");
+    if (Directory.Exists(logsDir))
+    {
+        var latest = Directory.GetDirectories(logsDir, "session-*")
+            .OrderDescending()
+            .FirstOrDefault();
+        logSessionPath = latest
+            ?? Path.Combine(logsDir, $"session-{DateTime.Now:yyyy-MM-dd-HH-mm-ss}");
+    }
+}
+
 var loggerConfig = new LoggerConfiguration()
     .Enrich.FromLogContext()
     .Enrich.WithProperty("Component", "AIOMarketMaker.Api")
@@ -30,6 +44,7 @@ if (!string.IsNullOrEmpty(logSessionPath))
         logFile,
         rollingInterval: RollingInterval.Hour,
         retainedFileCountLimit: null);
+    Console.WriteLine($"Logging to: {logSessionPath}");
 }
 
 Log.Logger = loggerConfig.CreateLogger();
@@ -119,15 +134,12 @@ builder.Services.AddSingleton<ISemanticSearchService, SemanticSearchService>();
 // Listing indexing service
 builder.Services.AddSingleton<IListingIndexingService, ListingIndexingService>();
 
-// Pricing analysis service
-builder.Services.AddSingleton<IPricingAnalysisService, PricingAnalysisService>();
-
 // Variant classifier (local ONNX model + ensemble calibration)
 var classifierConfig = new OnnxClassifierConfig(
     ModelPath: configuration.GetValue<string>("VariantClassifier:ModelPath") ?? "models/variant-classifier/model.onnx",
     VocabPath: configuration.GetValue<string>("VariantClassifier:VocabPath") ?? "models/variant-classifier/vocab.json",
     MergesPath: configuration.GetValue<string>("VariantClassifier:MergesPath") ?? "models/variant-classifier/merges.txt",
-    MaxLength: configuration.GetValue<int?>("VariantClassifier:MaxLength") ?? 256);
+    MaxLength: configuration.GetValue<int?>("VariantClassifier:MaxLength") ?? 512);
 builder.Services.AddSingleton(classifierConfig);
 builder.Services.AddSingleton<VariantModelRunner>();
 builder.Services.AddSingleton<IVariantModelRunner>(sp => sp.GetRequiredService<VariantModelRunner>());
@@ -141,6 +153,9 @@ if (ensembleLogitWeight != 0)
         Intercept: configuration.GetValue<float>("VariantClassifier:Ensemble:Intercept")));
 }
 builder.Services.AddSingleton<IVariantClassifierClient, VariantClassifier>();
+
+// Pricing options
+builder.Services.Configure<PricingOptions>(configuration.GetSection("Pricing"));
 
 // ComparablesEtlService
 builder.Services.AddScoped<IComparablesEtlService, ComparablesEtlService>();
