@@ -220,6 +220,7 @@ var host = new HostBuilder()
         }
         else
         {
+            // VariantClassifier accepts EnsembleConfig? — register null so DI resolves without ensemble config
             services.AddSingleton<EnsembleConfig>(_ => null!);
         }
         services.AddSingleton<IVariantClassifierClient, VariantClassifier>();

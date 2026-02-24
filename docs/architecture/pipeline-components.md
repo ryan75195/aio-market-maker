@@ -314,7 +314,7 @@ All reusable components ("lego blocks") in the AIOMarketMaker + AIOWebScraper sc
 | **EmbeddingService** | OpenAI text embeddings | `GetEmbeddingAsync(text)` -> `float[]` |
 | **SemanticSearchService** | Pinecone vector index + search | `IndexListingsAsync(...)`, `SearchAsync(query)` |
 | **ClusteringService** | HDBSCAN density clustering on embeddings | `Cluster(items)` -> `ClusteringResult` |
-| **PricingAnalysisService** | Statistical pricing (median, IQR, confidence) | `Analyze(listings, hits)` -> `PricingAnalysisResult` |
+| **PricingCalculator** | Statistical pricing (IQR, confidence-weighted mean, recency) | `PricingCalculator.Analyze(comps, options)` -> `PricingResult` |
 
 ### EmbeddingService
 
@@ -346,13 +346,13 @@ All reusable components ("lego blocks") in the AIOMarketMaker + AIOWebScraper sc
 - **Methods:**
   - `ClusteringResult Cluster(IReadOnlyList<EmbeddingWithId> items)`
 
-### PricingAnalysisService
+### PricingCalculator
 
-- **Implements:** `IPricingAnalysisService`
-- **File:** `AIOMarketMaker.Core/Services/PricingAnalysisService.cs`
-- **Dependencies:** None (stateless)
+- **Type:** Static class (pure functions, no DI)
+- **File:** `AIOMarketMaker.Core/Services/PricingCalculator.cs`
+- **Config:** `PricingOptions` (via `IOptions<PricingOptions>`)
 - **Methods:**
-  - `PricingAnalysisResult Analyze(IEnumerable<Listing> listings, IEnumerable<SemanticSearchHit> hits, PricingAnalysisOptions? options = null)`
+  - `PricingResult Analyze(IEnumerable<PricedComparable> comps, PricingOptions options)` — IQR outlier removal, confidence-weighted mean, recency weighting, pricing confidence score
 
 ## DI Registration
 
@@ -370,7 +370,7 @@ All reusable components ("lego blocks") in the AIOMarketMaker + AIOWebScraper sc
 | `IClusteringService` | `ClusteringService` | Singleton |
 | `IPineconeIndexClient` | `PineconeIndexClientWrapper` | Singleton (optional) |
 | `ISemanticSearchService` | `SemanticSearchService` | Singleton (optional) |
-| `IPricingAnalysisService` | `PricingAnalysisService` | Singleton |
+| `IOptions<PricingOptions>` | `PricingOptions` | Singleton (bound from config) |
 
 ## Key Design Insight
 

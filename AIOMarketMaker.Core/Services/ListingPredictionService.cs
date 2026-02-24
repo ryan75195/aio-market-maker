@@ -500,9 +500,7 @@ public class ListingPredictionService : IListingPredictionService
             ? $"AND active.Id = {singleListingId.Value}"
             : "";
 
-        // Confidence weight expression (used in weighted average)
         var confExpr = $"ISNULL(rc.ClassifierConfidence, rc.SimilarityScore)";
-        var confWeight = $"POWER({confExpr}, {power})";
 
         // Recency weight: EXP(-days / halfLife) combined with confidence
         var recencyWeight = $@"POWER({confExpr}, {power}) *
@@ -597,7 +595,7 @@ public class ListingPredictionService : IListingPredictionService
         {priceBandFilter}
         GROUP BY active.Id, active.Price, active.ShippingCost
         HAVING COUNT(*) >= {mc}
-            AND {profitExpr} > 0
+            AND CAST({profitExpr} AS DECIMAL(18,2)) > 0
     ),
     FilteredPredictions AS (
         SELECT a.ListingId, a.SimilarSoldCount, a.AverageSoldPrice, a.PotentialProfit,
