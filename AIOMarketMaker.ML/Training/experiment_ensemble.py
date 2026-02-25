@@ -31,7 +31,7 @@ from transformers import AutoTokenizer
 from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import cross_val_predict
 from sklearn.metrics import accuracy_score, f1_score, log_loss
-from sklearn.preprocessing import StandardScaler
+# StandardScaler removed — fit on raw features so weights match C# production code
 
 MODEL_PATH = Path("E:/Dev/ml-training/variant-classifier/v10/onnx/model.onnx")
 DATA_PATH = Path("data/labeled_pairs_v10.csv")
@@ -179,16 +179,14 @@ def main():
     logit_diff = all_logits[:, 1] - all_logits[:, 0]
     X = np.column_stack([logit_diff, all_similarities])
 
-    scaler = StandardScaler()
-    X_scaled = scaler.fit_transform(X)
-
     print(f"\n{'=' * 60}")
-    print("ENSEMBLE: Cross-Encoder Logits + Similarity Score")
+    print("ENSEMBLE: Cross-Encoder Logits + Similarity Score (raw features)")
     print(f"{'=' * 60}")
     print("Fitting logistic regression with 5-fold cross-validation...")
+    print(f"  Feature ranges: logit_diff [{logit_diff.min():.2f}, {logit_diff.max():.2f}], sim [{all_similarities.min():.4f}, {all_similarities.max():.4f}]")
 
     lr = LogisticRegression(max_iter=1000, random_state=42)
-    ensemble_probs = cross_val_predict(lr, X_scaled, all_labels, cv=5, method="predict_proba")
+    ensemble_probs = cross_val_predict(lr, X, all_labels, cv=5, method="predict_proba")
     ensemble_preds = np.argmax(ensemble_probs, axis=1)
     ensemble_confs = ensemble_probs.max(axis=1)
 
@@ -230,7 +228,7 @@ def main():
 
     # Fit final model and print coefficients
     lr_final = LogisticRegression(max_iter=1000, random_state=42)
-    lr_final.fit(X_scaled, all_labels)
+    lr_final.fit(X, all_labels)
     print(f"\nLogistic regression coefficients:")
     print(f"  Logit diff weight:    {lr_final.coef_[0][0]:.4f}")
     print(f"  Similarity weight:    {lr_final.coef_[0][1]:.4f}")
@@ -261,6 +259,42 @@ def main():
             actual_acc = accuracy_score(all_labels[mask], ce_preds[mask])
             avg_conf = ce_confs[mask].mean()
             print(f"[{lo:.2f}, {hi:.2f}){'':<5} {mask.sum():>8} {actual_acc:>12.4f} {avg_conf:>12.4f}")
+
+    # Confidence distribution comparison
+    print(f"\n{'=' * 60}")
+    print("CONFIDENCE DISTRIBUTION: Where do predictions land?")
+    print(f"{'=' * 60}")
+    print(f"{'Conf Bucket':<15} {'CE Count':>10} {'CE %':>8} {'Ens Count':>10} {'Ens %':>8}")
+    print("-" * 55)
+    buckets = [(0.5, 0.6), (0.6, 0.7), (0.7, 0.8), (0.8, 0.9), (0.9, 0.95), (0.95, 1.001)]
+    for lo, hi in buckets:
+        ce_mask = (ce_confs >= lo) & (ce_confs < hi)
+        ens_mask = (ensemble_confs >= lo) & (ensemble_confs < hi)
+        label = f"[{lo:.2f}, {min(hi, 1.0):.2f})"
+        ce_n = ce_mask.sum()
+        ens_n = ens_mask.sum()
+        print(f"{label:<15} {ce_n:>10} {100*ce_n/len(ce_confs):>7.1f}% {ens_n:>10} {100*ens_n/len(ensemble_confs):>7.1f}%")
+
+    # Summary stats
+    print(f"\n{'=' * 60}")
+    print("SUMMARY")
+    print(f"{'=' * 60}")
+    print(f"Cross-encoder:  mean={ce_confs.mean():.4f}  std={ce_confs.std():.4f}  median={np.median(ce_confs):.4f}")
+    print(f"Ensemble:       mean={ensemble_confs.mean():.4f}  std={ensemble_confs.std():.4f}  median={np.median(ensemble_confs):.4f}")
+
+    # appsettings.json snippet
+    print(f"\n{'=' * 60}")
+    print("APPSETTINGS.JSON (copy if deploying)")
+    print(f"{'=' * 60}")
+    print(json.dumps({
+        "VariantClassifier": {
+            "Ensemble": {
+                "LogitWeight": round(float(lr_final.coef_[0][0]), 6),
+                "SimilarityWeight": round(float(lr_final.coef_[0][1]), 6),
+                "Intercept": round(float(lr_final.intercept_[0]), 6),
+            }
+        }
+    }, indent=2))
 
     print(f"\nDone.")
 
