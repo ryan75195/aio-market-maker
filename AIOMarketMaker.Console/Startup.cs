@@ -228,6 +228,7 @@ public static class HostHelper
 
                 // ComparablesEtlService
                 services.AddScoped<IComparablesEtlService, ComparablesEtlService>();
+                services.AddScoped<IPostJobStage, ComparablesPostJobStage>();
 
                 // Task system
                 services.AddTaskRunner();

@@ -36,6 +36,7 @@ public class ScrapeJobProcessor : IScrapeJobProcessor
     private readonly IEbayUrlBuilder _urlBuilder;
     private readonly IListingIndexingService _indexingService;
     private readonly DbWriteGate _dbWriteGate;
+    private readonly IEnumerable<IPostJobStage> _postJobStages;
 
     public ScrapeJobProcessor(
         ILogger<ScrapeJobProcessor> logger,
@@ -45,7 +46,8 @@ public class ScrapeJobProcessor : IScrapeJobProcessor
         IListingParser listingParser,
         IEbayUrlBuilder urlBuilder,
         IListingIndexingService indexingService,
-        DbWriteGate dbWriteGate)
+        DbWriteGate dbWriteGate,
+        IEnumerable<IPostJobStage> postJobStages)
     {
         _logger = logger;
         _dbContext = dbContext;
@@ -55,6 +57,7 @@ public class ScrapeJobProcessor : IScrapeJobProcessor
         _urlBuilder = urlBuilder;
         _indexingService = indexingService;
         _dbWriteGate = dbWriteGate;
+        _postJobStages = postJobStages;
     }
 
     public async Task<ScrapeRun> CreateRun(ScrapeJobConfig job, string triggerType, Guid? batchId = null)
@@ -125,6 +128,8 @@ public class ScrapeJobProcessor : IScrapeJobProcessor
         {
             await FetchAndProcessDescriptions(scrapeRun, classified.ToScrape, classified.ExistingListings, job.Id);
         }
+
+        await RunPostJobStages(scrapeRun, job);
 
         // Always mark complete — no more "waiting for callbacks"
         await MarkCompleted(scrapeRun, job.Id);
@@ -581,6 +586,12 @@ public class ScrapeJobProcessor : IScrapeJobProcessor
         });
     }
 
+    private void RecordIssue(ScrapeRun scrapeRun,
+        string issueType, string phase, Exception ex)
+    {
+        RecordIssue(scrapeRun, string.Empty, issueType, phase, ex);
+    }
+
     private static async Task<AngleSharp.Dom.IDocument> ParseHtml(string html)
     {
         return await SharedBrowsingContext.OpenAsync(req => req.Content(html));
@@ -594,6 +605,26 @@ public class ScrapeJobProcessor : IScrapeJobProcessor
         }
         scrapeRun.CurrentPhase = phase;
         await _dbContext.SaveChangesAsync();
+    }
+
+    private async Task RunPostJobStages(ScrapeRun scrapeRun, ScrapeJobConfig job)
+    {
+        var context = new PostJobContext(scrapeRun.Id, job.Id, job.SearchTerm);
+
+        foreach (var stage in _postJobStages)
+        {
+            try
+            {
+                await SetPhase(scrapeRun, stage.Name);
+                await stage.Execute(context);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Post-job stage '{StageName}' failed for RunId={RunId}", stage.Name, scrapeRun.Id);
+                RecordIssue(scrapeRun, "PostJobStageFailed", stage.Name, ex);
+                await _dbContext.SaveChangesAsync();
+            }
+        }
     }
 
     private async Task MarkCompleted(ScrapeRun scrapeRun, int jobId)

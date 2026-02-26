@@ -85,7 +85,7 @@ public class ScrapeJobProcessor_InlineTests
         _loggerMock.Object, _dbContext, _webscraperClientMock.Object,
         _searchParserMock.Object, _listingParserMock.Object,
         _urlBuilderMock.Object, _indexingServiceMock.Object,
-        new DbWriteGate(100));
+        new DbWriteGate(100), Enumerable.Empty<IPostJobStage>());
 
     private static EbayProductSummary CreateSummary(
         string listingId, decimal? price = 100m, bool isSold = false,
