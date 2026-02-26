@@ -16,8 +16,6 @@
     <ProjectReference Include="..\..\AIOWebScraper\AIOWebScraper.Storage.Azure\AIOWebScraper.Storage.Azure.csproj" />
     <ProjectReference Include="..\AIOMarketMaker.Api\AIOMarketMaker.Api.csproj" />
     <ProjectReference Include="..\AIOMarketMaker.Core\AIOMarketMaker.Core.csproj" />
-    <ProjectReference Include="..\AIOMarketMaker.Etl\AIOMarketMaker.Etl.csproj" />
-    <ProjectReference Include="..\AIOMarketMaker.Functions\AIOMarketMaker.Functions.csproj" />
     <ProjectReference Include="..\AIOMarketMaker.ML\AIOMarketMaker.ML.csproj" />
     <ProjectReference Include="..\AIOMarketMaker.Tests.Common\AIOMarketMaker.Tests.Common.csproj" />
   </ItemGroup>

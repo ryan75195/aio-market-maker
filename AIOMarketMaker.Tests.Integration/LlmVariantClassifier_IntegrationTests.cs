@@ -20,7 +20,7 @@ public class LlmVariantClassifier_IntegrationTests
     {
         var configPath = Path.Combine(
             Directory.GetCurrentDirectory(),
-            "..", "..", "..", "..", "AIOMarketMaker.Etl", "local.settings.json");
+            "..", "..", "..", "..", "AIOMarketMaker.Console", "local.settings.json");
 
         if (!File.Exists(configPath))
         {

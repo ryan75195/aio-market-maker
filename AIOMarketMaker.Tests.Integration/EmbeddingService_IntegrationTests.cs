@@ -18,7 +18,7 @@ public class EmbeddingServiceIntegrationTests
         // Read API key from local.settings.json
         var configPath = Path.Combine(
             Directory.GetCurrentDirectory(),
-            "..", "..", "..", "..", "AIOMarketMaker.Etl", "local.settings.json");
+            "..", "..", "..", "..", "AIOMarketMaker.Console", "local.settings.json");
 
         if (!File.Exists(configPath))
         {
