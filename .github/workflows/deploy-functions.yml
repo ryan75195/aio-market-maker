@@ -1,15 +1,10 @@
 name: Deploy Azure Functions
 
+# DISABLED: AIOMarketMaker.Functions was removed in the solution restructure (2026-02-26).
+# This workflow needs to be rewritten to deploy AIOMarketMaker.Api as an ASP.NET app
+# (e.g., Azure App Service or Container App) instead of Azure Functions zip deploy.
+# See docs/plans/2026-02-26-solution-restructure.md for context.
 on:
-  push:
-    branches:
-      - master
-    paths:
-      - 'AIOMarketMaker.Functions/**'
-      - 'AIOMarketMaker.Core/**'
-      - 'AIOMarketMaker.Migrations/**'
-      - '.github/workflows/deploy-functions.yml'
-      - '.github/infrastructure/**'
   workflow_dispatch:
 
 env:

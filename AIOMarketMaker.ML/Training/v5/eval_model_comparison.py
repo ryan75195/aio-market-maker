@@ -47,8 +47,8 @@ def load_api_keys():
             pinecone_key = settings["Values"].get("Pinecone:ApiKey", "")
             return openai_key, pinecone_key
     except (FileNotFoundError, KeyError):
-        # Try ETL settings
-        etl_path = DATA_DIR / ".." / ".." / "AIOMarketMaker.Etl" / "local.settings.json"
+        # Try Console settings
+        etl_path = DATA_DIR / ".." / ".." / "AIOMarketMaker.Console" / "local.settings.json"
         try:
             with open(etl_path) as f:
                 settings = json.load(f)

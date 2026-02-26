@@ -21,7 +21,7 @@ sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
 # Load API key from local.settings.json
-SETTINGS_PATH = Path(__file__).parent.parent.parent.parent / "AIOMarketMaker.Etl" / "local.settings.json"
+SETTINGS_PATH = Path(__file__).parent.parent.parent.parent / "AIOMarketMaker.Console" / "local.settings.json"
 with open(SETTINGS_PATH) as f:
     _settings = json.load(f)
 API_KEY = _settings["Values"]["OpenAi:ApiKey"]

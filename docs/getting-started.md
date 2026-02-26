@@ -7,7 +7,6 @@ Local development setup for AIOMarketMaker.
 - .NET 8.0 SDK
 - SQL Server LocalDB (included with Visual Studio)
 - Docker Desktop (for scraper workers)
-- Azure Functions Core Tools (`npm install -g azure-functions-core-tools@4`)
 - Azurite storage emulator (`npm install -g azurite` or via Docker)
 
 ## Quick Start
@@ -35,23 +34,15 @@ Or use the Docker workers for parallel processing:
 docker-compose up -d  # From AIOWebScraper directory
 ```
 
-### 3. Start the ETL Functions
+### 3. Start the API
 
 ```bash
-cd AIOMarketMaker/AIOMarketMaker.Etl
-func start
-# Runs on http://localhost:7072
+cd AIOMarketMaker/AIOMarketMaker.Api
+dotnet run
+# Runs on http://localhost:5000
 ```
 
-### 4. Start the API Functions
-
-```bash
-cd AIOMarketMaker/AIOMarketMaker.Functions
-func start
-# Runs on http://localhost:7071
-```
-
-### 5. Start the Desktop UI
+### 4. Start the Desktop UI
 
 ```bash
 cd AIOMarketMaker/AIOMarketMaker.Desktop/electron
@@ -60,7 +51,7 @@ npm start
 
 ## Configuration
 
-Create `local.settings.json` in both `AIOMarketMaker.Functions` and `AIOMarketMaker.Etl`:
+Create `local.settings.json` in `AIOMarketMaker.Api` and `AIOMarketMaker.Console`:
 
 ```json
 {
@@ -94,9 +85,8 @@ sqlcmd -S "(localdb)\MSSQLLocalDB" -d AIOMarketMaker -Q "SELECT COUNT(*) FROM Li
 
 | Service | Port | Purpose |
 |---------|------|---------|
-| API Functions | 7071 | History, jobs, listings endpoints |
-| ETL Functions | 7072 | process-listing endpoint |
-| Scraper API | 7126 | HTML fetching |
+| AIOMarketMaker API | 5000 | HTTP endpoints, scraping, scheduling |
+| ScraperWorker | 7126 | HTML fetching |
 | Azurite Blob | 10000 | Blob storage |
 | Azurite Queue | 10001 | Queue storage |
 | Azurite Table | 10002 | Table storage |

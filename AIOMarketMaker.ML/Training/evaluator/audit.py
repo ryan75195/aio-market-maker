@@ -27,7 +27,7 @@ sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 # Load API key (same pattern as v9 eval scripts)
 SETTINGS_PATH = (
     Path(__file__).parent.parent.parent.parent
-    / "AIOMarketMaker.Etl"
+    / "AIOMarketMaker.Console"
     / "local.settings.json"
 )
 with open(SETTINGS_PATH) as f:

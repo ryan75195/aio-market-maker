@@ -69,7 +69,7 @@ def main():
 
     targets = [
         os.path.join(solution_dir, "AIOMarketMaker.Tests", "bin", "Debug", "net8.0"),
-        os.path.join(solution_dir, "AIOMarketMaker.Etl", "bin", "Debug", "net8.0"),
+        os.path.join(solution_dir, "AIOMarketMaker.Console", "bin", "Debug", "net8.0"),
     ]
 
     for target in targets:

@@ -124,7 +124,7 @@ def log(msg):
 def load_api_keys():
     for path in [
         DATA_DIR / ".." / ".." / "AIOMarketMaker.Api" / "bin" / "Debug" / "net8.0" / "local.settings.json",
-        DATA_DIR / ".." / ".." / "AIOMarketMaker.Etl" / "local.settings.json",
+        DATA_DIR / ".." / ".." / "AIOMarketMaker.Console" / "local.settings.json",
     ]:
         try:
             with open(path) as f:

@@ -17,7 +17,7 @@ except ImportError:
     from openai import AsyncOpenAI
 
 # --- Config ---
-with open("AIOMarketMaker/AIOMarketMaker.Etl/local.settings.json") as f:
+with open("AIOMarketMaker/AIOMarketMaker.Console/local.settings.json") as f:
     settings = json.load(f)
 API_KEY = settings["Values"]["OpenAi:ApiKey"]
 MODEL = "gpt-4o-mini"

@@ -24,7 +24,7 @@ COSINE_THRESHOLD = 0.80
 
 
 def load_pinecone_key():
-    path = r"<REPO_ROOT>\AIOMarketMaker\AIOMarketMaker.Etl\local.settings.json"
+    path = r"<REPO_ROOT>\AIOMarketMaker\AIOMarketMaker.Console\local.settings.json"
     with open(path) as f:
         return json.load(f)["Values"]["Pinecone:ApiKey"]
 

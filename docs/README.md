@@ -17,8 +17,8 @@ eBay marketplace data pipeline with AI-powered analysis.
 
 | Component | Purpose | Port |
 |-----------|---------|------|
-| AIOMarketMaker.Functions | API endpoints (history, jobs, listings) | 7071 |
-| AIOMarketMaker.Etl | Listing processing endpoint | 7072 |
+| AIOMarketMaker.Api | ASP.NET API (endpoints, scraping, scheduling) | 5000 |
+| AIOMarketMaker.Console | CLI tools (backfill, validation, reindex, etc.) | - |
 | AIOWebScraper | HTML fetching with anti-detection | 7126 |
 | Desktop UI | Electron app for monitoring | - |
 
@@ -27,10 +27,9 @@ eBay marketplace data pipeline with AI-powered analysis.
 ```
 1. User triggers scrape via UI
 2. API creates ScrapeRun, searches eBay
-3. Listing URLs queued to scrape-work queue
-4. Docker workers fetch HTML, store in blob storage
-5. ETL endpoint parses HTML, stores in SQL database
-6. UI shows progress and results
+3. API fetches listing HTML inline via ScraperWorker
+4. API parses HTML, stores in SQL database
+5. UI shows progress and results
 ```
 
 ## Investigations

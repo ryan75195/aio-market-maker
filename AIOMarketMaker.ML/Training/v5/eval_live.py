@@ -23,7 +23,7 @@ TOP_K = 50
 
 
 def load_pinecone_key():
-    settings_path = r"<REPO_ROOT>\AIOMarketMaker\AIOMarketMaker.Etl\local.settings.json"
+    settings_path = r"<REPO_ROOT>\AIOMarketMaker\AIOMarketMaker.Console\local.settings.json"
     with open(settings_path) as f:
         settings = json.load(f)
     return settings["Values"]["Pinecone:ApiKey"]

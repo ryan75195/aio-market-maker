@@ -8,18 +8,18 @@ AIOMarketMaker is an eBay data scraping and processing pipeline built on .NET 8.
 
 ## Project Structure
 
-The solution consists of 5 main projects:
+The solution consists of these main projects:
 
 ### AIOMarketMaker.Api
-- Azure Functions application (v4)
-- HTTP-triggered endpoints for eBay scraping operations
-- Entry point: `AIOMarketMaker\Program.cs`
-- Controllers: `AIOMarketMaker\Controllers\EbayController.cs` (stub endpoints)
-- DI configuration: `ScraperServiceCollectionExtensions.cs`
+- ASP.NET Core web API (port 5000)
+- HTTP endpoints for scraping, history, jobs, listings
+- Inline description fetching, nightly scheduling, background processing
+- Entry point: `AIOMarketMaker.Api\Program.cs`
 
 ### AIOMarketMaker.Core
-- Core domain logic and models
-- eBay-specific parsers and services
+- Core domain logic, models, and services
+- eBay-specific parsers (AngleSharp), EF Core data layer
+- Services: ScrapeJobProcessor, StatusRefreshRunner, DbWriteGate, ComparablesEtlService
 - Key components:
   - `EbayScraper.cs`: Orchestrates search and listing scraping
   - `EbaySearchParser.cs`: Parses search results pages
@@ -27,19 +27,20 @@ The solution consists of 5 main projects:
   - `WebscraperClient.cs`: HTTP client for external scraper service
   - `EbayUrlBuilder.cs`: Constructs eBay URLs with filters
 
-### AIOMarketMaker.Etl
-- Standalone console application for ETL operations
-- Entry point: `AIOMarketMaker.Etl\Program.cs`
-- Designed to run as a cron job for batch processing
-- Currently has a demo implementation that scrapes PS5 listings and exports to CSV
+### AIOMarketMaker.ML
+- ONNX variant classifier, training scripts, CUDA utilities
+- Embedding service (OpenAI), clustering (HDBSCAN), vector search (USearch)
 
-### AIOMarketMaker.Tests
-- NUnit test project with Moq
-- Test categories:
-  - Unit tests: `Unit\` (parser logic, scraper logic)
-  - Contract tests: `ContractTests\` (HTML structure validation)
-  - Integration tests: `Integration\` (end-to-end scraping)
-- Test data: Saved HTML files in `Data\Listings\` for contract testing
+### AIOMarketMaker.Console
+- CLI tools using ITask pattern with auto-discovery via DI
+- Tasks: search, pricing, backfill-confidence, comparables, reindex-missing, validation, k-analysis, batch-label, migrate
+- Run: `dotnet run --project AIOMarketMaker.Console -- taskname`
+- Entry point: `AIOMarketMaker.Console\Program.cs`
+
+### AIOMarketMaker.Tests.*
+- Split test projects: Unit, Integration, E2E, Contract, Common
+- NUnit with Moq
+- Test data: Saved HTML files in `Tests.Common\Data\Listings\`
 
 ### AIOWebScraper.Storage.Azure
 - External dependency (located in `..\..\AIOWebScraper\`)
@@ -99,26 +100,25 @@ dotnet test AIOMarketMaker.Tests.Contract/AIOMarketMaker.Tests.Contract.csproj
 dotnet test --filter "FullyQualifiedName~SearchParserUnit"
 ```
 
-### Run the ETL console app
+### Run Console CLI tasks
 ```bash
-dotnet run --project AIOMarketMaker.Etl/AIOMarketMaker.Etl.csproj
+dotnet run --project AIOMarketMaker.Console -- help
+dotnet run --project AIOMarketMaker.Console -- search "PlayStation 5"
+dotnet run --project AIOMarketMaker.Console -- backfill-confidence
 ```
 
-### Run the Azure Functions API locally
+### Run the API
 ```bash
-dotnet run --project AIOMarketMaker/AIOMarketMaker.Api.csproj
-```
-Or use Azure Functions Core Tools:
-```bash
-func start --cwd AIOMarketMaker
+dotnet run --project AIOMarketMaker.Api/AIOMarketMaker.Api.csproj
+# Runs on http://localhost:5000
 ```
 
 ## Important Configuration
 
 ### local.settings.json
-Both `AIOMarketMaker.Functions` and `AIOMarketMaker.Etl` require `local.settings.json`.
+`AIOMarketMaker.Api` and `AIOMarketMaker.Console` require `local.settings.json`.
 
-**ETL local.settings.json** (key settings):
+**local.settings.json** (key settings):
 ```json
 {
   "Values": {
@@ -137,13 +137,13 @@ Both `AIOMarketMaker.Functions` and `AIOMarketMaker.Etl` require `local.settings
 - Azure Storage Emulator or real Azure Storage account for job persistence
 
 ### Running the Scraper Dependency
-AIOMarketMaker depends on AIOWebScraper for HTML fetching. Start it before running ETL:
+AIOMarketMaker depends on AIOWebScraper for HTML fetching. Start it before running the API:
 
 ```bash
 # From the AIOWebScraper folder
 cd ../AIOWebScraper/ScraperWorker
 dotnet run -- --dedicated-mode
-# Runs on http://localhost:5000, proxied via Azure Functions on 7126
+# Runs on http://localhost:7126
 ```
 
 ### Clearing Azurite Queues
@@ -313,105 +313,10 @@ Before running scripts that cost money (API calls), take significant time, or pr
 
 Present these as a pre-run checklist — not buried in code — so the user can make informed decisions before spending money and time.
 
-### Debugging Azure Functions
-- **Always run locally first**: When debugging Azure Functions issues, run the project locally with `func start` or `dotnet run` instead of deploying and waiting for GitHub Actions. Local debugging is much faster and provides immediate feedback.
+### Debugging the API
+- **Always run locally first**: Run the project locally with `dotnet run` instead of deploying. Local debugging is much faster and provides immediate feedback.
 - Use `local.settings.json` to configure connection strings for local development
-- The Functions project can connect to the real Azure SQL database locally for testing
-
-### Azure Functions API Access
-
-**Retrieving Function Keys:**
-```bash
-# Get all function app keys (includes default function key and master key)
-az functionapp keys list \
-  --name YOUR-FUNCTION-APP \
-  --resource-group rg-aiomarketmaker-dev
-
-# Output includes:
-# - functionKeys.default: Use for calling HTTP-triggered functions
-# - masterKey: Admin access (use sparingly)
-# - systemKeys.durabletask_extension: For Durable Functions management
-```
-
-**Triggering Manual Scrape:**
-```bash
-# Trigger manual scrape via HTTP endpoint
-curl -X POST "https://YOUR-FUNCTION-APP.azurewebsites.net/api/TriggerManualScrapeHttp?code=<FUNCTION_KEY>"
-```
-
-**Checking Orchestration Status:**
-```bash
-# Get orchestration status using Durable Functions HTTP API
-curl "https://YOUR-FUNCTION-APP.azurewebsites.net/runtime/webhooks/durabletask/instances/<INSTANCE_ID>?code=<SYSTEM_KEY>"
-```
-
-### Durable Functions Orchestration Debugging
-
-**Key Orchestrators:**
-- `JobOrchestrator` - Main orchestrator, one per enabled job with isolated ScrapeRun
-- `ScrapeUrlOrchestrator` - Handles single URL scraping with retry
-- `ScrapeOrchestrator` - ARCHIVED (was single-run-for-all-jobs, now replaced by per-job architecture)
-
-**Per-Job ScrapeRuns Architecture:**
-Each enabled job gets its own `ScrapeRun` record with isolated progress tracking:
-- `StartScrapeTrigger` creates separate ScrapeRun per job (with `JobId` foreign key)
-- Each run has independent `CurrentPhase`, `TotalListingsFound`, `ListingsProcessed`
-- History API returns `JobId` and `JobSearchTerm` for each run
-- Prevents race conditions where multiple jobs overwrote each other's progress
-
-**Poison Message Debugging:**
-When orchestrations fail repeatedly, messages move to poison queues:
-```bash
-# Check for poison messages in the storage account
-az storage message peek \
-  --queue-name funcaiomarketmakerdev-control-02-poison \
-  --connection-string "$STORAGE_CONNECTION_STRING" \
-  --num-messages 5
-```
-
-**Common Failure Points:**
-1. `GetScrapedHtmlActivity` - Bot detection (small HTML < 100KB)
-2. `ParseSearchPageActivity` - Selector changes (0 products from large HTML)
-3. `FilterNewListingsActivity` - All listings filtered as duplicates (normal behavior)
-
-**App Insights Queries for Debugging:**
-```kusto
-// Find orchestration failures
-traces
-| where message contains "Error" or severityLevel >= 3
-| where cloud_RoleName contains "aiomarketmaker"
-| order by timestamp desc
-
-// Check for bot detection warnings
-traces
-| where message contains "bot detection" or message contains "small HTML"
-| order by timestamp desc
-
-// Count listings found per orchestration run
-traces
-| where message contains "Found" and message contains "listings"
-| project timestamp, message
-| order by timestamp desc
-```
-
-### host.json Logging Configuration
-
-**Critical Settings** (in `AIOMarketMaker.Functions/host.json`):
-```json
-{
-  "logging": {
-    "logLevel": {
-      "default": "Information",  // NOT "Warning" - you'll miss activity logs
-      "DurableTask.AzureStorage": "Warning",  // Reduce noise
-      "DurableTask.Core": "Warning"
-    },
-    "applicationInsights": {
-      "samplingSettings": { "isEnabled": true }
-      // Do NOT set "excludedTypes": "Request"
-    }
-  }
-}
-```
+- The Api project can connect to the real Azure SQL database locally for testing
 
 ## Database Management
 
