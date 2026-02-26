@@ -1,5 +1,4 @@
 using AIOMarketMaker.Core.Parsers;
-using AIOMarketMaker.Core.Services;
 using AIOMarketMaker.Core.Data;
 using AIOMarketMaker.Core.Data.Models;
 using AngleSharp;
@@ -8,7 +7,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using ScraperWorker.Services;
 
-namespace AIOMarketMaker.Etl.Services;
+namespace AIOMarketMaker.Core.Services;
 
 public record StatusRefreshResult(
     int Checked,

@@ -1,4 +1,4 @@
-namespace AIOMarketMaker.Etl.Services;
+namespace AIOMarketMaker.Core.Services;
 
 public class DbWriteGate
 {

@@ -1,7 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using AIOMarketMaker.Core.Data;
 using AIOMarketMaker.Core.Services;
-using AIOMarketMaker.Etl.Services;
 
 namespace AIOMarketMaker.Api.Services;
 

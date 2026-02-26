@@ -9,7 +9,6 @@ using AIOMarketMaker.Core.Data.Migrations;
 using AIOMarketMaker.Core.Services;
 using AIOMarketMaker.ML.Services;
 using AIOMarketMaker.Core.Parsers;
-using AIOMarketMaker.Etl.Services;
 using ScraperWorker.Services;
 using Azure.Data.Tables;
 using Azure.Storage.Blobs;

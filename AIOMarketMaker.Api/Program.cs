@@ -9,7 +9,6 @@ using ScraperWorker.Services;
 using Azure.Data.Tables;
 using Azure.Storage.Blobs;
 using AIOMarketMaker.Api.Services;
-using AIOMarketMaker.Etl.Services;
 using Serilog;
 using Serilog.Formatting.Compact;
 

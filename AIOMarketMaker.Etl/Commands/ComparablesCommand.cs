@@ -1,7 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using AIOMarketMaker.Core.Services;
-using AIOMarketMaker.Etl.Services;
 
 namespace AIOMarketMaker.Etl.Commands;
 
