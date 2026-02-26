@@ -5,12 +5,12 @@ using AIOMarketMaker.Etl;
 using AIOMarketMaker.Etl.Commands;
 using Serilog;
 
-Setup.ConfigureSerilog();
+Configure.ConfigureSerilog();
 
 var host = new HostBuilder()
     .ConfigureFunctionsWorkerDefaults()
-    .ConfigureAppConfiguration(Setup.ConfigureAppConfiguration)
-    .ConfigureServices(Setup.ConfigureServices)
+    .ConfigureAppConfiguration(Configure.ConfigureAppConfiguration)
+    .ConfigureServices(Configure.ConfigureServices)
     .ConfigureLogging(logging =>
     {
         logging.AddFilter("Microsoft.EntityFrameworkCore", LogLevel.Warning);
@@ -19,35 +19,9 @@ var host = new HostBuilder()
     .UseSerilog()
     .Build();
 
-if (args.Contains("--export-vectors"))
-{
-    await ExportVectorsCommand.Run(host, args);
-    return;
-}
-
-if (args.Contains("--benchmark"))
-{
-    await BenchmarkCommand.Run(host);
-    return;
-}
-
 if (args.Contains("--reindex-missing"))
 {
     await ReindexMissingCommand.Run(host);
-    return;
-}
-
-if (args.Contains("--clean-descriptions"))
-{
-    var limit = CommandHelpers.GetIntArg(args, "--limit");
-    await CleanDescriptionsCommand.Run(host, limit);
-    return;
-}
-
-if (args.Contains("--backfill-descriptions"))
-{
-    var limit = CommandHelpers.GetIntArg(args, "--limit");
-    await BackfillDescriptionsCommand.Run(host, limit);
     return;
 }
 

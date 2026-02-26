@@ -18,11 +18,6 @@ public static class CommandHelpers
         return idx >= 0 && idx + 1 < args.Length ? args[idx + 1] : null;
     }
 
-    public static string BuildEmbeddingText(string? title, string? description)
-    {
-        return string.Join(" ", new[] { title, description }.Where(s => !string.IsNullOrWhiteSpace(s)));
-    }
-
     public static string TruncateText(string text, int maxChars)
     {
         if (text.Length <= maxChars)
