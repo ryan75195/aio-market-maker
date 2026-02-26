@@ -7,7 +7,6 @@ using AIOMarketMaker.Core.Data.Models;
 using AIOMarketMaker.Core.Parsers;
 using AIOMarketMaker.Core.Services;
 using AIOMarketMaker.Models.Ebay;
-using AIOMarketMaker.Etl.Models;
 using AIOMarketMaker.Etl.Services;
 using AIOMarketMaker.Tests.Common;
 using AngleSharp.Dom;

@@ -7,7 +7,6 @@ using AIOMarketMaker.Core.Data;
 using AIOMarketMaker.Core.Data.Models;
 using AIOMarketMaker.Core.Parsers;
 using AIOMarketMaker.Core.Services;
-using AIOMarketMaker.Etl.Models;
 using AIOMarketMaker.Models.Ebay;
 
 namespace AIOMarketMaker.Etl.Services;

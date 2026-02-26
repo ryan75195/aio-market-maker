@@ -1,4 +1,4 @@
-namespace AIOMarketMaker.Etl.Models;
+namespace AIOMarketMaker.Core.Services;
 
 public record ScrapingConfig(int MaxConcurrentRuns = 3, int MaxConcurrentDbWrites = 2);
 
