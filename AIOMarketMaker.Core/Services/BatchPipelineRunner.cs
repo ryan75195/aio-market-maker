@@ -18,17 +18,20 @@ public class BatchPipelineRunner : IBatchPipelineRunner
 {
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly SearchBatchStage _searchStage;
+    private readonly IEnumerable<IBatchStage> _batchPostStages;
     private readonly ScrapingConfig _config;
     private readonly ILogger<BatchPipelineRunner> _logger;
 
     public BatchPipelineRunner(
         IServiceScopeFactory scopeFactory,
         SearchBatchStage searchStage,
+        IEnumerable<IBatchStage> batchPostStages,
         ScrapingConfig config,
         ILogger<BatchPipelineRunner> logger)
     {
         _scopeFactory = scopeFactory;
         _searchStage = searchStage;
+        _batchPostStages = batchPostStages;
         _config = config;
         _logger = logger;
     }
@@ -97,7 +100,7 @@ public class BatchPipelineRunner : IBatchPipelineRunner
         if (phase == "PostProcessing")
         {
             await SetBatchPhase(batchId, "PostProcessing", ct);
-            // No batch-level post-stages yet — placeholder for future extensions
+            await RunBatchPostStages(batchId, runIds, jobs, ct);
             phase = "Completed";
         }
 
@@ -105,6 +108,28 @@ public class BatchPipelineRunner : IBatchPipelineRunner
         {
             await SetBatchPhase(batchId, "Completed", ct);
             await LogBatchSummary(batchId, batchStartTime, ct);
+        }
+    }
+
+    private async Task RunBatchPostStages(
+        Guid batchId, List<int> runIds, List<ScrapeJobConfig> jobs, CancellationToken ct)
+    {
+        var context = new BatchContext(batchId, jobs, runIds);
+
+        foreach (var stage in _batchPostStages)
+        {
+            try
+            {
+                _logger.LogInformation("Batch {BatchId}: running post-stage '{Name}'", batchId, stage.Name);
+                var stageStart = DateTime.UtcNow;
+                await stage.Execute(context, ct);
+                _logger.LogInformation("Batch {BatchId}: post-stage '{Name}' took {Elapsed}",
+                    batchId, stage.Name, DateTime.UtcNow - stageStart);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                _logger.LogError(ex, "Batch {BatchId}: post-stage '{Name}' failed", batchId, stage.Name);
+            }
         }
     }
 
