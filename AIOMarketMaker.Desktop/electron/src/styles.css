@@ -577,6 +577,15 @@ body {
   color: #fff;
 }
 
+.progress-bar.searching .progress-fill {
+  background: linear-gradient(90deg, #f59e0b, #d97706);
+}
+
+.phase-value {
+  font-size: 0.85rem !important;
+  text-transform: capitalize;
+}
+
 /* Settings */
 .settings-sections {
   display: flex;

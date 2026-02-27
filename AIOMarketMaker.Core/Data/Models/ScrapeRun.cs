@@ -95,4 +95,28 @@ public class ScrapeRun
     /// Current phase of the orchestration: "Searching Sold", "Searching Active", "Filtering", "Fetching", "Saving", "Completed"
     /// </summary>
     public string? CurrentPhase { get; set; }
+
+    /// <summary>
+    /// JSON-serialized search results (List of EbayProductSummary).
+    /// Populated during Phase 1 (search), consumed and cleared during Phase 2 (classification).
+    /// </summary>
+    public string? SearchResultsJson { get; set; }
+
+    /// <summary>
+    /// Tracks which pipeline phase this run's batch is in: Searching, Processing, PostProcessing, Completed.
+    /// All runs in a batch share the same BatchPhase value.
+    /// </summary>
+    public string? BatchPhase { get; set; }
+
+    /// <summary>
+    /// When the search phase completed for this batch (all jobs searched).
+    /// Null during search or for legacy runs.
+    /// </summary>
+    public DateTime? SearchCompletedUtc { get; set; }
+
+    /// <summary>
+    /// When the processing phase started for this batch.
+    /// Used by the UI for accurate rate/ETA calculations.
+    /// </summary>
+    public DateTime? ProcessingStartedUtc { get; set; }
 }

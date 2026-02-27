@@ -131,6 +131,8 @@ public class EtlDbContext : DbContext
             entity.HasIndex(e => e.InstanceId);
             entity.HasIndex(e => e.BatchId)
                 .HasFilter("[BatchId] IS NOT NULL");
+
+            entity.Property(e => e.BatchPhase).HasMaxLength(20);
         });
 
         modelBuilder.Entity<ScrapeRunIssue>(entity =>

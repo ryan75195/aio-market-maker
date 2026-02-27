@@ -740,28 +740,28 @@
 
             <div class="index-panel-content">
             <div v-if="runStats" class="stats-banner">
-              <div class="stat">
-                <span class="stat-value">{{ runStats.activeCount - runStats.queuedCount }}</span>
-                <span class="stat-label">Running</span>
+              <div class="stat" v-if="runStats.batchPhase">
+                <span class="stat-value phase-value">{{ runStats.batchPhase }}</span>
+                <span class="stat-label">Phase</span>
               </div>
-              <div class="stat" v-if="runStats.queuedCount > 0">
-                <span class="stat-value">{{ runStats.queuedCount }}</span>
-                <span class="stat-label">Queued</span>
+              <div class="stat">
+                <span class="stat-value">{{ runStats.runCount }}</span>
+                <span class="stat-label">Jobs</span>
               </div>
               <div class="stat">
                 <span class="stat-value">{{ formatDuration(runStats.runtimeMs) }}</span>
                 <span class="stat-label">Runtime</span>
               </div>
-              <div class="stat">
+              <div class="stat" v-if="runStats.batchPhase !== 'Searching'">
                 <span class="stat-value">{{ runStats.rate.toFixed(1) }}/s</span>
                 <span class="stat-label">Listings/sec</span>
               </div>
-              <div class="stat">
+              <div class="stat" v-if="runStats.batchPhase !== 'Searching'">
                 <span class="stat-value">{{ formatDuration(runStats.etaSec * 1000) }}</span>
                 <span class="stat-label">ETA</span>
               </div>
-              <div class="stat">
-                <span class="stat-value">{{ runStats.totalProcessed }}/{{ runStats.totalToProcess }}</span>
+              <div class="stat" v-if="runStats.batchPhase !== 'Searching'">
+                <span class="stat-value">{{ runStats.totalProcessed.toLocaleString() }}/{{ runStats.totalToProcess.toLocaleString() }}</span>
                 <span class="stat-label">Progress</span>
               </div>
             </div>
@@ -796,11 +796,15 @@
                   <td class="number">{{ batch.totalListingsFound }}</td>
                   <td class="number">{{ batch.totalListingsProcessed }}</td>
                   <td>
-                    <div v-if="['Running', 'Queued'].includes(batch.status) && batch.totalListingsFound > 0" class="progress-bar">
-                      <div class="progress-fill" :style="{ width: (batch.totalListingsProcessed / batch.totalListingsFound * 100) + '%' }"></div>
-                      <span class="progress-text">{{ batch.totalListingsProcessed }}/{{ batch.totalListingsFound }}</span>
+                    <div v-if="batch.batchPhase === 'Searching' && batch.status === 'Running' && batch.runCount > 0" class="progress-bar searching">
+                      <div class="progress-fill" :style="{ width: (searchedJobCount(batch) / batch.runCount * 100) + '%' }"></div>
+                      <span class="progress-text">Searching {{ searchedJobCount(batch) }}/{{ batch.runCount }} jobs</span>
                     </div>
-                    <span v-else-if="batch.status === 'Completed'">{{ batch.totalListingsProcessed }} done</span>
+                    <div v-else-if="batch.status === 'Running' && batch.totalListingsFound > 0" class="progress-bar">
+                      <div class="progress-fill" :style="{ width: batchProgressPercent(batch) + '%' }"></div>
+                      <span class="progress-text">{{ batchDone(batch).toLocaleString() }}/{{ batchTotal(batch).toLocaleString() }}</span>
+                    </div>
+                    <span v-else-if="batch.status === 'Completed'">{{ batchDone(batch).toLocaleString() }} processed</span>
                     <span v-else>-</span>
                   </td>
                 </tr>
@@ -856,40 +860,60 @@
                   <th>Job</th>
                   <th>Status</th>
                   <th>Progress</th>
-                  <th>Active</th>
-                  <th>Sold</th>
-                  <th>Upd</th>
-                  <th>Skip</th>
-                  <th>Fail</th>
-                  <th></th>
+                  <template v-if="selectedBatch.batchPhase !== 'Searching'">
+                    <th>Active</th>
+                    <th>Sold</th>
+                    <th>Upd</th>
+                    <th>Skip</th>
+                    <th>Fail</th>
+                    <th></th>
+                  </template>
                 </tr>
               </thead>
               <tbody>
-                <template v-for="run in selectedBatch.runs" :key="run.id">
+                <template v-for="run in sortedBatchRuns" :key="run.id">
                   <tr :class="{ 'error-row': run.status === 'Failed', 'expandable-row': run.listingsFailed > 0, 'expanded': expandedRuns[run.id] }" @click="toggleRunExpanded(run)">
                     <td class="icon-cell">
                       <span v-if="run.listingsFailed > 0" class="warning-icon" title="This run has failed listings">&#9888;</span>
                     </td>
                     <td>{{ run.jobSearchTerm || 'Unknown' }}</td>
-                    <td><span class="status-badge" :class="run.status.toLowerCase()">{{ run.currentPhase || run.status }}</span></td>
                     <td>
-                      <div v-if="['Running', 'Indexing', 'Searching', 'Processing'].includes(run.status) && run.totalListingsFound > 0" class="progress-bar">
-                        <div class="progress-fill" :style="{ width: progressPercent(run) + '%' }"></div>
-                        <span class="progress-text">{{ run.listingsProcessed }}/{{ listingsToProcess(run) }}</span>
-                      </div>
-                      <span v-else-if="run.status === 'Completed' && run.totalListingsFound > 0">{{ listingsToProcess(run) }} processed</span>
-                      <span v-else>-</span>
+                      <template v-if="selectedBatch.batchPhase === 'Searching'">
+                        <span v-if="run.totalListingsFound > 0" class="status-badge completed">Searched</span>
+                        <span v-else-if="run.status === 'Searching'" class="status-badge searching">{{ run.currentPhase || 'Searching' }}</span>
+                        <span v-else-if="run.status === 'Completed'" class="status-badge completed">Completed</span>
+                        <span v-else-if="run.status === 'Failed'" class="status-badge failed">Failed</span>
+                        <span v-else class="status-badge queued">Queued</span>
+                      </template>
+                      <span v-else class="status-badge" :class="run.status.toLowerCase()">{{ run.currentPhase || run.status }}</span>
                     </td>
-                    <td class="number">{{ run.listingsAddedActive }}</td>
-                    <td class="number">{{ run.listingsAddedSold }}</td>
-                    <td class="number">{{ run.listingsUpdated || 0 }}</td>
-                    <td class="number">{{ run.listingsSkipped || 0 }}</td>
-                    <td class="number" :class="{ 'failed-count': run.listingsFailed > 0 }">{{ run.listingsFailed || 0 }}</td>
-                    <td class="expand-cell">
-                      <span v-if="run.listingsFailed > 0" class="expand-indicator">
-                        <span v-if="expandedRuns[run.id]">&#9650;</span><span v-else>&#9660;</span> {{ run.listingsFailed }}
-                      </span>
+                    <td>
+                      <template v-if="selectedBatch.batchPhase === 'Searching'">
+                        <span v-if="run.totalListingsFound > 0" class="search-done">{{ run.totalListingsFound.toLocaleString() }} found</span>
+                        <span v-else-if="run.status === 'Searching'" class="status-badge searching">Searching&hellip;</span>
+                        <span v-else>Waiting</span>
+                      </template>
+                      <template v-else>
+                        <div v-if="['Running', 'Indexing', 'Processing'].includes(run.status) && run.totalListingsFound > 0" class="progress-bar">
+                          <div class="progress-fill" :style="{ width: progressPercent(run) + '%' }"></div>
+                          <span class="progress-text">{{ newListingsDone(run) }}/{{ newListingsTotal(run) }}</span>
+                        </div>
+                        <span v-else-if="run.status === 'Completed' && run.totalListingsFound > 0">{{ newListingsDone(run) }} processed</span>
+                        <span v-else>-</span>
+                      </template>
                     </td>
+                    <template v-if="selectedBatch.batchPhase !== 'Searching'">
+                      <td class="number">{{ run.listingsAddedActive }}</td>
+                      <td class="number">{{ run.listingsAddedSold }}</td>
+                      <td class="number">{{ run.listingsUpdated || 0 }}</td>
+                      <td class="number">{{ run.listingsSkipped || 0 }}</td>
+                      <td class="number" :class="{ 'failed-count': run.listingsFailed > 0 }">{{ run.listingsFailed || 0 }}</td>
+                      <td class="expand-cell">
+                        <span v-if="run.listingsFailed > 0" class="expand-indicator">
+                          <span v-if="expandedRuns[run.id]">&#9650;</span><span v-else>&#9660;</span> {{ run.listingsFailed }}
+                        </span>
+                      </td>
+                    </template>
                   </tr>
                   <tr v-if="expandedRuns[run.id] && run.listingsFailed > 0" class="issues-row">
                     <td colspan="10">

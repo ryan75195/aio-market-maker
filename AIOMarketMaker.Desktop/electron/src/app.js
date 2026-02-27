@@ -154,6 +154,20 @@ createApp({
       return Math.max(5, Math.floor((this.windowHeight - 240) / 36));
     },
 
+    sortedBatchRuns() {
+      if (!this.selectedBatch || !this.selectedBatch.runs) { return []; }
+      const runs = [...this.selectedBatch.runs];
+      if (this.selectedBatch.batchPhase === 'Searching') {
+        const priority = (r) => {
+          if (r.status === 'Searching' && !r.totalListingsFound) { return 0; } // actively searching
+          if (r.totalListingsFound > 0) { return 1; } // search done
+          return 2; // waiting
+        };
+        runs.sort((a, b) => priority(a) - priority(b));
+      }
+      return runs;
+    },
+
     compPageSize() {
       // ~220px per comp card row, reserve ~380px for header/anchor/comps-header/pagination
       const available = this.windowHeight - 380;
@@ -330,46 +344,41 @@ createApp({
     },
 
     runStats() {
-      const active = this.activeRuns;
-      if (active.length === 0) { return null; }
+      const activeBatch = this.batches.find(b => ['Running', 'Queued'].includes(b.status));
+      if (!activeBatch) { return null; }
 
-      const earliest = Math.min(...active.map(r => new Date(r.startedUtc).getTime()));
-      const runtimeMs = this.now - earliest;
+      const batchStart = new Date(activeBatch.startedUtc).getTime();
+      const runtimeMs = this.now - batchStart;
+      const batchPhase = activeBatch.batchPhase || null;
 
-      // Include completed runs from same batch for stable rate calculation
-      const allRuns = this.batches.flatMap(b => b.runs || []);
-      const batchRuns = allRuns.filter(r => new Date(r.startedUtc).getTime() >= earliest);
+      // Use server-aggregated totals from batch summary (no runs needed)
+      const totalFound = activeBatch.totalListingsFound || 0;
+      const filtered = activeBatch.totalListingsFilteredPreQueue || 0;
+      const skipped = activeBatch.totalListingsSkipped || 0;
+      const addedActive = activeBatch.totalListingsAddedActive || 0;
+      const addedSold = activeBatch.totalListingsAddedSold || 0;
+      const updated = activeBatch.totalListingsUpdated || 0;
+      const failed = activeBatch.totalListingsFailed || 0;
 
-      // Split into runs with data vs queued (no listing data yet)
-      const startedRuns = batchRuns.filter(r => r.status !== 'Queued');
-      const queuedRuns = batchRuns.filter(r => r.status === 'Queued');
+      const batchDone = addedActive + addedSold + updated + failed;
+      const batchTotal = totalFound - filtered - skipped;
+      const remaining = batchTotal - batchDone;
 
-      // Extrapolate queued runs using average from started runs
-      const avgToProcess = startedRuns.length > 0
-        ? startedRuns.reduce((s, r) => s + this.listingsToProcess(r), 0) / startedRuns.length
+      // Rate/ETA based on processing phase start time from DB
+      const processingStart = activeBatch.processingStartedUtc
+        ? new Date(activeBatch.processingStartedUtc).getTime()
         : 0;
-
-      const batchProcessed = startedRuns.reduce((s, r) => s + (r.listingsProcessed || 0), 0);
-      const batchToProcess = startedRuns.reduce((s, r) => s + this.listingsToProcess(r), 0)
-        + Math.round(avgToProcess * queuedRuns.length);
-
-      // Remaining: active non-queued remaining + extrapolated queued
-      const activeStarted = active.filter(r => r.status !== 'Queued');
-      const activeQueued = active.filter(r => r.status === 'Queued');
-      const activeRemaining = activeStarted.reduce((s, r) => s + this.listingsToProcess(r) - (r.listingsProcessed || 0), 0)
-        + Math.round(avgToProcess * activeQueued.length);
-
-      const runtimeSec = runtimeMs / 1000;
-      const rate = runtimeSec > 0 ? batchProcessed / runtimeSec : 0;
-      const etaSec = rate > 0 ? activeRemaining / rate : 0;
+      const processingSec = processingStart ? (this.now - processingStart) / 1000 : 0;
+      const rate = processingSec > 0 ? batchDone / processingSec : 0;
+      const etaSec = rate > 0 ? Math.max(0, remaining) / rate : 0;
 
       return {
-        activeCount: active.length,
-        queuedCount: activeQueued.length,
+        runCount: activeBatch.runCount || 0,
+        batchPhase,
         runtimeMs,
-        totalProcessed: batchProcessed,
-        totalToProcess: batchToProcess,
-        remaining: activeRemaining,
+        totalProcessed: batchDone,
+        totalToProcess: batchTotal,
+        remaining: Math.max(0, remaining),
         rate,
         etaSec,
       };
@@ -965,8 +974,10 @@ createApp({
       }
     },
 
-    async loadHistory() {
-      this.historyLoading = true;
+    async loadHistory(showLoading = true) {
+      if (showLoading) {
+        this.historyLoading = true;
+      }
       try {
         const params = new URLSearchParams({
           page: this.batchPage,
@@ -977,11 +988,9 @@ createApp({
         this.batches = result.items || [];
         this.batchTotalCount = result.totalCount || 0;
         this.batchTotalPages = result.totalPages || 0;
+        // If viewing a batch detail, refresh it too
         if (this.selectedBatch) {
-          const fresh = this.batches.find(b => b.id === this.selectedBatch.id);
-          if (fresh) {
-            this.selectedBatch = fresh;
-          }
+          await this.loadBatchDetail(this.selectedBatch.batchId, false);
         }
       } catch (err) {
         this.showToast(`Failed to load history: ${err.message}`, 'error');
@@ -990,11 +999,27 @@ createApp({
       }
     },
 
-    selectBatch(batch) {
-      this.selectedBatch = batch;
+    async loadBatchDetail(batchId, showLoading = true) {
+      if (showLoading) {
+        this.historyLoading = true;
+      }
+      try {
+        const data = await this.apiCall(`/history/batches/${batchId}`);
+        this.selectedBatch = this.toCamelCase(data);
+      } catch (err) {
+        this.showToast(`Failed to load batch detail: ${err.message}`, 'error');
+      } finally {
+        if (showLoading) {
+          this.historyLoading = false;
+        }
+      }
+    },
+
+    async selectBatch(batch) {
       this.historyMode = 'runs';
       this.expandedRuns = {};
       this.runIssues = {};
+      await this.loadBatchDetail(batch.batchId);
     },
 
     backToBatches() {
@@ -1347,7 +1372,7 @@ createApp({
           timeout: 120000
         });
         const result = this.toCamelCase(data);
-        const runCount = result.runs?.length || 0;
+        const runCount = result.runCount || 0;
         this.showToast(`Scrape started (${runCount} job${runCount !== 1 ? 's' : ''})`, 'success');
 
         // Switch to history view to see progress
@@ -1433,15 +1458,57 @@ createApp({
       return date.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
     },
 
+    searchedJobCount(batch) {
+      // Use server-aggregated count, fallback to runs if available
+      if (batch.searchedJobCount != null) { return batch.searchedJobCount; }
+      if (!batch.runs) { return 0; }
+      return batch.runs.filter(r => r.totalListingsFound > 0).length;
+    },
+
     listingsToProcess(run) {
       // Actual listings to process = total found - pre-queue filtered (terminal status)
       return (run.totalListingsFound || 0) - (run.listingsFilteredPreQueue || 0);
     },
 
+    newListingsDone(run) {
+      // Listings that required real work (added, updated, or failed)
+      return (run.listingsAddedActive || 0) + (run.listingsAddedSold || 0) + (run.listingsUpdated || 0) + (run.listingsFailed || 0);
+    },
+
+    newListingsTotal(run) {
+      // Total real work = everything minus skipped (pure dedup, instant)
+      return this.listingsToProcess(run) - (run.listingsSkipped || 0);
+    },
+
     progressPercent(run) {
-      const toProcess = this.listingsToProcess(run);
-      if (toProcess <= 0) return 0;
-      return Math.round((run.listingsProcessed / toProcess) * 100);
+      const total = this.newListingsTotal(run);
+      const done = this.newListingsDone(run);
+      if (total <= 0) { return done > 0 ? 100 : 0; }
+      return Math.min(100, Math.round((done / total) * 100));
+    },
+
+    batchDone(batch) {
+      // Works with both summary (server totals) and detail (runs) responses
+      if (batch.totalListingsAddedActive != null) {
+        return (batch.totalListingsAddedActive || 0) + (batch.totalListingsAddedSold || 0)
+          + (batch.totalListingsUpdated || 0) + (batch.totalListingsFailed || 0);
+      }
+      return (batch.runs || []).reduce((s, r) => s + this.newListingsDone(r), 0);
+    },
+
+    batchTotal(batch) {
+      if (batch.totalListingsAddedActive != null) {
+        return (batch.totalListingsFound || 0) - (batch.totalListingsFilteredPreQueue || 0)
+          - (batch.totalListingsSkipped || 0);
+      }
+      return (batch.runs || []).reduce((s, r) => s + this.newListingsTotal(r), 0);
+    },
+
+    batchProgressPercent(batch) {
+      const total = this.batchTotal(batch);
+      const done = this.batchDone(batch);
+      if (total <= 0) { return done > 0 ? 100 : 0; }
+      return Math.min(100, Math.round((done / total) * 100));
     },
 
     formatDuration(ms) {
@@ -1465,7 +1532,7 @@ createApp({
           const hasActive = this.batches.some(b =>
             ['Running', 'Queued'].includes(b.status));
           if (hasActive) {
-            this.loadHistory();
+            this.loadHistory(false);
             // Also refresh issues for any expanded active runs in the selected batch
             if (this.selectedBatch) {
               (this.selectedBatch.runs || [])
