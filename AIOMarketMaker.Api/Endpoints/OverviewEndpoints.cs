@@ -53,7 +53,7 @@ public static class OverviewEndpoints
 
     private static async Task<IResult> GetOverview(
         EtlDbContext db,
-        IServiceScopeFactory scopeFactory,
+        IListingPredictionService predictionService,
         IOptions<PricingOptions> pricingOptions,
         int? minComps = null,
         decimal? feePercent = null,
@@ -65,20 +65,11 @@ public static class OverviewEndpoints
             MatchCondition: matchCondition,
             MinComps: minComps ?? opts.MinComps);
 
-        // Run the heavy aggregation query in parallel with the lighter queries.
-        // Each uses its own DbContext scope since EF contexts aren't thread-safe.
-        var aggTask = Task.Run(async () =>
-        {
-            using var scope = scopeFactory.CreateScope();
-            var svc = scope.ServiceProvider.GetRequiredService<IListingPredictionService>();
-            return await svc.GetAggregates(filters);
-        });
-
         var statusCounts = await GetStatusCounts(db);
         var lastScrape = await GetLastScrape(db);
         var cumulativeGrowth = await GetCumulativeGrowth(db);
         var opportunitiesByDay = await GetOpportunitiesByDay(db, filters);
-        var agg = await aggTask;
+        var agg = await predictionService.GetAggregates(filters);
 
         var response = new OverviewResponse(
             TotalListings: statusCounts.Total,

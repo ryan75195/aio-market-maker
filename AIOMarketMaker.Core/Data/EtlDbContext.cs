@@ -27,6 +27,7 @@ public class EtlDbContext : DbContext
     public DbSet<ListingRelationship> ListingRelationships { get; set; } = null!;
     public DbSet<Category> Categories { get; set; } = null!;
     public DbSet<JobCategory> JobCategories { get; set; } = null!;
+    public DbSet<ListingPrediction> ListingPredictions { get; set; } = null!;
 
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
     {
@@ -133,6 +134,7 @@ public class EtlDbContext : DbContext
                 .HasFilter("[BatchId] IS NOT NULL");
 
             entity.Property(e => e.BatchPhase).HasMaxLength(20);
+            entity.Property(e => e.CurrentPostStage).HasMaxLength(100);
         });
 
         modelBuilder.Entity<ScrapeRunIssue>(entity =>
@@ -172,6 +174,22 @@ public class EtlDbContext : DbContext
                 .WithMany()
                 .HasForeignKey(e => e.ListingIdB)
                 .OnDelete(DeleteBehavior.NoAction);
+        });
+
+        modelBuilder.Entity<ListingPrediction>(entity =>
+        {
+            entity.ToTable("ListingPredictions");
+            entity.HasKey(e => e.ListingId);
+
+            entity.Property(e => e.AverageSoldPrice).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.MedianSoldPrice).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.PotentialProfit).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.ComputedUtc).HasDefaultValueSql(dateDefaultSql);
+
+            entity.HasOne(e => e.Listing)
+                .WithOne()
+                .HasForeignKey<ListingPrediction>(e => e.ListingId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
 
     }

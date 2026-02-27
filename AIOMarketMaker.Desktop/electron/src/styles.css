@@ -581,6 +581,10 @@ body {
   background: linear-gradient(90deg, #f59e0b, #d97706);
 }
 
+.progress-bar.post-processing .progress-fill {
+  background: linear-gradient(90deg, #8b5cf6, #6d28d9);
+}
+
 .phase-value {
   font-size: 0.85rem !important;
   text-transform: capitalize;

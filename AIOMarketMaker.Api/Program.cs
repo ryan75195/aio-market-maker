@@ -158,6 +158,7 @@ builder.Services.Configure<PricingOptions>(configuration.GetSection("Pricing"));
 // ComparablesEtlService
 builder.Services.AddScoped<IComparablesEtlService, ComparablesEtlService>();
 builder.Services.AddSingleton<IBatchStage, ComparablesBatchStage>();
+builder.Services.AddSingleton<IBatchStage, PredictionBatchStage>();
 builder.Services.AddScoped<IListingPredictionService, ListingPredictionService>();
 
 // Scraping concurrency config

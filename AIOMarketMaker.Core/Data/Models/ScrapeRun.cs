@@ -119,4 +119,10 @@ public class ScrapeRun
     /// Used by the UI for accurate rate/ETA calculations.
     /// </summary>
     public DateTime? ProcessingStartedUtc { get; set; }
+
+    /// <summary>
+    /// Which post-processing stage is currently running (e.g., "Predictions", "StatusRefresh").
+    /// Null when not in post-processing or when all stages have completed.
+    /// </summary>
+    public string? CurrentPostStage { get; set; }
 }

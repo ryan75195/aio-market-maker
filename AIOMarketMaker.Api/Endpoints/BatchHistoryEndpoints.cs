@@ -10,7 +10,7 @@ public record BatchRunResponse(
     int ListingsAddedActive, int ListingsAddedSold,
     int ListingsUpdated, int ListingsSkipped,
     int ListingsFailed, int ListingsFilteredPreQueue,
-    int IssueCount);
+    int IssueCount, string? CurrentPostStage);
 
 public record BatchSummaryResponse(
     Guid BatchId, string? TriggerType,
@@ -21,7 +21,8 @@ public record BatchSummaryResponse(
     int TotalListingsUpdated, int TotalListingsSkipped,
     int TotalListingsFailed, int TotalListingsFilteredPreQueue,
     int SearchedJobCount, int CompletedJobCount, int FailedJobCount,
-    DateTime? SearchCompletedUtc, DateTime? ProcessingStartedUtc);
+    DateTime? SearchCompletedUtc, DateTime? ProcessingStartedUtc,
+    string? CurrentPostStage);
 
 public record BatchDetailResponse(
     Guid BatchId, string? TriggerType,
@@ -29,6 +30,7 @@ public record BatchDetailResponse(
     string Status, string? BatchPhase, int RunCount,
     int TotalListingsFound, int TotalListingsProcessed,
     DateTime? SearchCompletedUtc, DateTime? ProcessingStartedUtc,
+    string? CurrentPostStage,
     IEnumerable<BatchRunResponse> Runs);
 
 public static class BatchStatusDeriver
@@ -111,6 +113,7 @@ public static class BatchHistoryEndpoints
                 FailedJobCount = g.Count(r => r.Status == "Failed"),
                 SearchCompletedUtc = g.Min(r => r.SearchCompletedUtc),
                 ProcessingStartedUtc = g.Min(r => r.ProcessingStartedUtc),
+                CurrentPostStage = g.Min(r => r.CurrentPostStage),
                 Statuses = g.Select(r => r.Status).ToList()
             });
 
@@ -133,7 +136,8 @@ public static class BatchHistoryEndpoints
             b.TotalListingsUpdated, b.TotalListingsSkipped,
             b.TotalListingsFailed, b.TotalListingsFilteredPreQueue,
             b.SearchedJobCount, b.CompletedJobCount, b.FailedJobCount,
-            b.SearchCompletedUtc, b.ProcessingStartedUtc));
+            b.SearchCompletedUtc, b.ProcessingStartedUtc,
+            b.CurrentPostStage));
 
         return Results.Ok(new { items = batches, totalCount, totalPages, page, pageSize });
     }
@@ -175,7 +179,8 @@ public static class BatchHistoryEndpoints
             r.ListingsAddedActive, r.ListingsAddedSold,
             r.ListingsUpdated, r.ListingsSkipped,
             r.ListingsFailed, r.ListingsFilteredPreQueue,
-            issueCounts.GetValueOrDefault(r.Id, 0)));
+            issueCounts.GetValueOrDefault(r.Id, 0),
+            r.CurrentPostStage));
 
         return Results.Ok(new BatchDetailResponse(
             batchId,
@@ -189,6 +194,7 @@ public static class BatchHistoryEndpoints
             runs.Sum(r => r.ListingsProcessed),
             runs.FirstOrDefault()?.SearchCompletedUtc,
             runs.FirstOrDefault()?.ProcessingStartedUtc,
+            runs.FirstOrDefault()?.CurrentPostStage,
             batchRunResponses));
     }
 }

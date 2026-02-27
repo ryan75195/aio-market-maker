@@ -243,6 +243,7 @@ public static class HostHelper
                 services.AddTask<ValidationTask>();
                 services.AddTask<KAnalysisTask>();
                 services.AddTask<BatchLabelTask>();
+                services.AddTask<BackfillPredictionsTask>();
             })
             .Build();
     }

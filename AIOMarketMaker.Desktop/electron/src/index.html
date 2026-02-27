@@ -745,7 +745,10 @@
             <div class="index-panel-content">
             <div v-if="runStats" class="stats-banner">
               <div class="stat" v-if="runStats.batchPhase">
-                <span class="stat-value phase-value">{{ runStats.batchPhase }}</span>
+                <span class="stat-value phase-value">
+                  {{ runStats.batchPhase }}
+                  <template v-if="runStats.currentPostStage"> — {{ runStats.currentPostStage }}</template>
+                </span>
                 <span class="stat-label">Phase</span>
               </div>
               <div class="stat">
@@ -804,6 +807,10 @@
                       <div class="progress-fill" :style="{ width: (searchedJobCount(batch) / batch.runCount * 100) + '%' }"></div>
                       <span class="progress-text">Searching {{ searchedJobCount(batch) }}/{{ batch.runCount }} jobs</span>
                     </div>
+                    <div v-else-if="batch.batchPhase === 'PostProcessing' && batch.status === 'Running'" class="progress-bar post-processing">
+                      <div class="progress-fill" style="width: 100%"></div>
+                      <span class="progress-text">{{ batch.currentPostStage || 'Post-processing' }}</span>
+                    </div>
                     <div v-else-if="batch.status === 'Running' && batch.totalListingsFound > 0" class="progress-bar">
                       <div class="progress-fill" :style="{ width: batchProgressPercent(batch) + '%' }"></div>
                       <span class="progress-text">{{ batchDone(batch).toLocaleString() }}/{{ batchTotal(batch).toLocaleString() }}</span>
@@ -847,7 +854,10 @@
             <div class="index-panel-content">
             <div v-if="detailStats" class="stats-banner">
               <div class="stat" v-if="detailStats.batchPhase">
-                <span class="stat-value phase-value">{{ detailStats.batchPhase }}</span>
+                <span class="stat-value phase-value">
+                  {{ detailStats.batchPhase }}
+                  <template v-if="selectedBatch && selectedBatch.currentPostStage"> — {{ selectedBatch.currentPostStage }}</template>
+                </span>
                 <span class="stat-label">Phase</span>
               </div>
               <div class="stat">

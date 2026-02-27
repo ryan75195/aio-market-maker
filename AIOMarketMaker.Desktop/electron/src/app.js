@@ -456,6 +456,7 @@ createApp({
       return {
         runCount: batch.runCount || 0,
         batchPhase,
+        currentPostStage: batch.currentPostStage || null,
         runtimeMs,
         totalProcessed: batchDone,
         totalToProcess: batchTotal,

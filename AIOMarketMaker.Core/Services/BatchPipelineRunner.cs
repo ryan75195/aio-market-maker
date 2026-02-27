@@ -120,6 +120,7 @@ public class BatchPipelineRunner : IBatchPipelineRunner
         {
             try
             {
+                await SetCurrentPostStage(batchId, stage.Name, ct);
                 _logger.LogInformation("Batch {BatchId}: running post-stage '{Name}'", batchId, stage.Name);
                 var stageStart = DateTime.UtcNow;
                 await stage.Execute(context, ct);
@@ -131,6 +132,17 @@ public class BatchPipelineRunner : IBatchPipelineRunner
                 _logger.LogError(ex, "Batch {BatchId}: post-stage '{Name}' failed", batchId, stage.Name);
             }
         }
+
+        await SetCurrentPostStage(batchId, null, ct);
+    }
+
+    private async Task SetCurrentPostStage(Guid batchId, string? stageName, CancellationToken ct)
+    {
+        using var scope = _scopeFactory.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<EtlDbContext>();
+        await db.ScrapeRuns
+            .Where(r => r.BatchId == batchId)
+            .ExecuteUpdateAsync(s => s.SetProperty(r => r.CurrentPostStage, stageName), ct);
     }
 
     private async Task<(List<int> RunIds, List<ScrapeJobConfig> Jobs)> LoadBatchState(
