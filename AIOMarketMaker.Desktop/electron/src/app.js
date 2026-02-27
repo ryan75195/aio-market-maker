@@ -7,6 +7,7 @@ createApp({
       config: null,
       configError: null,
       overviewLoading: false,
+      overviewError: null,
       opportunitiesLoading: false,
       historyLoading: false,
       jobs: [],
@@ -162,6 +163,15 @@ createApp({
           if (r.status === 'Searching' && !r.totalListingsFound) { return 0; } // actively searching
           if (r.totalListingsFound > 0) { return 1; } // search done
           return 2; // waiting
+        };
+        runs.sort((a, b) => priority(a) - priority(b));
+      } else {
+        // Processing phase: active runs first, then completed, then queued
+        const priority = (r) => {
+          if (r.status === 'Running') { return 0; }
+          if (r.status === 'Failed') { return 1; }
+          if (r.status === 'Completed') { return 2; }
+          return 3; // Queued
         };
         runs.sort((a, b) => priority(a) - priority(b));
       }
@@ -343,45 +353,28 @@ createApp({
       return allRuns.filter(r => statuses.includes(r.status));
     },
 
+    detailStats() {
+      if (!this.selectedBatch || !['Running', 'Queued'].includes(this.selectedBatch.status)) { return null; }
+      // The detail endpoint doesn't have aggregated listing fields —
+      // compute them from individual runs
+      const batch = this.selectedBatch;
+      const runs = batch.runs || [];
+      const agg = {
+        ...batch,
+        totalListingsAddedActive: runs.reduce((s, r) => s + (r.listingsAddedActive || 0), 0),
+        totalListingsAddedSold: runs.reduce((s, r) => s + (r.listingsAddedSold || 0), 0),
+        totalListingsUpdated: runs.reduce((s, r) => s + (r.listingsUpdated || 0), 0),
+        totalListingsSkipped: runs.reduce((s, r) => s + (r.listingsSkipped || 0), 0),
+        totalListingsFailed: runs.reduce((s, r) => s + (r.listingsFailed || 0), 0),
+        totalListingsFilteredPreQueue: runs.reduce((s, r) => s + (r.listingsFilteredPreQueue || 0), 0),
+      };
+      return this._batchStats(agg);
+    },
+
     runStats() {
       const activeBatch = this.batches.find(b => ['Running', 'Queued'].includes(b.status));
       if (!activeBatch) { return null; }
-
-      const batchStart = new Date(activeBatch.startedUtc).getTime();
-      const runtimeMs = this.now - batchStart;
-      const batchPhase = activeBatch.batchPhase || null;
-
-      // Use server-aggregated totals from batch summary (no runs needed)
-      const totalFound = activeBatch.totalListingsFound || 0;
-      const filtered = activeBatch.totalListingsFilteredPreQueue || 0;
-      const skipped = activeBatch.totalListingsSkipped || 0;
-      const addedActive = activeBatch.totalListingsAddedActive || 0;
-      const addedSold = activeBatch.totalListingsAddedSold || 0;
-      const updated = activeBatch.totalListingsUpdated || 0;
-      const failed = activeBatch.totalListingsFailed || 0;
-
-      const batchDone = addedActive + addedSold + updated + failed;
-      const batchTotal = totalFound - filtered - skipped;
-      const remaining = batchTotal - batchDone;
-
-      // Rate/ETA based on processing phase start time from DB
-      const processingStart = activeBatch.processingStartedUtc
-        ? new Date(activeBatch.processingStartedUtc).getTime()
-        : 0;
-      const processingSec = processingStart ? (this.now - processingStart) / 1000 : 0;
-      const rate = processingSec > 0 ? batchDone / processingSec : 0;
-      const etaSec = rate > 0 ? Math.max(0, remaining) / rate : 0;
-
-      return {
-        runCount: activeBatch.runCount || 0,
-        batchPhase,
-        runtimeMs,
-        totalProcessed: batchDone,
-        totalToProcess: batchTotal,
-        remaining: Math.max(0, remaining),
-        rate,
-        etaSec,
-      };
+      return this._batchStats(activeBatch);
     }
   },
 
@@ -427,6 +420,55 @@ createApp({
   },
 
   methods: {
+    _batchStats(batch) {
+      const batchStart = new Date(batch.startedUtc).getTime();
+      const runtimeMs = this.now - batchStart;
+      const batchPhase = batch.batchPhase || null;
+
+      const totalFound = batch.totalListingsFound || 0;
+      const filtered = batch.totalListingsFilteredPreQueue || 0;
+      const skipped = batch.totalListingsSkipped || 0;
+      const addedActive = batch.totalListingsAddedActive || 0;
+      const addedSold = batch.totalListingsAddedSold || 0;
+      const updated = batch.totalListingsUpdated || 0;
+      const failed = batch.totalListingsFailed || 0;
+
+      const batchDone = addedActive + addedSold;
+      const batchTotal = totalFound - filtered - updated - skipped;
+
+      const allProcessed = addedActive + addedSold + updated + failed;
+      const allToProcess = totalFound - filtered - skipped;
+      const allRemaining = Math.max(0, allToProcess - allProcessed);
+      const processingStart = batch.processingStartedUtc
+        ? new Date(batch.processingStartedUtc).getTime()
+        : 0;
+      const processingSec = processingStart ? (this.now - processingStart) / 1000 : 0;
+      const rate = processingSec > 0 ? allProcessed / processingSec : 0;
+      const etaSec = rate > 0 ? allRemaining / rate : 0;
+
+      // Count run statuses
+      const runs = batch.runs || [];
+      const completed = runs.filter(r => r.status === 'Completed').length;
+      const running = runs.filter(r => r.status === 'Running').length;
+      const queued = runs.filter(r => r.status === 'Queued').length;
+      const searching = runs.filter(r => r.status === 'Searching').length;
+
+      return {
+        runCount: batch.runCount || 0,
+        batchPhase,
+        runtimeMs,
+        totalProcessed: batchDone,
+        totalToProcess: batchTotal,
+        remaining: Math.max(0, batchTotal - batchDone),
+        rate,
+        etaSec,
+        completed,
+        running,
+        queued,
+        searching,
+      };
+    },
+
     async loadConfig() {
       try {
         const result = await window.electronAPI.getConfig();
@@ -446,6 +488,7 @@ createApp({
 
     async loadOverview() {
       this.overviewLoading = true;
+      this.overviewError = null;
       try {
         const opp = this.settings?.opportunities || {};
         const params = new URLSearchParams();
@@ -458,15 +501,24 @@ createApp({
         if (opp.matchCondition) {
           params.set('matchCondition', 'true');
         }
-        const data = await this.apiCall(`/overview?${params.toString()}`);
-        this.overviewData = this.toCamelCase(data);
-        // Render charts while content is invisible (opacity:0), then reveal
-        this.$nextTick(() => {
-          this.renderCharts();
-          this.overviewLoading = false;
-        });
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 15000);
+        try {
+          const data = await this.apiCall(`/overview?${params.toString()}`, { signal: controller.signal });
+          this.overviewData = this.toCamelCase(data);
+          this.$nextTick(() => {
+            this.renderCharts();
+            this.overviewLoading = false;
+          });
+        } finally {
+          clearTimeout(timeout);
+        }
       } catch (err) {
-        this.showToast(`Failed to load overview: ${err.message}`, 'error');
+        if (err.name === 'AbortError') {
+          this.overviewError = 'Dashboard query timed out. The database may be busy during a scrape.';
+        } else {
+          this.overviewError = `Failed to load: ${err.message}`;
+        }
         this.overviewLoading = false;
       }
     },
@@ -1465,43 +1517,37 @@ createApp({
       return batch.runs.filter(r => r.totalListingsFound > 0).length;
     },
 
-    listingsToProcess(run) {
-      // Actual listings to process = total found - pre-queue filtered (terminal status)
-      return (run.totalListingsFound || 0) - (run.listingsFilteredPreQueue || 0);
+    // Progress calculations — logic lives in progress.js (shared with tests).
+    // These delegate to the same formulas used there.
+    activeSoldDone(run) {
+      return (run.listingsAddedActive || 0) + (run.listingsAddedSold || 0);
     },
 
-    newListingsDone(run) {
-      // Listings that required real work (added, updated, or failed)
-      return (run.listingsAddedActive || 0) + (run.listingsAddedSold || 0) + (run.listingsUpdated || 0) + (run.listingsFailed || 0);
-    },
-
-    newListingsTotal(run) {
-      // Total real work = everything minus skipped (pure dedup, instant)
-      return this.listingsToProcess(run) - (run.listingsSkipped || 0);
+    activeSoldTotal(run) {
+      return (run.totalListingsFound || 0) - (run.listingsFilteredPreQueue || 0)
+        - (run.listingsUpdated || 0) - (run.listingsSkipped || 0);
     },
 
     progressPercent(run) {
-      const total = this.newListingsTotal(run);
-      const done = this.newListingsDone(run);
+      const total = this.activeSoldTotal(run);
+      const done = this.activeSoldDone(run);
       if (total <= 0) { return done > 0 ? 100 : 0; }
       return Math.min(100, Math.round((done / total) * 100));
     },
 
     batchDone(batch) {
-      // Works with both summary (server totals) and detail (runs) responses
       if (batch.totalListingsAddedActive != null) {
-        return (batch.totalListingsAddedActive || 0) + (batch.totalListingsAddedSold || 0)
-          + (batch.totalListingsUpdated || 0) + (batch.totalListingsFailed || 0);
+        return (batch.totalListingsAddedActive || 0) + (batch.totalListingsAddedSold || 0);
       }
-      return (batch.runs || []).reduce((s, r) => s + this.newListingsDone(r), 0);
+      return (batch.runs || []).reduce((s, r) => s + this.activeSoldDone(r), 0);
     },
 
     batchTotal(batch) {
       if (batch.totalListingsAddedActive != null) {
         return (batch.totalListingsFound || 0) - (batch.totalListingsFilteredPreQueue || 0)
-          - (batch.totalListingsSkipped || 0);
+          - (batch.totalListingsUpdated || 0) - (batch.totalListingsSkipped || 0);
       }
-      return (batch.runs || []).reduce((s, r) => s + this.newListingsTotal(r), 0);
+      return (batch.runs || []).reduce((s, r) => s + this.activeSoldTotal(r), 0);
     },
 
     batchProgressPercent(batch) {

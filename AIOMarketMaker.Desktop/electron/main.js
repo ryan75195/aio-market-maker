@@ -17,9 +17,7 @@ function createWindow() {
   });
 
   mainWindow.loadFile(path.join(__dirname, 'src', 'index.html'));
-
-  // Open DevTools for debugging
-  mainWindow.webContents.openDevTools();
+  mainWindow.maximize();
 }
 
 // IPC handler to get config

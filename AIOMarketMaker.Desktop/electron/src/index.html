@@ -63,6 +63,10 @@
             <div class="loading-spinner"></div>
             <span>Loading dashboard...</span>
           </div>
+          <div v-else-if="overviewError" class="view-loading">
+            <span style="color: #f59e0b;">{{ overviewError }}</span>
+            <button class="btn" style="margin-top: 12px;" @click="loadOverview">Retry</button>
+          </div>
 
           <div class="overview-content" :class="{ 'loading-hidden': overviewLoading }">
           <!-- KPI Cards -->
@@ -783,7 +787,7 @@
                   <th>Status</th>
                   <th>Jobs</th>
                   <th>Found</th>
-                  <th>Done</th>
+                  <th>Processed</th>
                   <th>Progress</th>
                 </tr>
               </thead>
@@ -841,6 +845,33 @@
             </div>
 
             <div class="index-panel-content">
+            <div v-if="detailStats" class="stats-banner">
+              <div class="stat" v-if="detailStats.batchPhase">
+                <span class="stat-value phase-value">{{ detailStats.batchPhase }}</span>
+                <span class="stat-label">Phase</span>
+              </div>
+              <div class="stat">
+                <span class="stat-value">{{ detailStats.completed }}/{{ detailStats.runCount }}</span>
+                <span class="stat-label">Jobs Done</span>
+              </div>
+              <div class="stat">
+                <span class="stat-value">{{ formatDuration(detailStats.runtimeMs) }}</span>
+                <span class="stat-label">Runtime</span>
+              </div>
+              <div class="stat" v-if="detailStats.batchPhase !== 'Searching'">
+                <span class="stat-value">{{ detailStats.rate.toFixed(1) }}/s</span>
+                <span class="stat-label">Listings/sec</span>
+              </div>
+              <div class="stat" v-if="detailStats.batchPhase !== 'Searching'">
+                <span class="stat-value">{{ formatDuration(detailStats.etaSec * 1000) }}</span>
+                <span class="stat-label">ETA</span>
+              </div>
+              <div class="stat" v-if="detailStats.batchPhase !== 'Searching'">
+                <span class="stat-value">{{ detailStats.totalProcessed.toLocaleString() }}/{{ detailStats.totalToProcess.toLocaleString() }}</span>
+                <span class="stat-label">Progress</span>
+              </div>
+            </div>
+
             <table class="data-table history-table">
               <colgroup>
                 <col style="width: 4%">
@@ -885,7 +916,8 @@
                         <span v-else-if="run.status === 'Failed'" class="status-badge failed">Failed</span>
                         <span v-else class="status-badge queued">Queued</span>
                       </template>
-                      <span v-else class="status-badge" :class="run.status.toLowerCase()">{{ run.currentPhase || run.status }}</span>
+                      <span v-else-if="run.status === 'Queued'" class="status-badge queued">Queued</span>
+                      <span v-else class="status-badge" :class="run.status.toLowerCase()" :title="run.currentPhase">{{ run.status }}</span>
                     </td>
                     <td>
                       <template v-if="selectedBatch.batchPhase === 'Searching'">
@@ -894,11 +926,15 @@
                         <span v-else>Waiting</span>
                       </template>
                       <template v-else>
-                        <div v-if="['Running', 'Indexing', 'Processing'].includes(run.status) && run.totalListingsFound > 0" class="progress-bar">
+                        <div v-if="['Running', 'Indexing', 'Processing'].includes(run.status) && activeSoldTotal(run) > 0 && activeSoldDone(run) > 0" class="progress-bar">
                           <div class="progress-fill" :style="{ width: progressPercent(run) + '%' }"></div>
-                          <span class="progress-text">{{ newListingsDone(run) }}/{{ newListingsTotal(run) }}</span>
+                          <span class="progress-text">{{ activeSoldDone(run) }} / {{ activeSoldTotal(run) }}</span>
                         </div>
-                        <span v-else-if="run.status === 'Completed' && run.totalListingsFound > 0">{{ newListingsDone(run) }} processed</span>
+                        <span v-else-if="run.status === 'Running' && activeSoldTotal(run) > 0 && activeSoldDone(run) === 0" class="status-badge running">{{ activeSoldTotal(run) }} pending</span>
+                        <span v-else-if="run.status === 'Completed' && run.totalListingsFound > 0">{{ activeSoldDone(run) }} / {{ activeSoldTotal(run) }}</span>
+                        <span v-else-if="['Running', 'Indexing', 'Processing'].includes(run.status) && run.totalListingsFound > 0" class="status-badge">No new</span>
+                        <span v-else-if="['Running', 'Indexing', 'Processing'].includes(run.status)" class="muted">Processing&hellip;</span>
+                        <span v-else-if="run.status === 'Queued'">-</span>
                         <span v-else>-</span>
                       </template>
                     </td>

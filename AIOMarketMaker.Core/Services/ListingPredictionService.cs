@@ -310,6 +310,7 @@ public class ListingPredictionService : IListingPredictionService
         await using (var cmd = conn.CreateCommand())
         {
             cmd.CommandText = materializeSql;
+            cmd.CommandTimeout = 60;
             await cmd.ExecuteNonQueryAsync();
         }
 
@@ -337,7 +338,7 @@ public class ListingPredictionService : IListingPredictionService
                     p.AverageSoldPrice, p.PotentialProfit, p.SimilarSoldCount,
                     l.[Condition], l.Url
                 FROM #Predictions p
-                INNER JOIN Listings l ON l.Id = p.ListingId
+                INNER JOIN Listings l WITH (NOLOCK) ON l.Id = p.ListingId
                 ORDER BY p.PotentialProfit DESC";
             await using var reader = await cmd.ExecuteReaderAsync();
             while (await reader.ReadAsync())
@@ -364,8 +365,8 @@ public class ListingPredictionService : IListingPredictionService
                     COUNT(*) AS OpportunityCount,
                     SUM(p.PotentialProfit) AS TotalProfit
                 FROM #Predictions p
-                INNER JOIN Listings l ON l.Id = p.ListingId
-                LEFT JOIN ScrapeJobs sj ON sj.Id = l.ScrapeJobId
+                INNER JOIN Listings l WITH (NOLOCK) ON l.Id = p.ListingId
+                LEFT JOIN ScrapeJobs sj WITH (NOLOCK) ON sj.Id = l.ScrapeJobId
                 GROUP BY l.ScrapeJobId, sj.SearchTerm
                 ORDER BY COUNT(*) DESC";
             await using var reader = await cmd.ExecuteReaderAsync();
@@ -385,7 +386,7 @@ public class ListingPredictionService : IListingPredictionService
             cmd.CommandText = @"
                 SELECT ISNULL(l.[Condition], 'Unknown'), AVG(p.PotentialProfit), COUNT(*)
                 FROM #Predictions p
-                INNER JOIN Listings l ON l.Id = p.ListingId
+                INNER JOIN Listings l WITH (NOLOCK) ON l.Id = p.ListingId
                 GROUP BY l.[Condition]
                 ORDER BY AVG(p.PotentialProfit) DESC";
             await using var reader = await cmd.ExecuteReaderAsync();
@@ -406,8 +407,8 @@ public class ListingPredictionService : IListingPredictionService
                     l.ScrapeJobId, sj.SearchTerm,
                     AVG(p.EstimatedDaysToSell)
                 FROM #Predictions p
-                INNER JOIN Listings l ON l.Id = p.ListingId
-                LEFT JOIN ScrapeJobs sj ON sj.Id = l.ScrapeJobId
+                INNER JOIN Listings l WITH (NOLOCK) ON l.Id = p.ListingId
+                LEFT JOIN ScrapeJobs sj WITH (NOLOCK) ON sj.Id = l.ScrapeJobId
                 WHERE p.EstimatedDaysToSell IS NOT NULL
                 GROUP BY l.ScrapeJobId, sj.SearchTerm
                 ORDER BY AVG(p.EstimatedDaysToSell) ASC";
@@ -428,7 +429,7 @@ public class ListingPredictionService : IListingPredictionService
                 SELECT
                     l.Price, p.PotentialProfit, l.[Condition]
                 FROM #Predictions p
-                INNER JOIN Listings l ON l.Id = p.ListingId
+                INNER JOIN Listings l WITH (NOLOCK) ON l.Id = p.ListingId
                 WHERE l.Price IS NOT NULL";
             await using var reader = await cmd.ExecuteReaderAsync();
             while (await reader.ReadAsync())
@@ -534,18 +535,16 @@ public class ListingPredictionService : IListingPredictionService
         return $@";WITH RawComps AS (
         SELECT r.ListingIdA AS ActiveListingId, r.ListingIdB AS SoldListingId,
                r.ClassifierConfidence, r.SimilarityScore
-        FROM ListingRelationships r
-        INNER JOIN Listings active ON active.Id = r.ListingIdA AND active.ListingStatus = 'Active'
-        INNER JOIN Listings sold ON sold.Id = r.ListingIdB AND sold.ListingStatus = 'Sold'
+        FROM ListingRelationships r        INNER JOIN Listings active WITH (NOLOCK) ON active.Id = r.ListingIdA AND active.ListingStatus = 'Active'
+        INNER JOIN Listings sold WITH (NOLOCK) ON sold.Id = r.ListingIdB AND sold.ListingStatus = 'Sold'
         WHERE r.IsComparable = 1
         {conditionFilter}
         {singleListingFilter}
         UNION ALL
         SELECT r.ListingIdB AS ActiveListingId, r.ListingIdA AS SoldListingId,
                r.ClassifierConfidence, r.SimilarityScore
-        FROM ListingRelationships r
-        INNER JOIN Listings active ON active.Id = r.ListingIdB AND active.ListingStatus = 'Active'
-        INNER JOIN Listings sold ON sold.Id = r.ListingIdA AND sold.ListingStatus = 'Sold'
+        FROM ListingRelationships r        INNER JOIN Listings active WITH (NOLOCK) ON active.Id = r.ListingIdB AND active.ListingStatus = 'Active'
+        INNER JOIN Listings sold WITH (NOLOCK) ON sold.Id = r.ListingIdA AND sold.ListingStatus = 'Sold'
         WHERE r.IsComparable = 1
         {conditionFilter}
         {singleListingFilter}
@@ -560,7 +559,7 @@ public class ListingPredictionService : IListingPredictionService
                    OVER (PARTITION BY rc.ActiveListingId) AS Q3,
                COUNT(*) OVER (PARTITION BY rc.ActiveListingId) AS TotalComps
         FROM RawComps rc
-        INNER JOIN Listings sold ON sold.Id = rc.SoldListingId
+        INNER JOIN Listings sold WITH (NOLOCK) ON sold.Id = rc.SoldListingId
         WHERE sold.Price > 0
     ),
     CleanedComps AS (
@@ -577,7 +576,7 @@ public class ListingPredictionService : IListingPredictionService
             PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY sold.Price)
                 OVER (PARTITION BY cc.ActiveListingId) AS MedianSoldPrice
         FROM CleanedComps cc
-        INNER JOIN Listings sold ON sold.Id = cc.SoldListingId
+        INNER JOIN Listings sold WITH (NOLOCK) ON sold.Id = cc.SoldListingId
     ),
     Aggregated AS (
         SELECT active.Id AS ListingId,
@@ -590,8 +589,8 @@ public class ListingPredictionService : IListingPredictionService
             {confidenceExpr} AS Confidence,
             MAX(rc.TotalComps) - COUNT(*) AS OutliersRemoved
         FROM CleanedComps rc
-        INNER JOIN Listings sold ON sold.Id = rc.SoldListingId
-        INNER JOIN Listings active ON active.Id = rc.ActiveListingId
+        INNER JOIN Listings sold WITH (NOLOCK) ON sold.Id = rc.SoldListingId
+        INNER JOIN Listings active WITH (NOLOCK) ON active.Id = rc.ActiveListingId
         {priceBandFilter}
         GROUP BY active.Id, active.Price, active.ShippingCost
         HAVING COUNT(*) >= {mc}
