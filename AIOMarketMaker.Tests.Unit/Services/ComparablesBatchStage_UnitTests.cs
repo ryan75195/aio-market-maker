@@ -39,21 +39,21 @@ public class ComparablesBatchStage_UnitTests
             ctx.Database.EnsureCreated();
         }
 
-        // Build a real ServiceProvider so IServiceScopeFactory resolves EtlDbContext
-        var services = new ServiceCollection();
-        services.AddDbContext<EtlDbContext>(opts => opts.UseSqlite(_connection));
-        _serviceProvider = services.BuildServiceProvider();
-
         _etlServiceMock = new Mock<IComparablesEtlService>();
         _etlServiceMock
             .Setup(e => e.RunForListings(It.IsAny<IEnumerable<int>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new ComparablesEtlResult(0, 0, 0, 0, 0, 0));
 
+        // Build a real ServiceProvider so IServiceScopeFactory resolves EtlDbContext and IComparablesEtlService
+        var services = new ServiceCollection();
+        services.AddDbContext<EtlDbContext>(opts => opts.UseSqlite(_connection));
+        services.AddScoped<IComparablesEtlService>(_ => _etlServiceMock.Object);
+        _serviceProvider = services.BuildServiceProvider();
+
         _loggerMock = new Mock<ILogger<ComparablesBatchStage>>();
 
         _stage = new ComparablesBatchStage(
             _serviceProvider.GetRequiredService<IServiceScopeFactory>(),
-            _etlServiceMock.Object,
             _loggerMock.Object);
     }
 

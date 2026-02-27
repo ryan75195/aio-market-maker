@@ -22,11 +22,9 @@ public class BatchStage_DiWiringTests
     {
         var services = new ServiceCollection();
         services.AddLogging();
-        services.AddScoped<IComparablesEtlService>(_ => Mock.Of<IComparablesEtlService>());
-        services.AddSingleton<IServiceScopeFactory>(sp => sp.GetRequiredService<IServiceScopeFactory>());
         services.AddSingleton<IBatchStage, ComparablesBatchStage>();
 
-        using var provider = services.BuildServiceProvider();
+        using var provider = services.BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true });
         var stages = provider.GetServices<IBatchStage>().ToList();
 
         Assert.That(stages, Has.Count.EqualTo(1));
