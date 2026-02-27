@@ -15,39 +15,32 @@ namespace AIOMarketMaker.Tests.Unit.Services;
 
 [TestFixture]
 [Category("Unit")]
-public class PostJobStage_DiWiringTests
+public class BatchStage_DiWiringTests
 {
     [Test]
-    public void Should_resolve_comparables_post_job_stage_as_post_job_stage()
+    public void Should_resolve_comparables_batch_stage_as_batch_stage()
     {
         var services = new ServiceCollection();
         services.AddLogging();
         services.AddScoped<IComparablesEtlService>(_ => Mock.Of<IComparablesEtlService>());
-        services.AddScoped<IPostJobStage, ComparablesPostJobStage>();
+        services.AddSingleton<IServiceScopeFactory>(sp => sp.GetRequiredService<IServiceScopeFactory>());
+        services.AddSingleton<IBatchStage, ComparablesBatchStage>();
 
         using var provider = services.BuildServiceProvider();
-        var stages = provider.GetServices<IPostJobStage>().ToList();
+        var stages = provider.GetServices<IBatchStage>().ToList();
 
         Assert.That(stages, Has.Count.EqualTo(1));
-        Assert.That(stages[0], Is.TypeOf<ComparablesPostJobStage>());
+        Assert.That(stages[0], Is.TypeOf<ComparablesBatchStage>());
     }
 
     [Test]
-    public async Task Should_execute_comparables_stage_through_processor_di_wiring()
+    public async Task Should_complete_processor_run_with_no_post_job_stages()
     {
-        var etlServiceMock = new Mock<IComparablesEtlService>();
-        etlServiceMock
-            .Setup(e => e.RunForJob(It.IsAny<int>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new ComparablesEtlResult(0, 0, 0, 0, 0, 0));
-
         var services = new ServiceCollection();
         services.AddLogging();
 
-        // Register the real stage with a mocked ETL service
-        services.AddScoped<IComparablesEtlService>(_ => etlServiceMock.Object);
-        services.AddScoped<IPostJobStage, ComparablesPostJobStage>();
+        // No IPostJobStage registrations — this is now the production behavior
 
-        // Register the processor's other dependencies as mocks
         var webscraperMock = new Mock<IWebscraperClient>();
         webscraperMock
             .Setup(w => w.GetPageHtmlAsync(
@@ -67,13 +60,12 @@ public class PostJobStage_DiWiringTests
         services.AddSingleton(Mock.Of<IListingIndexingService>());
         services.AddSingleton(new DbWriteGate(100));
 
-        // In-memory DB
         var dbContext = InMemoryDbContextFactory.Create();
         services.AddSingleton(dbContext);
 
         using var provider = services.BuildServiceProvider();
 
-        // Create the processor through DI — verifies IEnumerable<IPostJobStage> is injected
+        // Empty post-job stages — as in production
         var stages = provider.GetServices<IPostJobStage>();
         var processor = new ScrapeJobProcessor(
             provider.GetRequiredService<ILogger<ScrapeJobProcessor>>(),
@@ -87,7 +79,6 @@ public class PostJobStage_DiWiringTests
             stages,
             new ScrapingConfig());
 
-        // Set up DB state
         dbContext.ScrapeJobs.Add(new ScrapeJob { Id = 1, SearchTerm = "Test Item", IsEnabled = true, CreatedUtc = DateTime.UtcNow });
         await dbContext.SaveChangesAsync();
 
@@ -100,16 +91,11 @@ public class PostJobStage_DiWiringTests
         dbContext.ScrapeRuns.Add(run);
         await dbContext.SaveChangesAsync();
 
-        // Execute the full pipeline
         await processor.Execute(run, new ScrapeJobConfig(1, "Test Item"));
 
-        // Verify the real ComparablesPostJobStage called RunForJob with the correct job ID
-        etlServiceMock.Verify(e => e.RunForJob(1, It.IsAny<CancellationToken>()), Times.Once,
-            "ComparablesPostJobStage should call RunForJob via DI wiring during scrape execution");
-
-        // Verify run still completed
         var refreshedRun = await dbContext.ScrapeRuns.FindAsync(run.Id);
-        Assert.That(refreshedRun!.Status, Is.EqualTo("Completed"));
+        Assert.That(refreshedRun!.Status, Is.EqualTo("Completed"),
+            "Processor should complete successfully with no post-job stages");
 
         dbContext.Dispose();
     }
