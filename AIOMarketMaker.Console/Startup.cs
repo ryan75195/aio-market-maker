@@ -73,6 +73,7 @@ public static class HostHelper
                         sp.GetRequiredService<ILogger<AzureJobRepository>>()));
 
                 services.AddSingleton(new DbWriteGate(10));
+                services.AddSingleton(new ScrapingConfig());
                 services.AddScoped<IScrapeJobProcessor, ScrapeJobProcessor>();
 
                 // Database: SQLite (local dev) or SQL Server (Azure)

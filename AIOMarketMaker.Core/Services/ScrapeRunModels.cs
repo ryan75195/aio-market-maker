@@ -1,6 +1,11 @@
 namespace AIOMarketMaker.Core.Services;
 
-public record ScrapingConfig(int MaxConcurrentRuns = 3, int MaxConcurrentDbWrites = 2);
+public record ScrapingConfig(
+    int MaxConcurrentRuns = 3,
+    int MaxConcurrentDbWrites = 2,
+    int MaxConcurrentSearches = 5,
+    int MaxConcurrentDescriptionFetches = 10,
+    int EmbeddingBatchSize = 50);
 
 public record ManualScrapeRequest(int? JobId);
 

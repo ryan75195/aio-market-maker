@@ -41,6 +41,10 @@ public class ScrapeJobProcessor_PostJobStageTests
         _indexingServiceMock
             .Setup(i => i.Index(It.IsAny<Listing>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new IndexingResult(IndexingAction.Embedded));
+        _indexingServiceMock
+            .Setup(i => i.IndexBatch(It.IsAny<IEnumerable<Listing>>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IEnumerable<Listing> listings, bool embed, CancellationToken _) =>
+                listings.Select(_ => new IndexingResult(embed ? IndexingAction.Embedded : IndexingAction.Skipped)));
 
         _webscraperClientMock
             .Setup(w => w.GetPageHtmlAsync(
@@ -75,7 +79,8 @@ public class ScrapeJobProcessor_PostJobStageTests
         _loggerMock.Object, _dbContext, _webscraperClientMock.Object,
         _searchParserMock.Object, _listingParserMock.Object,
         _urlBuilderMock.Object, _indexingServiceMock.Object,
-        new DbWriteGate(100), stages);
+        new DbWriteGate(100), stages,
+        new ScrapingConfig());
 
     private ScrapeRun CreateAndSeedScrapeRun()
     {

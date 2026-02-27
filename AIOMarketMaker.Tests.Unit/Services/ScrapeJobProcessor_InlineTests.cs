@@ -46,6 +46,10 @@ public class ScrapeJobProcessor_InlineTests
         _indexingServiceMock
             .Setup(i => i.Index(It.IsAny<Listing>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new IndexingResult(IndexingAction.Embedded));
+        _indexingServiceMock
+            .Setup(i => i.IndexBatch(It.IsAny<IEnumerable<Listing>>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IEnumerable<Listing> listings, bool embed, CancellationToken _) =>
+                listings.Select(_ => new IndexingResult(embed ? IndexingAction.Embedded : IndexingAction.Skipped)));
 
         // Default: return empty HTML for all GetPageHtmlAsync calls
         _webscraperClientMock
@@ -85,7 +89,8 @@ public class ScrapeJobProcessor_InlineTests
         _loggerMock.Object, _dbContext, _webscraperClientMock.Object,
         _searchParserMock.Object, _listingParserMock.Object,
         _urlBuilderMock.Object, _indexingServiceMock.Object,
-        new DbWriteGate(100), Enumerable.Empty<IPostJobStage>());
+        new DbWriteGate(100), Enumerable.Empty<IPostJobStage>(),
+        new ScrapingConfig());
 
     private static EbayProductSummary CreateSummary(
         string listingId, decimal? price = 100m, bool isSold = false,
@@ -599,11 +604,11 @@ public class ScrapeJobProcessor_InlineTests
         await CreateProcessor().Execute(run, job);
 
         _indexingServiceMock.Verify(
-            i => i.Index(
-                It.Is<Listing>(l => l.ListingId == "IDX1"),
+            i => i.IndexBatch(
+                It.Is<IEnumerable<Listing>>(batch => batch.Any(l => l.ListingId == "IDX1")),
                 true, It.IsAny<CancellationToken>()),
             Times.Once,
-            "New listing with complete description should be indexed with embedContent=true");
+            "New listing with complete description should be batch-indexed with embedContent=true");
     }
 
     [Test]
@@ -624,11 +629,11 @@ public class ScrapeJobProcessor_InlineTests
         await CreateProcessor().Execute(run, job);
 
         _indexingServiceMock.Verify(
-            i => i.Index(
-                It.Is<Listing>(l => l.ListingId == "NOIDX1"),
+            i => i.IndexBatch(
+                It.Is<IEnumerable<Listing>>(batch => batch.Any(l => l.ListingId == "NOIDX1")),
                 It.IsAny<bool>(), It.IsAny<CancellationToken>()),
             Times.Never,
-            "Failed description should not trigger indexing");
+            "Failed description should not trigger batch indexing");
     }
 
     // ---------------------------------------------------------------
@@ -766,9 +771,11 @@ public class ScrapeJobProcessor_InlineTests
             .Setup(p => p.ParseDescription(It.IsAny<IDocument>()))
             .Returns("A real description");
 
+        // IndexBatch returns a Failed result to simulate embedding failure
         _indexingServiceMock
-            .Setup(i => i.Index(It.IsAny<Listing>(), true, It.IsAny<CancellationToken>()))
-            .ThrowsAsync(new HttpRequestException("OpenAI rate limit exceeded"));
+            .Setup(i => i.IndexBatch(It.IsAny<IEnumerable<Listing>>(), true, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IEnumerable<Listing> listings, bool _, CancellationToken _) =>
+                listings.Select(_ => new IndexingResult(IndexingAction.Failed, "OpenAI rate limit exceeded")));
 
         SetupActiveSearchResults(CreateSummary("IDXFAIL1"));
 
@@ -780,7 +787,6 @@ public class ScrapeJobProcessor_InlineTests
         {
             Assert.That(issue!.IssueType, Is.EqualTo("IndexingFailed"));
             Assert.That(issue.Phase, Is.EqualTo("Indexing"));
-            Assert.That(issue.StackTrace, Is.Not.Null.And.Contains("HttpRequestException"));
             Assert.That(issue.ErrorMessage, Does.Contain("OpenAI rate limit exceeded"));
         });
     }

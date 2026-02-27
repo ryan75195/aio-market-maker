@@ -163,11 +163,16 @@ builder.Services.AddScoped<IListingPredictionService, ListingPredictionService>(
 // Scraping concurrency config
 var scrapingConfig = new ScrapingConfig(
     MaxConcurrentRuns: configuration.GetValue<int>("Scraping:MaxConcurrentRuns", 3),
-    MaxConcurrentDbWrites: configuration.GetValue<int>("Scraping:MaxConcurrentDbWrites", 2));
+    MaxConcurrentDbWrites: configuration.GetValue<int>("Scraping:MaxConcurrentDbWrites", 2),
+    MaxConcurrentSearches: configuration.GetValue<int>("Scraping:MaxConcurrentSearches", 5),
+    MaxConcurrentDescriptionFetches: configuration.GetValue<int>("Scraping:MaxConcurrentDescriptionFetches", 10),
+    EmbeddingBatchSize: configuration.GetValue<int>("Scraping:EmbeddingBatchSize", 50));
 builder.Services.AddSingleton(scrapingConfig);
 builder.Services.AddSingleton(new DbWriteGate(scrapingConfig.MaxConcurrentDbWrites));
 
 builder.Services.AddScoped<IScrapeJobProcessor, ScrapeJobProcessor>();
+builder.Services.AddSingleton<SearchBatchStage>();
+builder.Services.AddSingleton<IBatchPipelineRunner, BatchPipelineRunner>();
 builder.Services.AddHostedService<StartupRecoveryService>();
 builder.Services.AddHostedService<NightlyScrapeService>();
 

@@ -84,7 +84,8 @@ public class PostJobStage_DiWiringTests
             provider.GetRequiredService<IEbayUrlBuilder>(),
             provider.GetRequiredService<IListingIndexingService>(),
             provider.GetRequiredService<DbWriteGate>(),
-            stages);
+            stages,
+            new ScrapingConfig());
 
         // Set up DB state
         dbContext.ScrapeJobs.Add(new ScrapeJob { Id = 1, SearchTerm = "Test Item", IsEnabled = true, CreatedUtc = DateTime.UtcNow });
