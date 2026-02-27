@@ -184,7 +184,6 @@ public class ListingPredictionService : IListingPredictionService
             conditions.Add($"l.Id IN ({string.Join(",", listingIdList)})");
         }
 
-        var joinType = filters.MinComps > 0 ? "INNER" : "LEFT";
         if (filters.MinComps > 0)
         {
             conditions.Add($"p.SimilarSoldCount >= {filters.MinComps}");
@@ -195,7 +194,7 @@ public class ListingPredictionService : IListingPredictionService
         var countSql = $@"
             SELECT COUNT(*)
             FROM Listings l
-            {joinType} JOIN ListingPredictions p ON p.ListingId = l.Id
+            INNER JOIN ListingPredictions p ON p.ListingId = l.Id
             WHERE {whereClause}";
 
         var totalCount = (int)(await ExecuteScalar(countSql))!;
@@ -229,7 +228,7 @@ public class ListingPredictionService : IListingPredictionService
             SELECT l.Id, p.SimilarSoldCount, p.AverageSoldPrice, p.PotentialProfit,
                    p.EstimatedDaysToSell, p.Confidence, p.OutliersRemoved, p.MedianSoldPrice
             FROM Listings l
-            {joinType} JOIN ListingPredictions p ON p.ListingId = l.Id
+            INNER JOIN ListingPredictions p ON p.ListingId = l.Id
             LEFT JOIN ScrapeJobs sj ON sj.Id = l.ScrapeJobId
             WHERE {whereClause}
             ORDER BY {orderClause}
