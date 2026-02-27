@@ -10,6 +10,7 @@ namespace AIOMarketMaker.Core.Services;
 public interface IComparablesEtlService
 {
     Task<ComparablesEtlResult> RunForJob(int jobId, CancellationToken ct = default);
+    Task<ComparablesEtlResult> RunForListings(IEnumerable<int> listingIds, CancellationToken ct = default);
 }
 
 public record ComparablesEtlResult(
@@ -76,6 +77,52 @@ public class ComparablesEtlService : IComparablesEtlService
             _logger.LogInformation("Loaded {Count} existing verdicts for job listings", existingVerdicts.Count);
         }
 
+        return await SearchAndClassify(activeListings, existingVerdicts, sw, ct);
+    }
+
+    public async Task<ComparablesEtlResult> RunForListings(IEnumerable<int> listingIds, CancellationToken ct = default)
+    {
+        var idSet = listingIds.ToHashSet();
+        if (idSet.Count == 0)
+        {
+            return new ComparablesEtlResult(0, 0, 0, 0, 0, 0);
+        }
+
+        _logger.LogInformation("Starting comparables ETL for {Count} specific listings", idSet.Count);
+        var sw = Stopwatch.StartNew();
+
+        List<Listing> targetListings;
+        HashSet<(int, int)> existingVerdicts;
+
+        await using (var dbContext = await _dbContextFactory.CreateDbContextAsync(ct))
+        {
+            targetListings = await dbContext.Listings
+                .AsNoTracking()
+                .Where(l => idSet.Contains(l.Id))
+                .ToListAsync(ct);
+
+            _logger.LogInformation("Loaded {Count} target listings in {Elapsed}s",
+                targetListings.Count, sw.Elapsed.TotalSeconds.ToString("F1"));
+
+            if (targetListings.Count == 0)
+            {
+                return new ComparablesEtlResult(0, 0, 0, 0, 0, 0);
+            }
+
+            var targetIds = targetListings.Select(l => l.Id).ToHashSet();
+            existingVerdicts = await LoadExistingVerdictsForListings(dbContext, targetIds, ct);
+            _logger.LogInformation("Loaded {Count} existing verdicts for target listings", existingVerdicts.Count);
+        }
+
+        return await SearchAndClassify(targetListings, existingVerdicts, sw, ct);
+    }
+
+    private async Task<ComparablesEtlResult> SearchAndClassify(
+        List<Listing> targetListings,
+        HashSet<(int, int)> existingVerdicts,
+        Stopwatch sw,
+        CancellationToken ct)
+    {
         // Phase 2: Vector search — collect candidate listing IDs (strings) for later resolution
         var seenPairs = new ConcurrentDictionary<(int, string), byte>(); // (activeId, matchedListingId)
         var candidateHits = new ConcurrentBag<ScopedSearchHit>();
@@ -84,7 +131,7 @@ public class ComparablesEtlService : IComparablesEtlService
         var searchSw = Stopwatch.StartNew();
 
         await Parallel.ForEachAsync(
-            activeListings,
+            targetListings,
             new ParallelOptions { MaxDegreeOfParallelism = MaxSearchConcurrency, CancellationToken = ct },
             async (listing, innerCt) =>
             {
@@ -119,7 +166,7 @@ public class ComparablesEtlService : IComparablesEtlService
 
         if (candidateHits.IsEmpty)
         {
-            return new ComparablesEtlResult(activeListings.Count, activeListings.Count, 0, 0, 0, 0);
+            return new ComparablesEtlResult(targetListings.Count, targetListings.Count, 0, 0, 0, 0);
         }
 
         // Phase 2b: Resolve candidate listing IDs to entities via a single batch query.
@@ -137,8 +184,8 @@ public class ComparablesEtlService : IComparablesEtlService
 
         _logger.LogInformation("Resolved {Count} candidate listings from DB", matchedListings.Count);
 
-        // Build the active listings lookup for classification
-        var activeListingsById = activeListings.ToDictionary(l => l.Id);
+        // Build the target listings lookup for classification
+        var targetListingsById = targetListings.ToDictionary(l => l.Id);
 
         // Filter to sold matches and deduplicate canonical pairs
         var candidatePairs = new List<CandidatePair>();
@@ -173,8 +220,8 @@ public class ComparablesEtlService : IComparablesEtlService
         _logger.LogInformation("Filtered to {Pairs} candidate pairs, {CacheHits} cache hits",
             candidatePairs.Count, cacheHits);
 
-        // Phase 3: Classify and save — merge active + matched listings (matched may overlap)
-        var allListingsById = new Dictionary<int, Listing>(activeListingsById);
+        // Phase 3: Classify and save — merge target + matched listings (matched may overlap)
+        var allListingsById = new Dictionary<int, Listing>(targetListingsById);
         foreach (var matched in matchedListings.Values)
         {
             allListingsById.TryAdd(matched.Id, matched);
@@ -184,12 +231,12 @@ public class ComparablesEtlService : IComparablesEtlService
 
         sw.Stop();
         _logger.LogInformation(
-            "ETL complete (scoped): {Active} active, {Pairs} classified, {Comparables} comparables in {Elapsed}",
-            activeListings.Count, result.Classified, result.ComparablesFound, sw.Elapsed.ToString(@"hh\:mm\:ss"));
+            "ETL complete: {Processed} listings, {Pairs} classified, {Comparables} comparables in {Elapsed}",
+            targetListings.Count, result.Classified, result.ComparablesFound, sw.Elapsed.ToString(@"hh\:mm\:ss"));
 
         return new ComparablesEtlResult(
-            ListingsProcessed: activeListings.Count,
-            VectorQueries: activeListings.Count,
+            ListingsProcessed: targetListings.Count,
+            VectorQueries: targetListings.Count,
             CandidatePairsFound: candidatePairs.Count,
             CacheHits: cacheHits,
             PairsClassified: result.Classified,
