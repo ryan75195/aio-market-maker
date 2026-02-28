@@ -76,6 +76,27 @@ The `WebscraperClient` wraps this API and handles polling until jobs complete.
 - Requires `StorageConnectionString` configuration for Azure Storage
 - Parsers are registered as singletons (stateless)
 
+## Git & Committing
+
+This directory (`AIOMarketMaker/`) is its own git repository, separate from the parent `parent-repo/` repo. Always commit from inside this directory.
+
+```bash
+# Correct — commit from the AIOMarketMaker directory
+cd AIOMarketMaker
+git add <files>
+git commit -m "feat: description"
+
+# Wrong — committing from the parent repo won't see AIOMarketMaker files
+cd parent-repo
+git add AIOMarketMaker/...  # These files are invisible to this repo
+```
+
+- **Remote:** `origin` → `https://github.com/ryan75195/AIOMarketMaker.git`
+- **Main branch:** `main`
+- **Working branch:** typically `master` (local development)
+
+The parent `parent-repo/` repo treats `AIOMarketMaker/` as a nested repo (it has its own `.git/`). Plan docs live in the parent repo at `docs/plans/`.
+
 ## Common Commands
 
 ### Build the solution
@@ -112,6 +133,91 @@ dotnet run --project AIOMarketMaker.Console -- backfill-confidence
 dotnet run --project AIOMarketMaker.Api/AIOMarketMaker.Api.csproj
 # Runs on http://localhost:5000
 ```
+
+## Desktop App (Electron + Playwright)
+
+### Project Location
+`AIOMarketMaker.Desktop/electron/` — Electron app with Vue 3 (CDN-loaded), Chart.js, vanilla CSS.
+
+### Running the Desktop App
+```bash
+cd AIOMarketMaker.Desktop/electron
+npm install    # First time only
+npm run dev    # Launch Electron app
+```
+
+The app connects to the API at `http://localhost:5000` — start the API first.
+
+### Desktop Test Suite
+
+Tests use **Vitest** as the runner with **Playwright** for Electron automation. No separate Playwright config file — Playwright is configured inline in test files.
+
+```bash
+cd AIOMarketMaker.Desktop/electron
+
+# Run all desktop tests (unit + integration)
+npm test
+
+# Watch mode for development
+npm run test:watch
+```
+
+**Test files** in `tests/`:
+
+| File | Type | What it tests |
+|------|------|---------------|
+| `progress.test.js` | Unit (Vitest only) | Progress calculation functions from `src/progress.js` — percentages, ETA, rate, formatting |
+| `ui.test.js` | Integration (Vitest + Playwright) | Electron app launch, navigation, batch list, batch detail, progress bars, stats banner |
+| `e2e-monitor.js` | E2E script | Long-running batch monitoring with stall detection. Run with `node tests/e2e-monitor.js` (optionally `--start` to trigger a new batch) |
+| `audit-ui.js` | Visual audit script | Takes screenshots of every UI view for regression review. Run with `node tests/audit-ui.js` |
+
+### Writing Playwright Tests for Electron
+
+Tests use Playwright's `_electron` module to launch and control the app:
+
+```javascript
+import { _electron as electron } from 'playwright';
+
+// Launch the Electron app
+const electronApp = await electron.launch({
+  args: [path.join(__dirname, '..', 'main.js')],
+  env: { ...process.env, NODE_ENV: 'test' },
+});
+
+// Get the first window
+const page = await electronApp.firstWindow();
+
+// Wait for Vue to mount (app loads data on mount)
+await page.waitForTimeout(2000);
+
+// Interact with the UI
+await page.click('.sidebar button:nth-child(2)');
+const title = await page.locator('.view-title').textContent();
+
+// Take a screenshot
+await page.screenshot({ path: 'tests/screenshots/test.png' });
+
+// Clean up
+await electronApp.close();
+```
+
+**Key locator patterns used in existing tests:**
+- `.sidebar button` — navigation buttons
+- `.batch-row`, `.batch-card` — batch list items
+- `.progress-bar`, `.progress-fill`, `.progress-text` — progress indicators
+- `.stats-banner`, `.stat` — stats display
+- `.status-badge` — run status badges
+
+**Wait strategies:**
+- `page.waitForTimeout(2000)` — wait for Vue mount + API data load
+- Playwright locators auto-wait for elements by default (30s timeout)
+
+### Screenshots
+
+Test screenshots are saved to `tests/screenshots/`:
+- `tests/screenshots/` — general test captures
+- `tests/screenshots/audit/` — systematic UI audit (all views)
+- `tests/screenshots/monitor/` — E2E monitoring captures with stall detection
 
 ## Important Configuration
 
