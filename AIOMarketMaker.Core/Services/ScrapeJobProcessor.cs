@@ -791,6 +791,10 @@ public class ScrapeJobProcessor : IScrapeJobProcessor
         scrapeRun.CurrentPhase = "Completed";
         scrapeRun.CompletedUtc = DateTime.UtcNow;
 
+        // Force EF to persist changes — ChangeTracker.Clear() earlier in the pipeline
+        // can leave the entity in a state where automatic change detection misses updates.
+        _dbContext.Entry(scrapeRun).State = EntityState.Modified;
+
         var job = await _dbContext.ScrapeJobs.FindAsync(jobId);
         if (job != null)
         {
