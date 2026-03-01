@@ -1,0 +1,171 @@
+W0301 20:43:44.878000 108080 site-packages\torch\distributed\elastic\multiprocessing\redirects.py:29] NOTE: Redirects are currently not supported in Windows or MacOs.
+Unsloth 2026.2.1 patched 36 layers with 36 QKV layers, 36 O layers and 36 MLP layers.
+Loading base model + LoRA adapter from <REPO_ROOT>\AIOMarketMaker\AIOMarketMaker.ML\Training\output\qwen3-variant-classifier
+Unsloth: Will patch your computer to enable 2x faster free finetuning.
+Unsloth Zoo will now patch everything to make training faster!
+==((====))==  Unsloth 2026.2.1: Fast Qwen3 patching. Transformers: 4.57.6.
+   \\   /|    NVIDIA GeForce RTX 5070 Ti. Num GPUs = 1. Max memory: 15.92 GB. Platform: Windows.
+O^O/ \_/ \    Torch: 2.10.0+cu128. CUDA: 12.0. CUDA Toolkit: 12.8. Triton: 3.6.0
+\        /    Bfloat16 = TRUE. FA [Xformers = None. FA2 = False]
+ "-____-"     Free license: http://github.com/unslothai/unsloth
+Unsloth: Fast downloading is enabled - ignore downloading bars which are red colored!
+
+Evaluating 50 pairs...
+================================================================================
+[1/50] Louis Vuitton Neverfull | OK | 4.4s
+  Human: not comparable
+  Model: different — Different fashion colorways (Azure vs Monogram) — colorway matters for pricing.
+[2/50] Samsung Galaxy S24 | OK | 4.7s
+  Human: not comparable
+  Model: different — Listing A is opened/used (non-sealed) while Listing B is new/sealed — sealed vs opened is a differen
+[3/50] Elden Ring Shadow of the Erdtree | OK | 4.4s
+  Human: comparable
+  Model: same — Same PS5 Elden Ring: Shadow of the Erdtree Collector's Edition; both sealed and include collector's 
+[4/50] PlayStation 5 Console | OK | 4.8s
+  Human: not comparable
+  Model: different — Listing A explicitly includes an extra 512GB M.2 SSD and specific controllers; Listing B doesn't con
+[5/50] Nest Thermostat | OK | 4.4s
+  Human: comparable
+  Model: same — Same model HF001235-GB; sealed vs opened (adjacent condition) and no explicit completeness conflict.
+[6/50] Louis Vuitton Neverfull | WRONG | 3.7s
+  Human: comparable
+  Model: different — Listing A includes pochette and dustbag; Listing B does not confirm those inclusions.
+[7/50] Peloton Bike | WRONG | 3.6s
+  Human: comparable
+  Model: different — Different included accessories (pedals, weights, mat vs shoes, earphones, manuals).
+[8/50] Ubiquiti UniFi Access Point | OK | 3.9s
+  Human: not comparable
+  Model: different — Listing A includes the access point only; Listing B explicitly excludes the bracket (completeness di
+[9/50] PlayStation 5 Console | WRONG | 3.6s
+  Human: comparable
+  Model: different — Listing B explicitly includes a carry case and charging cable; Listing A does not confirm those incl
+[10/50] iPhone 15 Pro Max | OK | 3.3s
+  Human: comparable
+  Model: same — Same model and storage; condition adjacent (Good vs Excellent); no completeness conflict.
+[11/50] Samsung Galaxy S24 | OK | 3.8s
+  Human: comparable
+  Model: same — Same product and condition (both full-body 360 cases); no explicit completeness or grade differences
+[12/50] Canada Goose Parka | OK | 3.3s
+  Human: comparable
+  Model: same — Same model and size; conditions adjacent (Excellent vs Excellent); no completeness conflict.
+[13/50] Dyson Airwrap | WRONG | 4.0s
+  Human: not comparable
+  Model: same — Same 30mm Dyson Airwrap barrel; both new/unused and no explicit completeness conflict.
+[14/50] Dyson Airwrap | WRONG | 3.6s
+  Human: not comparable
+  Model: same — Same Dyson Airwrap HS01 replacement power cord; color and completeness not conflicting.
+[15/50] Samsung Galaxy S24 | WRONG | 3.5s
+  Human: not comparable
+  Model: same — Same model and storage; condition adjacent (Good vs Good); no explicit completeness conflict.
+[16/50] Louis Vuitton Neverfull | WRONG | 3.3s
+  Human: comparable
+  Model: different — Listing A includes a pouch; Listing B does not confirm the pouch is included.
+[17/50] Zelda Tears of the Kingdom | OK | 3.4s
+  Human: comparable
+  Model: same — Same Collector's Edition; sealed vs NM+ (adjacent) and completeness compatible.
+[18/50] PlayStation 5 Console | OK | 3.7s
+  Human: not comparable
+  Model: different — Listing B explicitly includes original box; Listing A is sealed (no box) — completeness differs.
+[19/50] Shure SM7B Microphone | OK | 3.8s
+  Human: not comparable
+  Model: different — Sealed (new) vs opened/good — sealed vs opened is a 2+ condition gap.
+[20/50] Louis Vuitton Neverfull | OK | 4.1s
+  Human: not comparable
+  Model: different — Different fashion colorways/patterns (Monogram vs Damier Ebene) — colorway matters for pricing.
+[21/50] Dyson Airwrap | WRONG | 3.1s
+  Human: comparable
+  Model: different — Different edition: Listing B is a limited edition while A is standard.
+[22/50] iPhone 15 Pro Max | WRONG | 3.5s
+  Human: not comparable
+  Model: same — Same model and storage; condition adjacent (A vs B); no explicit completeness conflict.
+[23/50] Boss Katana Amp | WRONG | 4.0s
+  Human: not comparable
+  Model: same — Same model Katana:GO; both opened/used with box/manuals; no explicit completeness conflict.
+[24/50] Omega Seamaster Watch | WRONG | 3.5s
+  Human: comparable
+  Model: different — Different dial color (black vs stainless steel) — colorway matters for watches.
+[25/50] Nintendo Switch OLED | OK | 3.3s
+  Human: not comparable
+  Model: different — Listing B includes games and headset; Listing A does not confirm those inclusions.
+[26/50] Dyson V15 Vacuum | OK | 4.2s
+  Human: comparable
+  Model: same — Same Dyson V15 Detect model; conditions adjacent (Very Good vs Fully Working); no explicit completen
+[27/50] Pokemon Booster Box Sealed | WRONG | 3.5s
+  Human: not comparable
+  Model: same — Same sealed Mega Charizard X Ultra-Premium Collection; no conflicting completeness or condition deta
+[28/50] Dell Ultrasharp Monitor | OK | 3.5s
+  Human: comparable
+  Model: same — Same Dell U2412Mb model; no explicit condition or completeness conflicts.
+[29/50] Bose QuietComfort Headphones | OK | 3.5s
+  Human: comparable
+  Model: same — Same Bose QuietComfort earbuds; conditions adjacent (Excellent vs Good); completeness matches.
+[30/50] Ring Video Doorbell | WRONG | 3.2s
+  Human: comparable
+  Model: different — Listing B includes Ring Chime while Listing A does not — completeness differs.
+[31/50] Louis Vuitton Neverfull | WRONG | 4.0s
+  Human: comparable
+  Model: different — Different named colorways (Damier Ebene vs Damier Azur) — fashion colorway matters.
+[32/50] Vintage Star Wars Figure | WRONG | 3.9s
+  Human: comparable
+  Model: different — Listing B includes a weapon/accessory not confirmed in Listing A (completeness differs).
+[33/50] Louis Vuitton Neverfull | OK | 4.1s
+  Human: not comparable
+  Model: different — Different fashion colorways/patterns (Damier Ebene vs Monogram) — colorway matters for pricing.
+[34/50] Dyson Airwrap | OK | 3.5s
+  Human: comparable
+  Model: same — Same model/edition; no explicit condition or completeness conflicts; color irrelevant for appliances
+[35/50] Titleist Pro V1 Golf Balls | OK | 3.9s
+  Human: not comparable
+  Model: different — Different quantity: Listing A is a box of 40, Listing B is unspecified (single).
+[36/50] Vintage Levis 501 Jeans | OK | 4.8s
+  Human: not comparable
+  Model: different — Different model: Listing A is 501 (standard) while Listing B is 501xx (501-XX).
+[37/50] LEGO Technic Set | OK | 3.4s
+  Human: comparable
+  Model: same — Same LEGO Technic 8265; no explicit condition or completeness conflict.
+[38/50] Bose QuietComfort Headphones | OK | 4.7s
+  Human: not comparable
+  Model: different — Different QC35 models: Listing A is QC35 (original) while Listing B is QC35 II (series 2).
+[39/50] Herman Miller Aeron Chair | WRONG | 3.8s
+  Human: not comparable
+  Model: same — Same Aeron Size B; one new, one used (adjacent condition); no completeness conflict.
+[40/50] Nest Thermostat | WRONG | 4.0s
+  Human: comparable
+  Model: different — Listing A is sealed/new; Listing B is opened/used — sealed vs opened are not comparable.
+[41/50] Dyson V15 Vacuum | OK | 4.0s
+  Human: not comparable
+  Model: different — Listing B is new/sealed while Listing A is used/opened — sealed vs opened are not comparable.
+[42/50] Rolex Submariner | OK | 3.6s
+  Human: not comparable
+  Model: different — Different completeness: Listing A includes box/papers; Listing B explicitly lacks box/papers.
+[43/50] Whoop 4.0 Strap | OK | 3.4s
+  Human: not comparable
+  Model: different — Different colorways (Artic White vs Grey) — color matters for wearable bands.
+[44/50] Louis Vuitton Neverfull | WRONG | 3.2s
+  Human: comparable
+  Model: different — Listing B explicitly lacks the pouch while Listing A includes it — completeness differs.
+[45/50] Rolex Submariner | OK | 4.8s
+  Human: comparable
+  Model: same — Same model 116610LV Hulk, both full sets; condition adjacent (good vs mint) and completeness matches
+[46/50] Vintage Star Wars Figure | OK | 3.7s
+  Human: not comparable
+  Model: different — Different quantity: Listing A is a 15-figure joblot; Listing B is unspecified.
+[47/50] Nintendo Switch OLED | OK | 3.5s
+  Human: not comparable
+  Model: different — Listing A includes 7 games; Listing B does not confirm included games — completeness differs.
+[48/50] PlayStation 5 Console | OK | 3.9s
+  Human: comparable
+  Model: same — Same PS5 Slim Disc 1TB; conditions adjacent (Excellent vs Great); no completeness conflict.
+[49/50] Oura Ring | OK | 4.0s
+  Human: comparable
+  Model: same — Same Oura Ring Gen3 sizing kit; conditions compatible (one sealed, other unstated); completeness mat
+[50/50] Brompton Folding Bike | OK | 4.1s
+  Human: not comparable
+  Model: different — Different completeness: Listing A includes accessories (rack, phone mount, reflector); Listing B doe
+
+================================================================================
+FINE-TUNED ACCURACY: 32/50 (64.0%)
+Zero-shot baseline: 11/20 (55.0%)
+Parse errors: 0
+Avg time/pair: 3.8s
+Throughput: 944 pairs/hour
