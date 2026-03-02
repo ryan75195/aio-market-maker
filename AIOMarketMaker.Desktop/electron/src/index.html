@@ -1116,13 +1116,48 @@
               </div>
             </div>
 
-            <!-- Filters -->
-            <div style="display:flex; gap:8px; align-items:center; margin-bottom:12px">
-              <input type="text" v-model="marketsListingSearch" class="search-box" placeholder="Filter listings..." style="width:200px">
+            <!-- Filter toolbar -->
+            <div style="display:flex; gap:8px; align-items:center; margin-bottom:8px; flex-wrap:wrap">
+              <input type="text" v-model="marketsListingSearch" class="search-box" placeholder="Title search..." style="width:180px">
               <div style="display:flex; gap:4px">
                 <span class="pill" :class="{ active: !marketsStatusFilter }" @click="marketsStatusFilter = ''; marketsListingPage = 1; loadMarketListings()">All</span>
                 <span class="pill" :class="{ active: marketsStatusFilter === 'Active' }" @click="marketsStatusFilter = marketsStatusFilter === 'Active' ? '' : 'Active'; marketsListingPage = 1; loadMarketListings()">Active</span>
                 <span class="pill" :class="{ active: marketsStatusFilter === 'Sold' }" @click="marketsStatusFilter = marketsStatusFilter === 'Sold' ? '' : 'Sold'; marketsListingPage = 1; loadMarketListings()">Sold</span>
+              </div>
+              <button class="pill" :class="{ active: marketsShowFilters }" @click="marketsShowFilters = !marketsShowFilters" style="margin-left:auto">
+                Filters{{ marketsActiveFilterCount > 0 ? ' (' + marketsActiveFilterCount + ')' : '' }}
+              </button>
+              <button v-if="marketsActiveFilterCount > 0" class="pill" @click="clearMarketsFilters()" style="color:#f87171">Clear</button>
+            </div>
+
+            <!-- Expanded filter panel -->
+            <div v-if="marketsShowFilters" class="filter-panel">
+              <div class="filter-row">
+                <div class="filter-group">
+                  <label>Regex</label>
+                  <input type="text" v-model="marketsRegex" class="filter-input" placeholder="e\.g\. 825\s*GB(?!.*bundle)" style="width:260px; font-family:monospace; font-size:12px">
+                  <span v-if="marketsRegexError" style="color:#f87171; font-size:11px">{{ marketsRegexError }}</span>
+                </div>
+                <div class="filter-group">
+                  <label>Condition</label>
+                  <input type="text" v-model="marketsConditionFilter" class="filter-input" placeholder="e.g. New, Used" style="width:120px">
+                </div>
+                <div class="filter-group">
+                  <label>Price</label>
+                  <div style="display:flex; gap:4px; align-items:center">
+                    <input type="number" v-model="marketsMinPrice" class="filter-input" placeholder="Min" style="width:80px" step="1">
+                    <span style="color:var(--text-muted); font-size:11px">&ndash;</span>
+                    <input type="number" v-model="marketsMaxPrice" class="filter-input" placeholder="Max" style="width:80px" step="1">
+                  </div>
+                </div>
+                <div class="filter-group">
+                  <label>Days on Market</label>
+                  <div style="display:flex; gap:4px; align-items:center">
+                    <input type="number" v-model="marketsMinDays" class="filter-input" placeholder="Min" style="width:70px" step="1">
+                    <span style="color:var(--text-muted); font-size:11px">&ndash;</span>
+                    <input type="number" v-model="marketsMaxDays" class="filter-input" placeholder="Max" style="width:70px" step="1">
+                  </div>
+                </div>
               </div>
             </div>
 

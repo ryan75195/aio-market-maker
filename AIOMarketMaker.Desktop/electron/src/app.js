@@ -131,6 +131,14 @@ createApp({
       marketsListingsLoading: false,
       marketsListingSearch: '',
       marketsStatusFilter: '',
+      marketsConditionFilter: '',
+      marketsMinPrice: '',
+      marketsMaxPrice: '',
+      marketsMinDays: '',
+      marketsMaxDays: '',
+      marketsRegex: '',
+      marketsRegexError: '',
+      marketsShowFilters: false,
       marketsListingSortKey: 'daysOnMarket',
       marketsListingSortDir: 1,
       marketsListingPage: 1,
@@ -432,6 +440,19 @@ createApp({
       return this.marketsData.jobs.reduce((s, j) => s + j.salesPerDay, 0);
     },
 
+    marketsActiveFilterCount() {
+      let count = 0;
+      if (this.marketsListingSearch) { count++; }
+      if (this.marketsStatusFilter) { count++; }
+      if (this.marketsConditionFilter) { count++; }
+      if (this.marketsMinPrice) { count++; }
+      if (this.marketsMaxPrice) { count++; }
+      if (this.marketsMinDays) { count++; }
+      if (this.marketsMaxDays) { count++; }
+      if (this.marketsRegex) { count++; }
+      return count;
+    },
+
     marketsDetailKpis() {
       const s = this.marketsListingStats;
       if (!s) { return { count: 0, sold: 0, active: 0, sellThrough: 0, avgDays: 0, avgPrice: '0', priceRange: '0' }; }
@@ -453,11 +474,25 @@ createApp({
 
   watch: {
     marketsListingSearch() {
-      clearTimeout(this._marketsSearchTimer);
-      this._marketsSearchTimer = setTimeout(() => {
-        this.marketsListingPage = 1;
-        this.loadMarketListings();
-      }, 300);
+      this._debouncedMarketsReload();
+    },
+    marketsConditionFilter() {
+      this._debouncedMarketsReload();
+    },
+    marketsMinPrice() {
+      this._debouncedMarketsReload();
+    },
+    marketsMaxPrice() {
+      this._debouncedMarketsReload();
+    },
+    marketsMinDays() {
+      this._debouncedMarketsReload();
+    },
+    marketsMaxDays() {
+      this._debouncedMarketsReload();
+    },
+    marketsRegex() {
+      this._debouncedMarketsReload();
     },
   },
 
@@ -1787,10 +1822,40 @@ createApp({
       }
     },
 
+    clearMarketsFilters() {
+      this.marketsListingSearch = '';
+      this.marketsStatusFilter = '';
+      this.marketsConditionFilter = '';
+      this.marketsMinPrice = '';
+      this.marketsMaxPrice = '';
+      this.marketsMinDays = '';
+      this.marketsMaxDays = '';
+      this.marketsRegex = '';
+      this.marketsRegexError = '';
+      this.marketsListingPage = 1;
+      this.loadMarketListings();
+    },
+
+    _debouncedMarketsReload() {
+      clearTimeout(this._marketsFilterTimer);
+      this._marketsFilterTimer = setTimeout(() => {
+        this.marketsListingPage = 1;
+        this.loadMarketListings();
+      }, 400);
+    },
+
     async openMarketJob(job) {
       this.marketsSelected = job;
       this.marketsListingSearch = '';
       this.marketsStatusFilter = '';
+      this.marketsConditionFilter = '';
+      this.marketsMinPrice = '';
+      this.marketsMaxPrice = '';
+      this.marketsMinDays = '';
+      this.marketsMaxDays = '';
+      this.marketsRegex = '';
+      this.marketsRegexError = '';
+      this.marketsShowFilters = false;
       this.marketsListingSortKey = 'daysOnMarket';
       this.marketsListingSortDir = 1;
       this.marketsListingPage = 1;
@@ -1799,6 +1864,7 @@ createApp({
 
     async loadMarketListings() {
       this.marketsListingsLoading = true;
+      this.marketsRegexError = '';
       try {
         const params = new URLSearchParams();
         params.set('page', this.marketsListingPage);
@@ -1811,6 +1877,24 @@ createApp({
         if (this.marketsListingSearch) {
           params.set('search', this.marketsListingSearch);
         }
+        if (this.marketsConditionFilter) {
+          params.set('condition', this.marketsConditionFilter);
+        }
+        if (this.marketsMinPrice) {
+          params.set('minPrice', this.marketsMinPrice);
+        }
+        if (this.marketsMaxPrice) {
+          params.set('maxPrice', this.marketsMaxPrice);
+        }
+        if (this.marketsMinDays) {
+          params.set('minDays', this.marketsMinDays);
+        }
+        if (this.marketsMaxDays) {
+          params.set('maxDays', this.marketsMaxDays);
+        }
+        if (this.marketsRegex) {
+          params.set('regex', this.marketsRegex);
+        }
         const data = await this.apiCall(
           `/markets/${this.marketsSelected.jobId}/listings?${params.toString()}`
         );
@@ -1818,7 +1902,11 @@ createApp({
         this.marketsListingTotal = data.totalCount;
         this.marketsListingStats = data.stats;
       } catch (error) {
-        this.marketsError = error.message;
+        if (error.message?.includes('regex') || error.message?.includes('Invalid')) {
+          this.marketsRegexError = 'Invalid regex pattern';
+        } else {
+          this.marketsError = error.message;
+        }
       } finally {
         this.marketsListingsLoading = false;
       }
