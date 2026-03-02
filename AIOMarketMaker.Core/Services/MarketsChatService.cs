@@ -32,6 +32,15 @@ public interface IMarketsChatService
 
 public class MarketsChatService : IMarketsChatService
 {
+    private record QueryToolSample(string? Title, string? Price, string? ListingStatus, string? Condition, int DaysOnMarket);
+
+    private record QueryToolResult(
+        int TotalCount, int ActiveCount, int SoldCount, int SellThrough,
+        int AvgDaysToSell, decimal AvgPrice, decimal MinPrice, decimal MaxPrice,
+        IEnumerable<QueryToolSample> SampleListings);
+
+    private record ToolError(string Error);
+
     private readonly IChatClient _chatClient;
     private readonly IMarketListingsQueryService _queryService;
     private readonly ILogger<MarketsChatService> _logger;
@@ -69,17 +78,10 @@ public class MarketsChatService : IMarketsChatService
                         jobId, status, null, condition, minPrice, maxPrice,
                         minDays, maxDays, regex, "daysOnMarket", "asc", 1, 20));
 
-                    var sample = result.Items.Select(l => new
-                    {
-                        l.Title,
-                        Price = l.Price?.ToString("F2"),
-                        l.ListingStatus,
-                        l.Condition,
-                        l.DaysOnMarket
-                    });
+                    var sample = result.Items.Select(l => new QueryToolSample(
+                        l.Title, l.Price?.ToString("F2"), l.ListingStatus, l.Condition, l.DaysOnMarket));
 
-                    return JsonSerializer.Serialize(new
-                    {
+                    return JsonSerializer.Serialize(new QueryToolResult(
                         result.TotalCount,
                         result.Stats.ActiveCount,
                         result.Stats.SoldCount,
@@ -88,17 +90,16 @@ public class MarketsChatService : IMarketsChatService
                         result.Stats.AvgPrice,
                         result.Stats.MinPrice,
                         result.Stats.MaxPrice,
-                        SampleListings = sample
-                    });
+                        sample));
                 }
                 catch (RegexParseException)
                 {
-                    return JsonSerializer.Serialize(new { Error = "Invalid regex pattern. Fix the syntax and try again." });
+                    return JsonSerializer.Serialize(new ToolError("Invalid regex pattern. Fix the syntax and try again."));
                 }
                 catch (Exception ex)
                 {
                     _logger.LogError(ex, "query_listings tool failed");
-                    return JsonSerializer.Serialize(new { Error = "Query failed. Try a different filter." });
+                    return JsonSerializer.Serialize(new ToolError("Query failed. Try a different filter."));
                 }
             },
             "query_listings",
