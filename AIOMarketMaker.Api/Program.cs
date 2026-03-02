@@ -9,6 +9,7 @@ using ScraperWorker.Services;
 using Azure.Data.Tables;
 using Azure.Storage.Blobs;
 using AIOMarketMaker.Api.Services;
+using Microsoft.Extensions.AI;
 using Serilog;
 using Serilog.Formatting.Compact;
 
@@ -158,6 +159,17 @@ builder.Services.Configure<PricingOptions>(configuration.GetSection("Pricing"));
 // Market listings query service
 builder.Services.AddScoped<IMarketListingsQueryService, MarketListingsQueryService>();
 
+// Chat agent
+builder.Services.AddSingleton<Microsoft.Extensions.AI.IChatClient>(sp =>
+{
+    var config = sp.GetRequiredService<IConfiguration>();
+    var apiKey = config["OpenAi:ApiKey"]
+        ?? throw new InvalidOperationException("OpenAi:ApiKey is not configured");
+    var model = config["OpenAi:ChatModel"] ?? "gpt-4o-mini";
+    return new OpenAI.Chat.ChatClient(model, apiKey).AsIChatClient();
+});
+builder.Services.AddScoped<IMarketsChatService, MarketsChatService>();
+
 // ComparablesEtlService
 builder.Services.AddScoped<IComparablesEtlService, ComparablesEtlService>();
 builder.Services.AddSingleton<IBatchStage, ComparablesBatchStage>();
@@ -193,6 +205,7 @@ app.MapListingEndpoints();
 app.MapScrapeEndpoints();
 app.MapOverviewEndpoints();
 app.MapMarketsEndpoints();
+app.MapChatEndpoints();
 
 app.Run();
 
