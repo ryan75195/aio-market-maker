@@ -139,6 +139,11 @@ createApp({
       marketsRegex: '',
       marketsRegexError: '',
       marketsShowFilters: false,
+      // Chat panel
+      marketsChatOpen: false,
+      marketsChatMessages: [],
+      marketsChatInput: '',
+      marketsChatLoading: false,
       marketsListingSortKey: 'daysOnMarket',
       marketsListingSortDir: 1,
       marketsListingPage: 1,
@@ -1856,6 +1861,10 @@ createApp({
       this.marketsRegex = '';
       this.marketsRegexError = '';
       this.marketsShowFilters = false;
+      this.marketsChatOpen = false;
+      this.marketsChatMessages = [];
+      this.marketsChatInput = '';
+      this.marketsChatLoading = false;
       this.marketsListingSortKey = 'daysOnMarket';
       this.marketsListingSortDir = 1;
       this.marketsListingPage = 1;
@@ -1948,6 +1957,80 @@ createApp({
       if (val <= 7) { return 'st-high'; }
       if (val <= 21) { return 'st-mid'; }
       return 'st-low';
+    },
+
+    // Chat panel methods
+    toggleMarketsChat() {
+      this.marketsChatOpen = !this.marketsChatOpen;
+      if (this.marketsChatOpen && this.marketsChatMessages.length === 0) {
+        const term = this.marketsSelected?.searchTerm || 'this category';
+        this.marketsChatMessages.push({
+          role: 'assistant',
+          text: `I can help you isolate specific variants within "${term}". Describe what you're looking for — e.g. "825GB console only, no bundles" — and I'll build the filter.`,
+          time: new Date()
+        });
+      }
+      this.$nextTick(() => this._scrollChatToBottom());
+    },
+
+    async sendChatMessage() {
+      const text = this.marketsChatInput.trim();
+      if (!text || this.marketsChatLoading) { return; }
+
+      this.marketsChatMessages.push({ role: 'user', text, time: new Date() });
+      this.marketsChatInput = '';
+      this.marketsChatLoading = true;
+      this.$nextTick(() => this._scrollChatToBottom());
+
+      // Stub: simulate API call delay
+      await new Promise(r => setTimeout(r, 800 + Math.random() * 1200));
+
+      this.marketsChatMessages.push({
+        role: 'assistant',
+        text: this._stubChatResponse(text),
+        time: new Date()
+      });
+      this.marketsChatLoading = false;
+      this.$nextTick(() => this._scrollChatToBottom());
+    },
+
+    handleChatKeydown(e) {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        this.sendChatMessage();
+      }
+    },
+
+    formatChatMessage(text) {
+      return text.replace(/`([^`]+)`/g, '<code>$1</code>');
+    },
+
+    chatTimeLabel(time) {
+      if (!time) { return ''; }
+      const d = new Date(time);
+      return d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+    },
+
+    _stubChatResponse(userText) {
+      const lower = userText.toLowerCase();
+      if (lower.includes('console') || lower.includes('disc') || lower.includes('digital')) {
+        return 'I\'d suggest filtering with:\n\n`^(?!.*(bundle|case|controller|\\d+\\s*x)).*console.*disc`\n\nThis matches "console" + "disc" while excluding bundles, cases, controllers, and multi-packs. Want me to apply this?';
+      }
+      if (lower.includes('no bundle') || lower.includes('exclude') || lower.includes('without')) {
+        return 'To exclude bundles and multi-packs, I\'ll add negative lookaheads:\n\n`^(?!.*(bundle|lot|set|\\d+\\s*x|x\\s*\\d+))`\n\nShould I combine this with your existing filter or replace it?';
+      }
+      if (lower.includes('apply') || lower.includes('yes') || lower.includes('try')) {
+        return 'Filter applied. The results are updating now. Check the stats strip above — if the price spread looks tight, the cluster is clean. Want me to help tighten it further?';
+      }
+      if (lower.includes('etb') || lower.includes('elite trainer') || lower.includes('booster')) {
+        return 'For Pokemon TCG, I\'d start with:\n\n`^(?!.*(case|bundle|booster|pok.mon\\s*cent|\\d+\\s*x)).*phantasmal.*flames.*(elite.trainer|ETB)`\n\nThis isolates single ETBs and excludes cases, bundles, booster packs, Pokemon Center exclusives, and multi-packs.';
+      }
+      return 'I can help with that. Could you be more specific about which variant?\n\n- What model, size, or storage?\n- Exclude bundles, cases, or multi-packs?\n- Any condition preference (new, used, refurbished)?';
+    },
+
+    _scrollChatToBottom() {
+      const el = this.$el?.querySelector('.chat-messages');
+      if (el) { el.scrollTop = el.scrollHeight; }
     },
   }
 }).mount('#app');

@@ -1079,9 +1079,17 @@
 
           <!-- Level 2: Job listings drill-in -->
           <template v-else>
+          <div class="markets-drill-layout">
+            <div class="markets-drill-main">
             <div style="display:flex; align-items:center; gap:12px; margin-bottom:16px">
               <button class="back-btn" @click="backToMarkets()">&larr; Back</button>
               <h2 style="font-size:18px; color:#fff">{{ marketsSelected.searchTerm }}</h2>
+              <button class="chat-toggle-btn" :class="{ active: marketsChatOpen }" @click="toggleMarketsChat()" style="margin-left:auto">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z"/>
+                </svg>
+                AI Assistant
+              </button>
             </div>
 
             <!-- KPI strip -->
@@ -1200,6 +1208,47 @@
               </span>
               <button class="pill" :disabled="marketsListingPage >= Math.ceil(marketsListingTotal / marketsListingPageSize)" @click="marketsListingPage++; loadMarketListings()">Next</button>
             </div>
+            </div><!-- /.markets-drill-main -->
+
+            <!-- AI Chat Panel -->
+            <div v-if="marketsChatOpen" class="chat-panel">
+              <div class="chat-header">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#4a9eff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z"/>
+                </svg>
+                <span class="chat-header-title">AI Assistant</span>
+                <button class="chat-close-btn" @click="marketsChatOpen = false" title="Close">&times;</button>
+              </div>
+
+              <div class="chat-messages">
+                <div v-for="(msg, i) in marketsChatMessages" :key="i" class="chat-msg" :class="msg.role">
+                  <div class="chat-msg-bubble" v-html="formatChatMessage(msg.text)"></div>
+                  <div class="chat-msg-time">{{ chatTimeLabel(msg.time) }}</div>
+                </div>
+                <div v-if="marketsChatLoading" class="chat-typing">
+                  <div class="chat-typing-dot"></div>
+                  <div class="chat-typing-dot"></div>
+                  <div class="chat-typing-dot"></div>
+                </div>
+              </div>
+
+              <div class="chat-input-area">
+                <textarea
+                  class="chat-input"
+                  v-model="marketsChatInput"
+                  placeholder="Describe the variant you want to isolate..."
+                  rows="1"
+                  @keydown="handleChatKeydown($event)"
+                  @input="$event.target.style.height = 'auto'; $event.target.style.height = Math.min($event.target.scrollHeight, 120) + 'px'"
+                ></textarea>
+                <button class="chat-send-btn" @click="sendChatMessage()" :disabled="!marketsChatInput.trim() || marketsChatLoading">
+                  <svg viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
+                  </svg>
+                </button>
+              </div>
+            </div>
+          </div><!-- /.markets-drill-layout -->
           </template>
         </div>
 
