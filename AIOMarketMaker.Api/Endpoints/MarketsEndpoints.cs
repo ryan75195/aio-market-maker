@@ -22,6 +22,26 @@ public record MarketsResponse(
     IEnumerable<JobMarketStats> Jobs,
     IEnumerable<string> AllCategories);
 
+public record JobListingEntry(
+    int Id,
+    string? ListingId,
+    string? Title,
+    decimal? Price,
+    string? Currency,
+    string? ListingStatus,
+    string? Condition,
+    int DaysOnMarket,
+    DateTime? EndDateUtc,
+    DateTime CreatedUtc,
+    string? Url);
+
+public record JobListingsResponse(
+    IEnumerable<JobListingEntry> Items,
+    int TotalCount,
+    int Page,
+    int PageSize,
+    int TotalPages);
+
 public static class MarketsCalc
 {
     public static int SellThrough(int active, int sold)
@@ -43,6 +63,12 @@ public static class MarketsCalc
         }
 
         return Math.Round((decimal)sold / lookbackDays, 1);
+    }
+
+    public static int DaysOnMarket(DateTime createdUtc, DateTime? endDate)
+    {
+        var end = endDate ?? DateTime.UtcNow;
+        return Math.Max(0, (int)(end.Date - createdUtc.Date).TotalDays);
     }
 }
 
@@ -161,7 +187,11 @@ public static class MarketsEndpoints
         return Results.Ok(new MarketsResponse(jobs, allCategories));
     }
 
-    // Task 3 implements this method — leave as stub for now
+    private static readonly HashSet<string> AllowedListingSorts = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "title", "price", "listingStatus", "condition", "daysOnMarket", "createdUtc"
+    };
+
     private static async Task<IResult> GetJobListings(
         int jobId,
         EtlDbContext db,
@@ -172,7 +202,80 @@ public static class MarketsEndpoints
         int page = 1,
         int pageSize = 50)
     {
-        await Task.CompletedTask;
-        return Results.Ok(new { message = "Not implemented yet" });
+        if (!AllowedListingSorts.Contains(sortBy))
+        {
+            sortBy = "daysOnMarket";
+        }
+
+        var direction = sortDir.Equals("desc", StringComparison.OrdinalIgnoreCase) ? "DESC" : "ASC";
+        page = Math.Max(1, page);
+        pageSize = Math.Clamp(pageSize, 1, 200);
+        var offset = (page - 1) * pageSize;
+
+        // Build WHERE conditions
+        var conditions = new List<string> { $"l.ScrapeJobId = {jobId}" };
+
+        if (!string.IsNullOrWhiteSpace(status))
+        {
+            var validStatuses = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+                { "Active", "Sold", "Ended", "OutOfStock" };
+            if (validStatuses.Contains(status))
+            {
+                conditions.Add($"l.ListingStatus = '{status}'");
+            }
+        }
+
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var escaped = search.Replace("'", "''");
+            conditions.Add($"l.Title LIKE '%{escaped}%'");
+        }
+
+        var where = string.Join(" AND ", conditions);
+
+        var sortColumn = sortBy switch
+        {
+            "daysOnMarket" => "DATEDIFF(DAY, l.CreatedUtc, ISNULL(l.EndDateUtc, GETUTCDATE()))",
+            "title" => "l.Title",
+            "price" => "l.Price",
+            "listingStatus" => "l.ListingStatus",
+            "condition" => "l.Condition",
+            "createdUtc" => "l.CreatedUtc",
+            _ => "DATEDIFF(DAY, l.CreatedUtc, ISNULL(l.EndDateUtc, GETUTCDATE()))"
+        };
+
+        var countSql = $"SELECT COUNT(*) FROM Listings l WHERE {where}";
+        var countResult = await DbQueryHelper.ExecuteScalar(db, countSql);
+        var totalCount = Convert.ToInt32(countResult ?? 0);
+        var totalPages = (int)Math.Ceiling((double)totalCount / pageSize);
+
+        var sql = $@"
+            SELECT l.Id, l.ListingId, l.Title, l.Price, l.Currency,
+                   l.ListingStatus, l.Condition, l.EndDateUtc, l.CreatedUtc, l.Url
+            FROM Listings l
+            WHERE {where}
+            ORDER BY {sortColumn} {direction}
+            OFFSET {offset} ROWS FETCH NEXT {pageSize} ROWS ONLY";
+
+        var listings = await DbQueryHelper.ExecuteQuery(db, sql, reader =>
+        {
+            var createdUtc = reader.GetDateTime(8);
+            var endDateUtc = reader.IsDBNull(7) ? (DateTime?)null : reader.GetDateTime(7);
+
+            return new JobListingEntry(
+                reader.GetInt32(0),
+                reader.IsDBNull(1) ? null : reader.GetString(1),
+                reader.IsDBNull(2) ? null : reader.GetString(2),
+                reader.IsDBNull(3) ? null : DbQueryHelper.SafeGetDecimal(reader, 3),
+                reader.IsDBNull(4) ? null : reader.GetString(4),
+                reader.IsDBNull(5) ? null : reader.GetString(5),
+                reader.IsDBNull(6) ? null : reader.GetString(6),
+                MarketsCalc.DaysOnMarket(createdUtc, endDateUtc),
+                endDateUtc,
+                createdUtc,
+                reader.IsDBNull(9) ? null : reader.GetString(9));
+        });
+
+        return Results.Ok(new JobListingsResponse(listings, totalCount, page, pageSize, totalPages));
     }
 }

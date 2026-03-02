@@ -49,4 +49,25 @@ public class MarketsEndpoints_UnitTests
         var result = MarketsCalc.SalesPerDay(sold: 7, lookbackDays: 3);
         Assert.That(result, Is.EqualTo(2.3m));
     }
+
+    [Test]
+    public void Should_compute_days_on_market_for_sold_listing()
+    {
+        var created = new DateTime(2026, 2, 1, 0, 0, 0, DateTimeKind.Utc);
+        var ended = new DateTime(2026, 2, 15, 0, 0, 0, DateTimeKind.Utc);
+
+        var result = MarketsCalc.DaysOnMarket(created, ended);
+
+        Assert.That(result, Is.EqualTo(14));
+    }
+
+    [Test]
+    public void Should_compute_days_on_market_for_active_listing_using_now()
+    {
+        var created = DateTime.UtcNow.AddDays(-7);
+
+        var result = MarketsCalc.DaysOnMarket(created, endDate: null);
+
+        Assert.That(result, Is.EqualTo(7));
+    }
 }
