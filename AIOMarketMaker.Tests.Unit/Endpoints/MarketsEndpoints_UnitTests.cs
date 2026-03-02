@@ -1,4 +1,4 @@
-using AIOMarketMaker.Api.Endpoints;
+using AIOMarketMaker.Core.Services;
 
 namespace AIOMarketMaker.Tests.Unit.Endpoints;
 

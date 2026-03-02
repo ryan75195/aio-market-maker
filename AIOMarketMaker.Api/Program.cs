@@ -155,6 +155,9 @@ builder.Services.AddSingleton<IVariantClassifierClient, VariantClassifier>();
 // Pricing options
 builder.Services.Configure<PricingOptions>(configuration.GetSection("Pricing"));
 
+// Market listings query service
+builder.Services.AddScoped<IMarketListingsQueryService, MarketListingsQueryService>();
+
 // ComparablesEtlService
 builder.Services.AddScoped<IComparablesEtlService, ComparablesEtlService>();
 builder.Services.AddSingleton<IBatchStage, ComparablesBatchStage>();
