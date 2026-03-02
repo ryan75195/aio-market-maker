@@ -189,6 +189,7 @@ app.MapBatchHistoryEndpoints();
 app.MapListingEndpoints();
 app.MapScrapeEndpoints();
 app.MapOverviewEndpoints();
+app.MapMarketsEndpoints();
 
 app.Run();
 
