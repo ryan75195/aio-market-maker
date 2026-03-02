@@ -136,6 +136,7 @@ createApp({
       marketsListingPage: 1,
       marketsListingPageSize: 50,
       marketsListingTotal: 0,
+      marketsListingStats: null,
     };
   },
 
@@ -432,21 +433,21 @@ createApp({
     },
 
     marketsDetailKpis() {
-      const list = this.marketsListings;
-      if (!list.length) { return { count: 0, sold: 0, active: 0, sellThrough: 0, avgDays: 0, avgPrice: '0', priceRange: '0' }; }
-      const sold = list.filter(l => l.listingStatus === 'Sold' || l.listingStatus === 'Ended');
-      const active = list.filter(l => l.listingStatus === 'Active');
-      const total = sold.length + active.length;
-      const sellThrough = total > 0 ? Math.round(sold.length / total * 100) : 0;
-      const avgDays = sold.length > 0
-        ? Math.round(sold.reduce((s, l) => s + l.daysOnMarket, 0) / sold.length)
-        : 0;
-      const prices = list.filter(l => l.price).map(l => l.price).sort((a, b) => a - b);
-      const avgPrice = prices.length > 0 ? (prices.reduce((s, p) => s + p, 0) / prices.length).toFixed(0) : '0';
-      const priceRange = prices.length > 1
-        ? prices[0].toFixed(0) + '\u2013' + prices[prices.length - 1].toFixed(0)
-        : (prices[0]?.toFixed(0) || '0');
-      return { count: list.length, sold: sold.length, active: active.length, sellThrough, avgDays, avgPrice, priceRange };
+      const s = this.marketsListingStats;
+      if (!s) { return { count: 0, sold: 0, active: 0, sellThrough: 0, avgDays: 0, avgPrice: '0', priceRange: '0' }; }
+      const avgPrice = s.avgPrice ? s.avgPrice.toFixed(0) : '0';
+      const priceRange = s.minPrice && s.maxPrice
+        ? s.minPrice.toFixed(0) + '\u2013' + s.maxPrice.toFixed(0)
+        : '0';
+      return {
+        count: this.marketsListingTotal,
+        sold: s.soldCount,
+        active: s.activeCount,
+        sellThrough: s.sellThrough,
+        avgDays: s.avgDaysToSell,
+        avgPrice,
+        priceRange,
+      };
     },
   },
 
@@ -1815,6 +1816,7 @@ createApp({
         );
         this.marketsListings = data.items;
         this.marketsListingTotal = data.totalCount;
+        this.marketsListingStats = data.stats;
       } catch (error) {
         this.marketsError = error.message;
       } finally {

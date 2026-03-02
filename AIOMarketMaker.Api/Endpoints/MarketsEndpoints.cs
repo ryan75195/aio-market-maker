@@ -35,12 +35,22 @@ public record JobListingEntry(
     DateTime CreatedUtc,
     string? Url);
 
+public record ListingsAggregateStats(
+    int ActiveCount,
+    int SoldCount,
+    int SellThrough,
+    int AvgDaysToSell,
+    decimal AvgPrice,
+    decimal MinPrice,
+    decimal MaxPrice);
+
 public record JobListingsResponse(
     IEnumerable<JobListingEntry> Items,
     int TotalCount,
     int Page,
     int PageSize,
-    int TotalPages);
+    int TotalPages,
+    ListingsAggregateStats Stats);
 
 public static class MarketsCalc
 {
@@ -276,6 +286,36 @@ public static class MarketsEndpoints
                 reader.IsDBNull(9) ? null : reader.GetString(9));
         });
 
-        return Results.Ok(new JobListingsResponse(listings, totalCount, page, pageSize, totalPages));
+        // Aggregate stats over the full filtered set (not just the current page)
+        var statsSql = $@"
+            SELECT
+                COUNT(CASE WHEN l.ListingStatus = 'Active' THEN 1 END),
+                COUNT(CASE WHEN l.ListingStatus IN ('Sold', 'Ended') THEN 1 END),
+                AVG(CASE WHEN l.ListingStatus IN ('Sold', 'Ended') AND l.EndDateUtc IS NOT NULL
+                    THEN DATEDIFF(DAY, l.CreatedUtc, l.EndDateUtc) END),
+                AVG(CASE WHEN l.Price > 0 THEN l.Price END),
+                MIN(CASE WHEN l.Price > 0 THEN l.Price END),
+                MAX(CASE WHEN l.Price > 0 THEN l.Price END)
+            FROM Listings l
+            WHERE {where}";
+
+        var statsRows = await DbQueryHelper.ExecuteQuery(db, statsSql, reader =>
+        {
+            var activeCount = reader.GetInt32(0);
+            var soldCount = reader.GetInt32(1);
+            return new ListingsAggregateStats(
+                activeCount,
+                soldCount,
+                MarketsCalc.SellThrough(activeCount, soldCount),
+                reader.IsDBNull(2) ? 0 : reader.GetInt32(2),
+                reader.IsDBNull(3) ? 0m : DbQueryHelper.SafeGetDecimal(reader, 3),
+                reader.IsDBNull(4) ? 0m : DbQueryHelper.SafeGetDecimal(reader, 4),
+                reader.IsDBNull(5) ? 0m : DbQueryHelper.SafeGetDecimal(reader, 5));
+        });
+
+        var stats = statsRows.FirstOrDefault()
+            ?? new ListingsAggregateStats(0, 0, 0, 0, 0m, 0m, 0m);
+
+        return Results.Ok(new JobListingsResponse(listings, totalCount, page, pageSize, totalPages, stats));
     }
 }
