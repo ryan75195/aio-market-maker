@@ -450,6 +450,16 @@ createApp({
     },
   },
 
+  watch: {
+    marketsListingSearch() {
+      clearTimeout(this._marketsSearchTimer);
+      this._marketsSearchTimer = setTimeout(() => {
+        this.marketsListingPage = 1;
+        this.loadMarketListings();
+      }, 300);
+    },
+  },
+
   async mounted() {
     this._onKeydown = (e) => {
       if (e.key === 'Escape' && this.confirmDialog) {
