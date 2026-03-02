@@ -1966,7 +1966,7 @@ createApp({
         const term = this.marketsSelected?.searchTerm || 'this category';
         this.marketsChatMessages.push({
           role: 'assistant',
-          text: `I can help you isolate specific variants within "${term}". Describe what you're looking for — e.g. "825GB console only, no bundles" — and I'll build the filter.`,
+          text: `I can help you find specific variants within "${term}". Describe what you're looking for — e.g. "825GB console only, no bundles" — and I'll filter the listings for you.`,
           time: new Date()
         });
       }
@@ -1982,16 +1982,57 @@ createApp({
       this.marketsChatLoading = true;
       this.$nextTick(() => this._scrollChatToBottom());
 
-      // Stub: simulate API call delay
-      await new Promise(r => setTimeout(r, 800 + Math.random() * 1200));
+      try {
+        const body = {
+          message: text,
+          history: this.marketsChatMessages
+            .filter(m => m.role === 'user' || m.role === 'assistant')
+            .slice(0, -1)
+            .map(m => ({ role: m.role, content: m.text })),
+          currentFilters: {
+            regex: this.marketsRegex || null,
+            condition: this.marketsConditionFilter || null,
+            minPrice: this.marketsMinPrice ? Number(this.marketsMinPrice) : null,
+            maxPrice: this.marketsMaxPrice ? Number(this.marketsMaxPrice) : null,
+            minDays: this.marketsMinDays ? Number(this.marketsMinDays) : null,
+            maxDays: this.marketsMaxDays ? Number(this.marketsMaxDays) : null,
+            status: this.marketsStatusFilter || null
+          }
+        };
 
-      this.marketsChatMessages.push({
-        role: 'assistant',
-        text: this._stubChatResponse(text),
-        time: new Date()
-      });
-      this.marketsChatLoading = false;
-      this.$nextTick(() => this._scrollChatToBottom());
+        const data = await this.apiCall(
+          `/markets/${this.marketsSelected.jobId}/chat`,
+          { method: 'POST', body: JSON.stringify(body) }
+        );
+
+        this.marketsChatMessages.push({
+          role: 'assistant',
+          text: data.message,
+          time: new Date()
+        });
+
+        // Auto-apply filters if the agent set them
+        if (data.filters) {
+          this.marketsRegex = data.filters.regex || '';
+          this.marketsConditionFilter = data.filters.condition || '';
+          this.marketsMinPrice = data.filters.minPrice != null ? String(data.filters.minPrice) : '';
+          this.marketsMaxPrice = data.filters.maxPrice != null ? String(data.filters.maxPrice) : '';
+          this.marketsMinDays = data.filters.minDays != null ? String(data.filters.minDays) : '';
+          this.marketsMaxDays = data.filters.maxDays != null ? String(data.filters.maxDays) : '';
+          this.marketsStatusFilter = data.filters.status || '';
+          this.marketsListingPage = 1;
+          await this.loadMarketListings();
+        }
+      } catch (error) {
+        this.marketsChatMessages.push({
+          role: 'assistant',
+          text: 'Sorry, something went wrong. Try again.',
+          time: new Date()
+        });
+      } finally {
+        this.marketsChatLoading = false;
+        this.$nextTick(() => this._scrollChatToBottom());
+      }
     },
 
     handleChatKeydown(e) {
@@ -2009,23 +2050,6 @@ createApp({
       if (!time) { return ''; }
       const d = new Date(time);
       return d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
-    },
-
-    _stubChatResponse(userText) {
-      const lower = userText.toLowerCase();
-      if (lower.includes('console') || lower.includes('disc') || lower.includes('digital')) {
-        return 'I\'d suggest filtering with:\n\n`^(?!.*(bundle|case|controller|\\d+\\s*x)).*console.*disc`\n\nThis matches "console" + "disc" while excluding bundles, cases, controllers, and multi-packs. Want me to apply this?';
-      }
-      if (lower.includes('no bundle') || lower.includes('exclude') || lower.includes('without')) {
-        return 'To exclude bundles and multi-packs, I\'ll add negative lookaheads:\n\n`^(?!.*(bundle|lot|set|\\d+\\s*x|x\\s*\\d+))`\n\nShould I combine this with your existing filter or replace it?';
-      }
-      if (lower.includes('apply') || lower.includes('yes') || lower.includes('try')) {
-        return 'Filter applied. The results are updating now. Check the stats strip above — if the price spread looks tight, the cluster is clean. Want me to help tighten it further?';
-      }
-      if (lower.includes('etb') || lower.includes('elite trainer') || lower.includes('booster')) {
-        return 'For Pokemon TCG, I\'d start with:\n\n`^(?!.*(case|bundle|booster|pok.mon\\s*cent|\\d+\\s*x)).*phantasmal.*flames.*(elite.trainer|ETB)`\n\nThis isolates single ETBs and excludes cases, bundles, booster packs, Pokemon Center exclusives, and multi-packs.';
-      }
-      return 'I can help with that. Could you be more specific about which variant?\n\n- What model, size, or storage?\n- Exclude bundles, cases, or multi-packs?\n- Any condition preference (new, used, refurbished)?';
     },
 
     _scrollChatToBottom() {
