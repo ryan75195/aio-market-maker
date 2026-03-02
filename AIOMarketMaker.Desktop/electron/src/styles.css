@@ -1998,3 +1998,228 @@ body {
 @keyframes spin {
   to { transform: rotate(360deg); }
 }
+
+/* ============================================================
+   MARKETS TAB
+   ============================================================ */
+
+/* Header stat (used next to view title) */
+.header-stat {
+  font-size: 12px;
+  color: #808080;
+}
+.header-stat strong {
+  color: #e0e0e0;
+}
+
+/* Toolbar row */
+.toolbar {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 12px;
+  flex-shrink: 0;
+}
+
+/* Search box */
+.search-box {
+  background: #252526;
+  border: 1px solid #3c3c3c;
+  color: #e0e0e0;
+  padding: 6px 10px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-family: inherit;
+  width: 200px;
+}
+.search-box:focus {
+  outline: none;
+  border-color: #4a9eff;
+}
+.search-box::placeholder {
+  color: #5a5a5a;
+}
+
+/* Pill buttons (filter toggles) */
+.pill {
+  background: transparent;
+  border: 1px solid #3c3c3c;
+  color: #808080;
+  padding: 4px 10px;
+  border-radius: 3px;
+  font-size: 11px;
+  cursor: pointer;
+  font-family: inherit;
+  transition: all 0.1s;
+}
+.pill:hover {
+  border-color: #808080;
+  color: #e0e0e0;
+}
+.pill.active {
+  background: #4a9eff;
+  border-color: #4a9eff;
+  color: #fff;
+}
+.pill:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Scrollable table container */
+.table-wrap {
+  flex: 1;
+  overflow-y: auto;
+  border: 1px solid #3c3c3c;
+  border-radius: 4px;
+}
+.table-wrap::-webkit-scrollbar {
+  width: 6px;
+}
+.table-wrap::-webkit-scrollbar-track {
+  background: #1e1e1e;
+}
+.table-wrap::-webkit-scrollbar-thumb {
+  background: #3c3c3c;
+  border-radius: 3px;
+}
+
+/* Table header: sticky, sortable */
+.table-wrap table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.table-wrap thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: #252526;
+  border-bottom: 1px solid #3c3c3c;
+  padding: 8px 12px;
+  text-align: left;
+  font-size: 11px;
+  font-weight: 500;
+  color: #808080;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+.table-wrap thead th:hover {
+  color: #e0e0e0;
+}
+.table-wrap thead th.sorted {
+  color: #4a9eff;
+}
+.table-wrap thead th.sorted::after {
+  content: ' \25BE';
+  font-size: 10px;
+}
+.table-wrap thead th.sorted.asc::after {
+  content: ' \25B4';
+}
+.th-right {
+  text-align: right;
+}
+
+/* Table body rows */
+.table-wrap tbody tr {
+  border-bottom: 1px solid #3c3c3c;
+  transition: background 0.1s;
+}
+.table-wrap tbody tr.clickable {
+  cursor: pointer;
+}
+.table-wrap tbody tr:hover {
+  background: #2a2a2b;
+}
+.table-wrap tbody tr:last-child {
+  border-bottom: none;
+}
+.table-wrap td {
+  padding: 7px 12px;
+  white-space: nowrap;
+}
+
+/* Numeric cells (monospace, right-aligned) */
+.num {
+  font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+  font-size: 12px;
+  text-align: right;
+}
+
+/* Back button */
+.back-btn {
+  background: none;
+  border: 1px solid #3c3c3c;
+  color: #808080;
+  cursor: pointer;
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 4px;
+  font-family: inherit;
+}
+.back-btn:hover {
+  border-color: #4a9eff;
+  color: #4a9eff;
+}
+
+/* KPI strip */
+.kpi-row {
+  display: flex;
+  gap: 1px;
+  margin-bottom: 16px;
+  border-radius: 4px;
+  overflow: hidden;
+  background: #3c3c3c;
+}
+.kpi {
+  flex: 1;
+  background: #252526;
+  padding: 10px 14px;
+  text-align: center;
+}
+.kpi-val {
+  font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+  font-size: 18px;
+  font-weight: 600;
+  color: #fff;
+}
+
+/* Sell-through / days-to-sell color coding */
+.st-high { color: #22c55e; }
+.st-mid  { color: #e0e0e0; }
+.st-low  { color: #808080; }
+
+/* Status badge variants for markets listings */
+.status-badge.status-active {
+  background: rgba(14, 99, 156, 0.2);
+  color: #4a9eff;
+}
+.status-badge.status-sold {
+  background: rgba(34, 197, 94, 0.13);
+  color: #22c55e;
+}
+.status-badge.status-ended {
+  background: rgba(128, 128, 128, 0.13);
+  color: #808080;
+}
+
+/* Loading / error states */
+.loading-state {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  color: #808080;
+  font-size: 14px;
+}
+.error-state {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  color: #f87171;
+  font-size: 14px;
+}

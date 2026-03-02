@@ -116,7 +116,26 @@ createApp({
         topOpportunities: [],
         recentRuns: []
       },
-      overviewCharts: {}
+      overviewCharts: {},
+      // Markets tab state
+      marketsLoading: false,
+      marketsError: null,
+      marketsData: null,
+      marketsSearch: '',
+      marketsGroupFilter: '',
+      marketsSortKey: 'salesPerDay',
+      marketsSortDir: -1,
+      // Markets detail (drill-in)
+      marketsSelected: null,
+      marketsListings: [],
+      marketsListingsLoading: false,
+      marketsListingSearch: '',
+      marketsStatusFilter: '',
+      marketsListingSortKey: 'daysOnMarket',
+      marketsListingSortDir: 1,
+      marketsListingPage: 1,
+      marketsListingPageSize: 50,
+      marketsListingTotal: 0,
     };
   },
 
@@ -375,7 +394,60 @@ createApp({
       const activeBatch = this.batches.find(b => ['Running', 'Queued'].includes(b.status));
       if (!activeBatch) { return null; }
       return this._batchStats(activeBatch);
-    }
+    },
+
+    // ── Markets tab computed ─────────────────────────────────
+
+    filteredMarkets() {
+      if (!this.marketsData?.jobs) { return []; }
+      let list = this.marketsData.jobs;
+      if (this.marketsSearch) {
+        const q = this.marketsSearch.toLowerCase();
+        list = list.filter(j => j.searchTerm?.toLowerCase().includes(q));
+      }
+      if (this.marketsGroupFilter) {
+        list = list.filter(j => j.categories?.includes(this.marketsGroupFilter));
+      }
+      const key = this.marketsSortKey;
+      const dir = this.marketsSortDir;
+      if (key === 'searchTerm') {
+        return [...list].sort((a, b) => (a.searchTerm || '').localeCompare(b.searchTerm || '') * dir);
+      }
+      return [...list].sort((a, b) => ((a[key] ?? 0) - (b[key] ?? 0)) * dir);
+    },
+
+    marketsMaxVelocity() {
+      if (!this.marketsData?.jobs) { return 1; }
+      return Math.max(...this.marketsData.jobs.map(j => j.salesPerDay), 1);
+    },
+
+    marketsTotalSold() {
+      if (!this.marketsData?.jobs) { return 0; }
+      return this.marketsData.jobs.reduce((s, j) => s + j.soldCount, 0);
+    },
+
+    marketsTotalSalesPerDay() {
+      if (!this.marketsData?.jobs) { return 0; }
+      return this.marketsData.jobs.reduce((s, j) => s + j.salesPerDay, 0);
+    },
+
+    marketsDetailKpis() {
+      const list = this.marketsListings;
+      if (!list.length) { return { count: 0, sold: 0, active: 0, sellThrough: 0, avgDays: 0, avgPrice: '0', priceRange: '0' }; }
+      const sold = list.filter(l => l.listingStatus === 'Sold' || l.listingStatus === 'Ended');
+      const active = list.filter(l => l.listingStatus === 'Active');
+      const total = sold.length + active.length;
+      const sellThrough = total > 0 ? Math.round(sold.length / total * 100) : 0;
+      const avgDays = sold.length > 0
+        ? Math.round(sold.reduce((s, l) => s + l.daysOnMarket, 0) / sold.length)
+        : 0;
+      const prices = list.filter(l => l.price).map(l => l.price).sort((a, b) => a - b);
+      const avgPrice = prices.length > 0 ? (prices.reduce((s, p) => s + p, 0) / prices.length).toFixed(0) : '0';
+      const priceRange = prices.length > 1
+        ? prices[0].toFixed(0) + '\u2013' + prices[prices.length - 1].toFixed(0)
+        : (prices[0]?.toFixed(0) || '0');
+      return { count: list.length, sold: sold.length, active: active.length, sellThrough, avgDays, avgPrice, priceRange };
+    },
   },
 
   async mounted() {
@@ -1688,6 +1760,94 @@ createApp({
 
     getEbayListingUrl(listingId) {
       return `https://www.ebay.co.uk/itm/${listingId}`;
-    }
+    },
+
+    // ── Markets tab methods ──────────────────────────────────
+
+    async loadMarkets() {
+      this.marketsLoading = true;
+      this.marketsError = null;
+      try {
+        this.marketsData = await this.apiCall('/api/markets');
+      } catch (error) {
+        this.marketsError = error.message;
+      } finally {
+        this.marketsLoading = false;
+      }
+    },
+
+    async openMarketJob(job) {
+      this.marketsSelected = job;
+      this.marketsListingSearch = '';
+      this.marketsStatusFilter = '';
+      this.marketsListingSortKey = 'daysOnMarket';
+      this.marketsListingSortDir = 1;
+      this.marketsListingPage = 1;
+      await this.loadMarketListings();
+    },
+
+    async loadMarketListings() {
+      this.marketsListingsLoading = true;
+      try {
+        const params = new URLSearchParams();
+        params.set('page', this.marketsListingPage);
+        params.set('pageSize', this.marketsListingPageSize);
+        params.set('sortBy', this.marketsListingSortKey);
+        params.set('sortDir', this.marketsListingSortDir === 1 ? 'asc' : 'desc');
+        if (this.marketsStatusFilter) {
+          params.set('status', this.marketsStatusFilter);
+        }
+        if (this.marketsListingSearch) {
+          params.set('search', this.marketsListingSearch);
+        }
+        const data = await this.apiCall(
+          `/api/markets/${this.marketsSelected.jobId}/listings?${params.toString()}`
+        );
+        this.marketsListings = data.items;
+        this.marketsListingTotal = data.totalCount;
+      } catch (error) {
+        this.marketsError = error.message;
+      } finally {
+        this.marketsListingsLoading = false;
+      }
+    },
+
+    backToMarkets() {
+      this.marketsSelected = null;
+      this.marketsListings = [];
+    },
+
+    setMarketsSort(key) {
+      if (this.marketsSortKey === key) {
+        this.marketsSortDir *= -1;
+      } else {
+        this.marketsSortKey = key;
+        this.marketsSortDir = key === 'searchTerm' ? 1 : -1;
+      }
+    },
+
+    setMarketsListingSort(key) {
+      if (this.marketsListingSortKey === key) {
+        this.marketsListingSortDir *= -1;
+      } else {
+        this.marketsListingSortKey = key;
+        this.marketsListingSortDir = (key === 'title' || key === 'listingStatus' || key === 'condition') ? 1 : -1;
+      }
+      this.marketsListingPage = 1;
+      this.loadMarketListings();
+    },
+
+    marketsStClass(val) {
+      if (val >= 40) { return 'st-high'; }
+      if (val >= 25) { return 'st-mid'; }
+      return 'st-low';
+    },
+
+    marketsDaysClass(val) {
+      if (val == null) { return ''; }
+      if (val <= 7) { return 'st-high'; }
+      if (val <= 21) { return 'st-mid'; }
+      return 'st-low';
+    },
   }
 }).mount('#app');

@@ -37,6 +37,7 @@
         <div class="nav-items">
           <button :class="{ active: currentView === 'overview' }" @click="currentView = 'overview'; loadOverview()">Overview</button>
           <button :class="{ active: currentView === 'opportunities' }" @click="currentView = 'opportunities'; loadOpportunities()">Opportunities</button>
+          <button :class="{ active: currentView === 'markets' }" @click="currentView = 'markets'; loadMarkets()">Markets</button>
           <button :class="{ active: currentView === 'index' }" @click="currentView = 'index'; historyMode = 'batches'; showJobsPanel = false; loadHistory()">Index</button>
           <button :class="{ active: currentView === 'settings' }" @click="currentView = 'settings'">Settings</button>
         </div>
@@ -996,6 +997,175 @@
             </table>
             </div>
           </div>
+        </div>
+
+        <!-- MARKETS VIEW -->
+        <div v-if="currentView === 'markets'" class="view">
+
+          <!-- Loading / Error -->
+          <div v-if="marketsLoading" class="loading-state">Loading market data...</div>
+          <div v-else-if="marketsError" class="error-state">{{ marketsError }}</div>
+
+          <!-- Level 1: Job list -->
+          <template v-else-if="!marketsSelected">
+            <div class="view-header">
+              <h2>Markets</h2>
+              <span class="header-stat">
+                <strong>{{ filteredMarkets.length }}</strong> categories &middot;
+                <strong>{{ marketsTotalSold.toLocaleString() }}</strong> sold (180d) &middot;
+                <strong>{{ marketsTotalSalesPerDay.toFixed(0) }}</strong> sales/day
+              </span>
+            </div>
+
+            <div class="toolbar" style="margin-bottom: 12px;">
+              <input type="text" v-model="marketsSearch" class="search-box" placeholder="Filter..." style="width:200px">
+              <div class="group-pills" style="display:flex; gap:4px; flex-wrap:wrap;">
+                <span class="pill" :class="{ active: !marketsGroupFilter }" @click="marketsGroupFilter = ''">All</span>
+                <span v-for="g in (marketsData?.allCategories || [])" :key="g" class="pill"
+                      :class="{ active: marketsGroupFilter === g }"
+                      @click="marketsGroupFilter = marketsGroupFilter === g ? '' : g">{{ g }}</span>
+              </div>
+            </div>
+
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th :class="{ sorted: marketsSortKey === 'searchTerm', asc: marketsSortKey === 'searchTerm' && marketsSortDir === 1 }"
+                        @click="setMarketsSort('searchTerm')" style="min-width:200px">Category</th>
+                    <th class="th-right" :class="{ sorted: marketsSortKey === 'salesPerDay', asc: marketsSortKey === 'salesPerDay' && marketsSortDir === 1 }"
+                        @click="setMarketsSort('salesPerDay')">Sales/Day</th>
+                    <th class="th-right" :class="{ sorted: marketsSortKey === 'soldCount', asc: marketsSortKey === 'soldCount' && marketsSortDir === 1 }"
+                        @click="setMarketsSort('soldCount')">Sold</th>
+                    <th class="th-right" :class="{ sorted: marketsSortKey === 'activeCount', asc: marketsSortKey === 'activeCount' && marketsSortDir === 1 }"
+                        @click="setMarketsSort('activeCount')">Active</th>
+                    <th class="th-right" :class="{ sorted: marketsSortKey === 'sellThrough', asc: marketsSortKey === 'sellThrough' && marketsSortDir === 1 }"
+                        @click="setMarketsSort('sellThrough')">Sell-Thru</th>
+                    <th class="th-right" :class="{ sorted: marketsSortKey === 'avgDaysToSell', asc: marketsSortKey === 'avgDaysToSell' && marketsSortDir === 1 }"
+                        @click="setMarketsSort('avgDaysToSell')">Avg Days to Sell</th>
+                    <th class="th-right" :class="{ sorted: marketsSortKey === 'avgAskPrice', asc: marketsSortKey === 'avgAskPrice' && marketsSortDir === 1 }"
+                        @click="setMarketsSort('avgAskPrice')">Avg Ask</th>
+                    <th class="th-right" :class="{ sorted: marketsSortKey === 'medianSoldPrice', asc: marketsSortKey === 'medianSoldPrice' && marketsSortDir === 1 }"
+                        @click="setMarketsSort('medianSoldPrice')">Med. Sold</th>
+                    <th class="th-right">P25-P75</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="j in filteredMarkets" :key="j.jobId" class="clickable" @click="openMarketJob(j)">
+                    <td>
+                      <span style="font-weight:500; color:#fff">{{ j.searchTerm }}</span>
+                      <span style="font-size:11px; color:var(--text-dim); margin-left:8px">{{ (j.categories || []).join(', ') }}</span>
+                    </td>
+                    <td class="num">
+                      <div style="display:flex; align-items:center; gap:8px; justify-content:flex-end">
+                        <span>{{ j.salesPerDay.toFixed(1) }}</span>
+                        <div style="width:60px; height:4px; background:#2a2a2b; border-radius:2px; overflow:hidden">
+                          <div :style="{ width: (j.salesPerDay / marketsMaxVelocity * 100) + '%', height:'100%', borderRadius:'2px', background: j.salesPerDay >= 10 ? 'var(--cyan, #22d3ee)' : 'var(--accent, #4a9eff)' }"></div>
+                        </div>
+                      </div>
+                    </td>
+                    <td class="num">{{ j.soldCount.toLocaleString() }}</td>
+                    <td class="num" style="color:var(--text-muted)">{{ j.activeCount.toLocaleString() }}</td>
+                    <td class="num" :class="marketsStClass(j.sellThrough)">{{ j.sellThrough }}%</td>
+                    <td class="num" :class="marketsDaysClass(j.avgDaysToSell)">{{ j.avgDaysToSell != null ? j.avgDaysToSell + 'd' : '–' }}</td>
+                    <td class="num" style="color:var(--text-muted)">{{ j.avgAskPrice != null ? '\u00A3' + j.avgAskPrice.toLocaleString() : '–' }}</td>
+                    <td class="num">{{ j.medianSoldPrice != null ? '\u00A3' + j.medianSoldPrice.toLocaleString() : '–' }}</td>
+                    <td class="num" style="color:var(--text-muted)">{{ j.p25SoldPrice != null ? '\u00A3' + j.p25SoldPrice + '–' + j.p75SoldPrice : '–' }}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </template>
+
+          <!-- Level 2: Job listings drill-in -->
+          <template v-else>
+            <div style="display:flex; align-items:center; gap:12px; margin-bottom:16px">
+              <button class="back-btn" @click="backToMarkets()">&larr; Back</button>
+              <h2 style="font-size:18px; color:#fff">{{ marketsSelected.searchTerm }}</h2>
+            </div>
+
+            <!-- KPI strip -->
+            <div class="kpi-row" style="margin-bottom:16px">
+              <div class="kpi">
+                <div class="kpi-val">{{ marketsDetailKpis.count }}</div>
+                <div class="kpi-label">Showing</div>
+              </div>
+              <div class="kpi">
+                <div class="kpi-val">{{ marketsDetailKpis.sold }}</div>
+                <div class="kpi-label">Sold</div>
+              </div>
+              <div class="kpi">
+                <div class="kpi-val">{{ marketsDetailKpis.active }}</div>
+                <div class="kpi-label">Active</div>
+              </div>
+              <div class="kpi">
+                <div class="kpi-val" :class="marketsStClass(marketsDetailKpis.sellThrough)">{{ marketsDetailKpis.sellThrough }}%</div>
+                <div class="kpi-label">Sell-Through</div>
+              </div>
+              <div class="kpi">
+                <div class="kpi-val" :class="marketsDaysClass(marketsDetailKpis.avgDays)">{{ marketsDetailKpis.avgDays }}d</div>
+                <div class="kpi-label">Avg Days to Sell</div>
+              </div>
+              <div class="kpi">
+                <div class="kpi-val">£{{ marketsDetailKpis.avgPrice }}</div>
+                <div class="kpi-label">Avg Price</div>
+              </div>
+              <div class="kpi">
+                <div class="kpi-val">£{{ marketsDetailKpis.priceRange }}</div>
+                <div class="kpi-label">Price Range</div>
+              </div>
+            </div>
+
+            <!-- Filters -->
+            <div style="display:flex; gap:8px; align-items:center; margin-bottom:12px">
+              <input type="text" v-model="marketsListingSearch" class="search-box" placeholder="Filter listings..." style="width:200px">
+              <div style="display:flex; gap:4px">
+                <span class="pill" :class="{ active: !marketsStatusFilter }" @click="marketsStatusFilter = ''; marketsListingPage = 1; loadMarketListings()">All</span>
+                <span class="pill" :class="{ active: marketsStatusFilter === 'Active' }" @click="marketsStatusFilter = marketsStatusFilter === 'Active' ? '' : 'Active'; marketsListingPage = 1; loadMarketListings()">Active</span>
+                <span class="pill" :class="{ active: marketsStatusFilter === 'Sold' }" @click="marketsStatusFilter = marketsStatusFilter === 'Sold' ? '' : 'Sold'; marketsListingPage = 1; loadMarketListings()">Sold</span>
+              </div>
+            </div>
+
+            <div v-if="marketsListingsLoading" class="loading-state">Loading listings...</div>
+            <div class="table-wrap" v-else>
+              <table>
+                <thead>
+                  <tr>
+                    <th style="min-width:300px" @click="setMarketsListingSort('title')">Title</th>
+                    <th class="th-right" @click="setMarketsListingSort('price')">Price</th>
+                    <th @click="setMarketsListingSort('listingStatus')">Status</th>
+                    <th @click="setMarketsListingSort('condition')">Condition</th>
+                    <th class="th-right" @click="setMarketsListingSort('daysOnMarket')">Days on Market</th>
+                    <th class="th-right">Date</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="l in marketsListings" :key="l.id">
+                    <td style="max-width:400px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:500; color:#fff" :title="l.title">{{ l.title }}</td>
+                    <td class="num">{{ l.price != null ? '\u00A3' + l.price.toFixed(2) : '–' }}</td>
+                    <td>
+                      <span class="status-badge" :class="'status-' + (l.listingStatus || '').toLowerCase()">{{ l.listingStatus }}</span>
+                    </td>
+                    <td style="font-size:12px; color:var(--text-muted)">{{ l.condition || '–' }}</td>
+                    <td class="num" :class="marketsDaysClass(l.daysOnMarket)">{{ l.daysOnMarket }}d</td>
+                    <td class="num" style="color:var(--text-muted)">{{ l.endDateUtc ? new Date(l.endDateUtc).toLocaleDateString('en-GB', { day:'numeric', month:'short' }) : new Date(l.createdUtc).toLocaleDateString('en-GB', { day:'numeric', month:'short' }) }}</td>
+                  </tr>
+                </tbody>
+                <tbody v-if="marketsListings.length === 0">
+                  <tr><td colspan="6" style="text-align:center; padding:40px; color:var(--text-dim)">No listings match the current filter.</td></tr>
+                </tbody>
+              </table>
+            </div>
+
+            <!-- Pagination -->
+            <div v-if="marketsListingTotal > marketsListingPageSize" style="display:flex; justify-content:center; gap:8px; margin-top:12px">
+              <button class="pill" :disabled="marketsListingPage <= 1" @click="marketsListingPage--; loadMarketListings()">Prev</button>
+              <span style="font-size:12px; color:var(--text-muted); line-height:28px">
+                Page {{ marketsListingPage }} of {{ Math.ceil(marketsListingTotal / marketsListingPageSize) }}
+              </span>
+              <button class="pill" :disabled="marketsListingPage >= Math.ceil(marketsListingTotal / marketsListingPageSize)" @click="marketsListingPage++; loadMarketListings()">Next</button>
+            </div>
+          </template>
         </div>
 
         <!-- Settings View -->
