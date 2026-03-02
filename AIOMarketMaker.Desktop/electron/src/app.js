@@ -1778,7 +1778,7 @@ createApp({
       this.marketsLoading = true;
       this.marketsError = null;
       try {
-        this.marketsData = await this.apiCall('/api/markets');
+        this.marketsData = await this.apiCall('/markets');
       } catch (error) {
         this.marketsError = error.message;
       } finally {
@@ -1811,7 +1811,7 @@ createApp({
           params.set('search', this.marketsListingSearch);
         }
         const data = await this.apiCall(
-          `/api/markets/${this.marketsSelected.jobId}/listings?${params.toString()}`
+          `/markets/${this.marketsSelected.jobId}/listings?${params.toString()}`
         );
         this.marketsListings = data.items;
         this.marketsListingTotal = data.totalCount;
