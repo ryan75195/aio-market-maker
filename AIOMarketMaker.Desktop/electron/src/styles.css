@@ -2279,6 +2279,48 @@ body {
   to { transform: translateX(0); opacity: 1; }
 }
 
+/* Expanded / fullscreen modal */
+.chat-panel.expanded {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 860px;
+  max-width: 92vw;
+  height: 88vh;
+  min-width: unset;
+  border-left: none;
+  border-radius: 16px;
+  border: 1px solid #3c3c3c;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(74, 158, 255, 0.08);
+  z-index: 1000;
+  animation: chatExpandIn 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+@keyframes chatExpandIn {
+  from { opacity: 0; transform: translate(-50%, -50%) scale(0.92); }
+  to { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+}
+.chat-panel.expanded .chat-header {
+  border-radius: 16px 16px 0 0;
+}
+.chat-panel.expanded .chat-input-area {
+  border-radius: 0 0 16px 16px;
+}
+.chat-panel.expanded .chat-msg {
+  max-width: 80%;
+}
+.chat-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 999;
+  animation: chatOverlayIn 0.2s ease-out;
+}
+@keyframes chatOverlayIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
 .chat-header {
   display: flex;
   align-items: center;
@@ -2308,6 +2350,20 @@ body {
   font-weight: 600;
   color: #e0e0e0;
   flex: 1;
+}
+.chat-expand-btn {
+  background: none;
+  border: none;
+  color: #606070;
+  cursor: pointer;
+  padding: 4px 6px;
+  border-radius: 4px;
+  line-height: 1;
+  transition: color 0.15s, background 0.15s;
+}
+.chat-expand-btn:hover {
+  background: #3c3c3c;
+  color: #4a9eff;
 }
 .chat-close-btn {
   background: none;
@@ -2395,6 +2451,29 @@ body {
   text-align: right;
 }
 
+/* Tool call messages */
+.chat-msg.tool {
+  align-self: flex-start;
+  max-width: 100%;
+}
+.chat-tool-msg {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  font-size: 11px;
+  color: #606078;
+  border-left: 2px solid #3c3c3c;
+  transition: color 0.3s, border-color 0.3s;
+}
+.chat-tool-msg.done {
+  color: #4a9eff80;
+  border-left-color: #4a9eff40;
+}
+.chat-tool-msg.done svg {
+  color: #4a9eff;
+}
+
 /* Typing indicator */
 .chat-typing {
   display: flex;
@@ -2418,6 +2497,20 @@ body {
 @keyframes chatTypingPulse {
   0%, 60%, 100% { opacity: 0.2; transform: scale(0.8); }
   30% { opacity: 1; transform: scale(1); }
+}
+.chat-tool-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #8b8ba0;
+  font-size: 12px;
+}
+.chat-tool-spinner {
+  animation: chatToolSpin 1s linear infinite;
+}
+@keyframes chatToolSpin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
 
 /* Chat input area */
@@ -2444,6 +2537,12 @@ body {
   line-height: 1.4;
   outline: none;
   transition: border-color 0.2s, box-shadow 0.2s;
+  overflow-y: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.chat-input::-webkit-scrollbar {
+  display: none;
 }
 .chat-input:focus {
   border-color: #4a9eff;
@@ -2480,6 +2579,30 @@ body {
 .chat-send-btn svg {
   width: 16px;
   height: 16px;
+}
+.chat-stop-btn {
+  background: #e05050;
+  border: none;
+  border-radius: 10px;
+  width: 38px;
+  height: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.15s, transform 0.1s;
+  color: #fff;
+}
+.chat-stop-btn:hover {
+  background: #f06060;
+}
+.chat-stop-btn:active {
+  transform: scale(0.93);
+}
+.chat-stop-btn svg {
+  width: 14px;
+  height: 14px;
 }
 
 /* Chat toggle button in toolbar */

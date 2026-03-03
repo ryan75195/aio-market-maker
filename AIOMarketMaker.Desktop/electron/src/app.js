@@ -144,6 +144,9 @@ createApp({
       marketsChatMessages: [],
       marketsChatInput: '',
       marketsChatLoading: false,
+      marketsChatToolStatus: null,
+      marketsChatExpanded: false,
+      _chatAbortController: null,
       marketsListingSortKey: 'daysOnMarket',
       marketsListingSortDir: 1,
       marketsListingPage: 1,
@@ -1865,6 +1868,8 @@ createApp({
       this.marketsChatMessages = [];
       this.marketsChatInput = '';
       this.marketsChatLoading = false;
+      this.marketsChatToolStatus = null;
+      this.marketsChatExpanded = false;
       this.marketsListingSortKey = 'daysOnMarket';
       this.marketsListingSortDir = 1;
       this.marketsListingPage = 1;
@@ -1980,6 +1985,8 @@ createApp({
       this.marketsChatMessages.push({ role: 'user', text, time: new Date() });
       this.marketsChatInput = '';
       this.marketsChatLoading = true;
+      this.marketsChatToolStatus = null;
+      this._chatAbortController = new AbortController();
       this.$nextTick(() => this._scrollChatToBottom());
 
       try {
@@ -2000,38 +2007,133 @@ createApp({
           }
         };
 
-        const data = await this.apiCall(
-          `/markets/${this.marketsSelected.jobId}/chat`,
-          { method: 'POST', body: JSON.stringify(body) }
-        );
+        const baseUrl = this.config.marketMakerApi.baseUrl;
+        const functionKey = this.config.marketMakerApi.functionKey;
+        const url = new URL(`${baseUrl}/markets/${this.marketsSelected.jobId}/chat/stream`);
+        if (functionKey && functionKey !== 'your-function-key-here') {
+          url.searchParams.set('code', functionKey);
+        }
 
-        this.marketsChatMessages.push({
-          role: 'assistant',
-          text: data.message,
-          time: new Date()
+        const response = await fetch(url.toString(), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+          signal: this._chatAbortController.signal
         });
 
-        // Auto-apply filters if the agent set them
-        if (data.filters) {
-          this.marketsRegex = data.filters.regex || '';
-          this.marketsConditionFilter = data.filters.condition || '';
-          this.marketsMinPrice = data.filters.minPrice != null ? String(data.filters.minPrice) : '';
-          this.marketsMaxPrice = data.filters.maxPrice != null ? String(data.filters.maxPrice) : '';
-          this.marketsMinDays = data.filters.minDays != null ? String(data.filters.minDays) : '';
-          this.marketsMaxDays = data.filters.maxDays != null ? String(data.filters.maxDays) : '';
-          this.marketsStatusFilter = data.filters.status || '';
-          this.marketsListingPage = 1;
-          await this.loadMarketListings();
+        if (!response.ok) {
+          const errorBody = await response.json().catch(() => ({ error: response.statusText }));
+          throw new Error(errorBody.error || `HTTP ${response.status}`);
+        }
+
+        if (!response.body) {
+          throw new Error('No response body received');
+        }
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) { break; }
+
+          buffer += decoder.decode(value, { stream: true });
+          const parts = buffer.split('\n\n');
+          buffer = parts.pop();
+
+          for (const part of parts) {
+            const line = part.trim();
+            if (!line.startsWith('data:')) { continue; }
+            const json = line.slice(5).trim();
+            let evt;
+            try {
+              evt = JSON.parse(json);
+            } catch {
+              continue;
+            }
+
+            if (evt.type === 'tool_call') {
+              const toolLabels = {
+                query_listings: 'Querying listings...',
+                set_filters: 'Applying filters...',
+                sample_listings: 'Browsing listings...'
+              };
+              const label = toolLabels[evt.data.name] || 'Working...';
+              this.marketsChatToolStatus = label;
+              this.marketsChatMessages.push({
+                role: 'tool',
+                toolName: evt.data.name,
+                text: label,
+                status: 'running',
+                time: new Date()
+              });
+              this.$nextTick(() => this._scrollChatToBottom());
+            } else if (evt.type === 'tool_result') {
+              this.marketsChatToolStatus = evt.data.summary;
+              const lastTool = [...this.marketsChatMessages].reverse().find(m => m.role === 'tool' && m.status === 'running');
+              if (lastTool) {
+                lastTool.text = evt.data.summary;
+                lastTool.status = 'done';
+              }
+              this.$nextTick(() => this._scrollChatToBottom());
+            } else if (evt.type === 'response') {
+              this.marketsChatToolStatus = null;
+              this.marketsChatMessages.push({
+                role: 'assistant',
+                text: evt.data.message,
+                time: new Date()
+              });
+
+              if (evt.data.filters) {
+                this.marketsRegex = evt.data.filters.regex || '';
+                this.marketsConditionFilter = evt.data.filters.condition || '';
+                this.marketsMinPrice = evt.data.filters.minPrice != null ? String(evt.data.filters.minPrice) : '';
+                this.marketsMaxPrice = evt.data.filters.maxPrice != null ? String(evt.data.filters.maxPrice) : '';
+                this.marketsMinDays = evt.data.filters.minDays != null ? String(evt.data.filters.minDays) : '';
+                this.marketsMaxDays = evt.data.filters.maxDays != null ? String(evt.data.filters.maxDays) : '';
+                this.marketsStatusFilter = evt.data.filters.status || '';
+                this.marketsListingPage = 1;
+                await this.loadMarketListings();
+              }
+
+              this.$nextTick(() => this._scrollChatToBottom());
+            } else if (evt.type === 'error') {
+              this.marketsChatToolStatus = null;
+              this.marketsChatMessages.push({
+                role: 'assistant',
+                text: evt.data.error || 'Sorry, something went wrong. Try again.',
+                time: new Date()
+              });
+              this.$nextTick(() => this._scrollChatToBottom());
+            }
+          }
         }
       } catch (error) {
-        this.marketsChatMessages.push({
-          role: 'assistant',
-          text: 'Sorry, something went wrong. Try again.',
-          time: new Date()
-        });
+        if (error.name === 'AbortError') {
+          this.marketsChatMessages.push({
+            role: 'assistant',
+            text: 'Stopped.',
+            time: new Date()
+          });
+        } else {
+          this.marketsChatMessages.push({
+            role: 'assistant',
+            text: 'Sorry, something went wrong. Try again.',
+            time: new Date()
+          });
+        }
       } finally {
         this.marketsChatLoading = false;
+        this.marketsChatToolStatus = null;
+        this._chatAbortController = null;
         this.$nextTick(() => this._scrollChatToBottom());
+      }
+    },
+
+    stopChatMessage() {
+      if (this._chatAbortController) {
+        this._chatAbortController.abort();
       }
     },
 
@@ -2043,7 +2145,12 @@ createApp({
     },
 
     formatChatMessage(text) {
-      return text.replace(/`([^`]+)`/g, '<code>$1</code>');
+      const escaped = text
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+      return escaped.replace(/`([^`]+)`/g, '<code>$1</code>');
     },
 
     chatTimeLabel(time) {

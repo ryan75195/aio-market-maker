@@ -1211,24 +1211,55 @@
             </div><!-- /.markets-drill-main -->
 
             <!-- AI Chat Panel -->
-            <div v-if="marketsChatOpen" class="chat-panel">
+            <div v-if="marketsChatOpen" class="chat-panel" :class="{ expanded: marketsChatExpanded }">
               <div class="chat-header">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#4a9eff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                   <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z"/>
                 </svg>
                 <span class="chat-header-title">AI Assistant</span>
-                <button class="chat-close-btn" @click="marketsChatOpen = false" title="Close">&times;</button>
+                <button class="chat-expand-btn" @click="marketsChatExpanded = !marketsChatExpanded" :title="marketsChatExpanded ? 'Collapse' : 'Expand'">
+                  <svg v-if="!marketsChatExpanded" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/>
+                  </svg>
+                  <svg v-else width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="4 14 10 14 10 20"/><polyline points="20 10 14 10 14 4"/><line x1="14" y1="10" x2="21" y2="3"/><line x1="3" y1="21" x2="10" y2="14"/>
+                  </svg>
+                </button>
+                <button class="chat-close-btn" @click="marketsChatOpen = false; marketsChatExpanded = false" title="Close">&times;</button>
               </div>
 
               <div class="chat-messages">
                 <div v-for="(msg, i) in marketsChatMessages" :key="i" class="chat-msg" :class="msg.role">
-                  <div class="chat-msg-bubble" v-html="formatChatMessage(msg.text)"></div>
-                  <div class="chat-msg-time">{{ chatTimeLabel(msg.time) }}</div>
+                  <template v-if="msg.role === 'tool'">
+                    <div class="chat-tool-msg" :class="{ done: msg.status === 'done' }">
+                      <svg v-if="msg.status === 'running'" class="chat-tool-spinner" width="12" height="12" viewBox="0 0 24 24">
+                        <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" fill="none" stroke-dasharray="31.4 31.4" stroke-linecap="round"/>
+                      </svg>
+                      <svg v-else width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="20 6 9 17 4 12"/>
+                      </svg>
+                      <span>{{ msg.text }}</span>
+                    </div>
+                  </template>
+                  <template v-else>
+                    <div class="chat-msg-bubble" v-html="formatChatMessage(msg.text)"></div>
+                    <div class="chat-msg-time">{{ chatTimeLabel(msg.time) }}</div>
+                  </template>
                 </div>
                 <div v-if="marketsChatLoading" class="chat-typing">
-                  <div class="chat-typing-dot"></div>
-                  <div class="chat-typing-dot"></div>
-                  <div class="chat-typing-dot"></div>
+                  <template v-if="marketsChatToolStatus">
+                    <div class="chat-tool-status">
+                      <svg class="chat-tool-spinner" width="14" height="14" viewBox="0 0 24 24">
+                        <circle cx="12" cy="12" r="10" stroke="#4a9eff" stroke-width="2" fill="none" stroke-dasharray="31.4 31.4" stroke-linecap="round"/>
+                      </svg>
+                      <span>{{ marketsChatToolStatus }}</span>
+                    </div>
+                  </template>
+                  <template v-else>
+                    <div class="chat-typing-dot"></div>
+                    <div class="chat-typing-dot"></div>
+                    <div class="chat-typing-dot"></div>
+                  </template>
                 </div>
               </div>
 
@@ -1241,13 +1272,19 @@
                   @keydown="handleChatKeydown($event)"
                   @input="$event.target.style.height = 'auto'; $event.target.style.height = Math.min($event.target.scrollHeight, 120) + 'px'"
                 ></textarea>
-                <button class="chat-send-btn" @click="sendChatMessage()" :disabled="!marketsChatInput.trim() || marketsChatLoading">
+                <button v-if="marketsChatLoading" class="chat-stop-btn" @click="stopChatMessage()" title="Stop">
+                  <svg viewBox="0 0 24 24" fill="currentColor">
+                    <rect x="6" y="6" width="12" height="12" rx="2"/>
+                  </svg>
+                </button>
+                <button v-else class="chat-send-btn" @click="sendChatMessage()" :disabled="!marketsChatInput.trim()">
                   <svg viewBox="0 0 24 24" fill="currentColor">
                     <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
                   </svg>
                 </button>
               </div>
             </div>
+            <div v-if="marketsChatOpen && marketsChatExpanded" class="chat-overlay" @click="marketsChatExpanded = false"></div>
           </div><!-- /.markets-drill-layout -->
           </template>
         </div>
