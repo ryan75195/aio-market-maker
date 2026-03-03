@@ -97,10 +97,15 @@ var embeddingDimensions = configuration.GetValue<int>("Embedding:Dimensions", 30
 builder.Services.AddSingleton(new EmbeddingConfig(openAiKey, embeddingModel, embeddingDimensions));
 builder.Services.AddSingleton<IEmbeddingService, EmbeddingService>();
 
+// TF-IDF vectorizer (used by clustering service for text-based clustering)
+builder.Services.AddSingleton(new TfIdfConfig());
+builder.Services.AddSingleton<ITfIdfVectorizer, TfIdfVectorizer>();
+
 // Clustering service
 var clusteringConfig = new ClusteringConfig(
-    configuration.GetValue<int>("Clustering:MinClusterSize", 8),
-    configuration.GetValue<int>("Clustering:MinPoints", 4));
+    MinClusterSize: configuration.GetValue<int>("Clustering:MinClusterSize", 8),
+    MinPoints: configuration.GetValue<int>("Clustering:MinPoints", 4),
+    Threshold: configuration.GetValue<double>("Clustering:Threshold", 1.5));
 builder.Services.AddSingleton(clusteringConfig);
 builder.Services.AddSingleton<IClusteringService, ClusteringService>();
 

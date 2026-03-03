@@ -4,6 +4,8 @@ using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using AIOMarketMaker.Core.Data;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
 
@@ -56,17 +58,45 @@ public class MarketsChatService : IMarketsChatService
 
     private record ToolError(string Error);
 
+    private record VariantCluster(
+        int ClusterId,
+        int Count,
+        int Active,
+        int Sold,
+        int SellThroughPct,
+        decimal MedianPrice,
+        decimal Iqr,
+        decimal MinPrice,
+        decimal MaxPrice,
+        IEnumerable<string> SampleTitles);
+
+    private record ClusterListingProjection(int Id, string? Title, decimal? Price, string? ListingStatus);
+
+    private record DiscoverVariantsResult(
+        int TotalListings,
+        int Sampled,
+        int ClustersFound,
+        double ElapsedSeconds,
+        double Threshold,
+        IEnumerable<VariantCluster> Clusters);
+
     private readonly IChatClient _chatClient;
     private readonly IMarketListingsQueryService _queryService;
+    private readonly IClusteringService _clusteringService;
+    private readonly EtlDbContext _db;
     private readonly ILogger<MarketsChatService> _logger;
 
     public MarketsChatService(
         IChatClient chatClient,
         IMarketListingsQueryService queryService,
+        IClusteringService clusteringService,
+        EtlDbContext db,
         ILogger<MarketsChatService> logger)
     {
         _chatClient = chatClient;
         _queryService = queryService;
+        _clusteringService = clusteringService;
+        _db = db;
         _logger = logger;
     }
 
@@ -257,12 +287,14 @@ public class MarketsChatService : IMarketsChatService
             "Apply filters to the listings view. Call this when you have a good filter combination to show the user. The UI updates automatically.");
 
         var sampleTool = BuildSampleListingsTool(jobId, () => toolCallCount++);
+        var discoverTool = BuildDiscoverVariantsTool(jobId, () => toolCallCount++);
 
         var toolMap = new Dictionary<string, AIFunction>
         {
             [queryTool.Name] = queryTool,
             [setFiltersTool.Name] = setFiltersTool,
-            [sampleTool.Name] = sampleTool
+            [sampleTool.Name] = sampleTool,
+            [discoverTool.Name] = discoverTool
         };
 
         var systemPrompt = BuildSystemPrompt(searchTerm, request.CurrentFilters);
@@ -279,7 +311,7 @@ public class MarketsChatService : IMarketsChatService
 
         var options = new ChatOptions
         {
-            Tools = new List<AITool> { queryTool, setFiltersTool, sampleTool }
+            Tools = new List<AITool> { queryTool, setFiltersTool, sampleTool, discoverTool }
         };
 
         var totalSw = Stopwatch.StartNew();
@@ -483,6 +515,23 @@ public class MarketsChatService : IMarketsChatService
                 return $"Sampled {returnedCount} of {totalCount} listings";
             }
 
+            if (toolName == "discover_variants")
+            {
+                using var doc = JsonDocument.Parse(resultJson);
+                var root = doc.RootElement;
+
+                if (root.TryGetProperty("Error", out var errorProp))
+                {
+                    return $"Error: {errorProp.GetString()}";
+                }
+
+                var clustersFound = root.GetProperty("ClustersFound").GetInt32();
+                var sampled = root.GetProperty("Sampled").GetInt32();
+                var elapsed = root.GetProperty("ElapsedSeconds").GetDouble();
+                var usedThreshold = root.TryGetProperty("Threshold", out var threshProp) ? threshProp.GetDouble() : 1.5;
+                return $"Found {clustersFound} variant clusters from {sampled} listings (threshold={usedThreshold:F1}, {elapsed:F1}s)";
+            }
+
             return "Tool completed";
         }
         catch (Exception)
@@ -551,21 +600,43 @@ public class MarketsChatService : IMarketsChatService
 
             All prices are in GBP (£). Always use £, never $.
 
-            You have three tools:
+            You have four tools:
 
-            1. query_listings — Test a filter combination. Returns aggregate stats (counts,
-               prices, sell-through) and a small sample. Use this to check a regex before
-               applying it.
+            1. discover_variants — Clusters listing titles into product groups using TF-IDF
+               text similarity + Ward hierarchical clustering. Always free and instant. The
+               threshold parameter (default 1.5) controls granularity: lower values (0.5-1.0)
+               produce many small tight clusters, higher values (2.0-3.0) produce fewer broader
+               clusters. Every listing is assigned to a cluster (no noise). Returns clusters
+               with stats (count, sell-through, median price, IQR, sample titles). Use this
+               FIRST when the user asks about opportunities, variants, or what products exist.
+               If clusters seem too broad, re-call with a lower threshold.
 
-            2. set_filters — Push filters to the UI. The user sees listings update live.
+            2. query_listings — Test a filter combination. Returns aggregate stats (counts,
+               prices, sell-through) and a small sample. Use this to verify a specific
+               variant or test a regex pattern.
+
+            3. set_filters — Push filters to the UI. The user sees listings update live.
                Always call this after query_listings so the user sees results.
 
-            3. sample_listings — Browse raw listing rows. Returns individual titles, prices,
-               statuses, conditions, days on market, and URLs. Use this to explore the data,
-               spot patterns, check outliers, or understand what's in the dataset. Supports
-               sorting by any column, limiting results, and random sampling.
+            4. sample_listings — Browse raw listing rows. Returns individual titles, prices,
+               statuses, conditions, days on market, and URLs. Use this to explore specific
+               listings, spot patterns, or understand what's in a cluster.
 
-            Filtering workflow:
+            Finding opportunities (preferred workflow):
+            1. Call discover_variants to find what product groups exist in the data
+            2. Read the clusters — each one is a product variant with stats
+            3. Identify the best clusters: high sell-through (>50%), tight IQR, decent volume
+            4. For each promising cluster, read its sample titles and write a regex that
+               captures that specific product
+            5. Test the regex with query_listings to verify count and stats match
+            6. Apply with set_filters so the user sees the variant
+            7. Give a specific recommendation with data
+
+            This is much more effective than manually guessing regex patterns. The clustering
+            discovers the product groups statistically — you just need to translate the best
+            ones into regex filters.
+
+            Filtering workflow (when user asks for specific filters):
             1. Build a regex pattern for what the user describes
             2. Use query_listings to test it — pass all filter params explicitly
             3. IMMEDIATELY call set_filters to apply it so the user can see results
@@ -580,32 +651,10 @@ public class MarketsChatService : IMarketsChatService
             - sortBy=daysOnMarket, sortDir=asc, status=Sold to see what sells fastest
             - sortBy=daysOnMarket, sortDir=desc to find stale unsold listings
 
-            Finding opportunities:
-            A broad search category contains many different product variants. The user wants
-            to find specific variants worth buying and reselling. Your job is to drill down
-            to the leaf-level variant — the most specific product you can isolate. Follow
-            this approach:
-            1. Sample with randomise=true to see what product variants exist in the data
-            2. Identify distinct sub-categories from the titles (e.g. specific models,
-               editions, sizes, colourways). These are the variants
-            3. For each promising variant, query_listings with a targeted regex to get its
-               stats (sell-through, avg sold price, volume)
-            4. Check if the variant is truly a single product: if the price spread is wide
-               (e.g. min £50, max £300), the regex is probably catching multiple sub-variants.
-               Sample the variant's listings to see what's in there, then tighten the regex
-               to isolate the actual leaf product (e.g. a specific edition, size, or model)
-            5. Compare leaf variants: high sell-through (>50%) + tight price clustering +
-               decent volume = good opportunity. Low sell-through or wide spread = risky
-            6. Apply the best variant's filter with set_filters so the user sees it
-            7. Give a specific recommendation: "X variant sells at £Y median with Z%
-               sell-through. Buy under £A for reliable margin."
-
             Keep drilling until the price spread is tight. If a filtered set has a wide
             price range, it means you're looking at mixed products — sample the listings
             and split them further. A good leaf variant will have most sold prices within
-            a 20-30% band of the median. For example, if the median sold price is £100,
-            most sales should fall between £85-£115. If you see clusters at £60 AND £150,
-            those are two different products sharing a title pattern.
+            a 20-30% band of the median.
 
             Do NOT give generic category-level advice like "target the £30-120 range."
             The user needs a specific variant, a specific price point, and evidence from
@@ -731,4 +780,136 @@ public class MarketsChatService : IMarketsChatService
         JsonValueKind.Null => null,
         _ => je.GetRawText()
     };
+
+    private AIFunction BuildDiscoverVariantsTool(int jobId, Action incrementToolCalls)
+    {
+        return AIFunctionFactory.Create(
+            async (
+                [Description("Maximum number of listings to sample for clustering. Default 2000, max 3000.")] int? maxListings,
+                [Description("Ward clustering threshold. Lower = more smaller clusters. Higher = fewer larger clusters. Default 1.5, range 0.5-3.0.")] double? threshold
+            ) =>
+            {
+                incrementToolCalls();
+                var sw = Stopwatch.StartNew();
+                var effectiveThreshold = Math.Clamp(threshold ?? 1.5, 0.5, 3.0);
+
+                try
+                {
+                    var sampleSize = Math.Min(maxListings ?? 2000, 3000);
+
+                    var listings = await _db.Listings
+                        .Where(l => l.ScrapeJobId == jobId && l.Title != null && l.Price != null)
+                        .Select(l => new ClusterListingProjection(l.Id, l.Title, l.Price, l.ListingStatus))
+                        .ToListAsync();
+
+                    _logger.LogInformation("discover_variants: loaded {Count} listings for job {JobId}, threshold={Threshold}",
+                        listings.Count, jobId, effectiveThreshold);
+
+                    if (listings.Count == 0)
+                    {
+                        return JsonSerializer.Serialize(new ToolError("No listings found for this job."));
+                    }
+
+                    var totalCount = listings.Count;
+                    if (listings.Count > sampleSize)
+                    {
+                        var rng = new Random(42);
+                        listings = listings.OrderBy(_ => rng.Next()).Take(sampleSize).ToList();
+                    }
+
+                    var titles = listings.Select(l => l.Title!).ToList();
+                    var ids = listings.Select(l => l.Id).ToList();
+
+                    _logger.LogInformation("discover_variants: TF-IDF + Ward clustering {Count} titles with threshold={Threshold}",
+                        titles.Count, effectiveThreshold);
+                    var clusterResult = _clusteringService.ClusterByText(ids, titles, effectiveThreshold);
+
+                    var clusters = BuildVariantClusters(clusterResult, listings);
+
+                    sw.Stop();
+                    _logger.LogInformation(
+                        "discover_variants: found {ClusterCount} clusters from {Count} listings in {Elapsed:F1}s (threshold={Threshold})",
+                        clusters.Count, listings.Count, sw.Elapsed.TotalSeconds, effectiveThreshold);
+
+                    var result = new DiscoverVariantsResult(
+                        totalCount,
+                        listings.Count,
+                        clusters.Count,
+                        Math.Round(sw.Elapsed.TotalSeconds, 1),
+                        effectiveThreshold,
+                        clusters);
+
+                    return JsonSerializer.Serialize(result);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "discover_variants tool failed");
+                    return JsonSerializer.Serialize(new ToolError($"Clustering failed: {ex.Message}"));
+                }
+            },
+            "discover_variants",
+            "Discover product variants using TF-IDF + Ward hierarchical clustering. The threshold parameter controls cluster granularity: lower values (0.5-1.0) produce many small tight clusters, higher values (1.5-3.0) produce fewer broader clusters. Returns clusters sorted by size with stats.");
+    }
+
+    private static List<VariantCluster> BuildVariantClusters(
+        ClusteringResult clusterResult,
+        List<ClusterListingProjection> listings)
+    {
+        var idToListing = listings.ToDictionary(l => l.Id);
+        var clusters = new List<VariantCluster>();
+
+        foreach (var cluster in clusterResult.Clusters.OrderByDescending(c => c.Items.Count))
+        {
+            if (cluster.Items.Count < 5)
+            {
+                continue;
+            }
+
+            var clusterListings = cluster.Items
+                .Where(e => idToListing.ContainsKey(e.Id))
+                .Select(e => idToListing[e.Id])
+                .ToList();
+
+            var prices = clusterListings
+                .Where(l => l.Price.HasValue)
+                .Select(l => l.Price!.Value)
+                .OrderBy(p => p)
+                .ToList();
+
+            if (prices.Count == 0)
+            {
+                continue;
+            }
+
+            var active = clusterListings.Count(l => l.ListingStatus == "Active");
+            var sold = clusterListings.Count(l => l.ListingStatus == "Sold");
+            var total = active + sold;
+            var st = total > 0 ? (int)Math.Round((double)sold / total * 100) : 0;
+            var median = prices[prices.Count / 2];
+            var q1 = prices[prices.Count / 4];
+            var q3 = prices[prices.Count * 3 / 4];
+            var iqr = q3 - q1;
+
+            // Sample titles: mix of sold and active
+            var soldTitles = clusterListings
+                .Where(l => l.ListingStatus == "Sold")
+                .Take(3)
+                .Select(l => l.Title!);
+            var activeTitles = clusterListings
+                .Where(l => l.ListingStatus == "Active")
+                .Take(2)
+                .Select(l => l.Title!);
+            var sampleTitles = soldTitles.Concat(activeTitles).Take(5);
+
+            clusters.Add(new VariantCluster(
+                cluster.Label,
+                clusterListings.Count,
+                active, sold, st,
+                median, iqr,
+                prices.First(), prices.Last(),
+                sampleTitles));
+        }
+
+        return clusters;
+    }
 }
