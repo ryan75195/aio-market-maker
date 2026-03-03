@@ -129,7 +129,7 @@ public class MarketListingsQueryService : IMarketListingsQueryService
         if (!string.IsNullOrWhiteSpace(p.Condition))
         {
             var escaped = p.Condition.Replace("'", "''");
-            conditions.Add($"l.Condition LIKE '%{escaped}%'");
+            conditions.Add($"UPPER(l.Condition) = UPPER('{escaped}')");
         }
 
         if (p.MinPrice.HasValue)

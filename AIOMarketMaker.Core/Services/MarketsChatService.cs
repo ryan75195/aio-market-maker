@@ -68,9 +68,10 @@ public class MarketsChatService : IMarketsChatService
         decimal Iqr,
         decimal MinPrice,
         decimal MaxPrice,
+        string? Condition,
         IEnumerable<string> SampleTitles);
 
-    private record ClusterListingProjection(int Id, string? Title, decimal? Price, string? ListingStatus);
+    private record ClusterListingProjection(int Id, string? Title, decimal? Price, string? ListingStatus, string? Condition);
 
     private record DiscoverVariantsResult(
         int TotalListings,
@@ -623,18 +624,29 @@ public class MarketsChatService : IMarketsChatService
                listings, spot patterns, or understand what's in a cluster.
 
             Finding opportunities (preferred workflow):
-            1. Call discover_variants to find what product groups exist in the data
-            2. Read the clusters — each one is a product variant with stats
-            3. Identify the best clusters: high sell-through (>50%), tight IQR, decent volume
-            4. For each promising cluster, read its sample titles and write a regex that
-               captures that specific product
-            5. Test the regex with query_listings to verify count and stats match
-            6. Apply with set_filters so the user sees the variant
-            7. Give a specific recommendation with data
+            1. Call discover_variants to find product groups
+            2. Pick the SINGLE best cluster (highest sell-through + tightest IQR + decent volume)
+            3. Read its sample titles, build a regex that captures that product
+            4. Test with query_listings, then IMMEDIATELY apply with set_filters
+            5. Tell the user what you found with 1-2 sentences + key numbers
+            6. Mention 1-2 runner-up variants briefly (one line each)
+            7. Ask if they want to explore a runner-up or refine
 
-            This is much more effective than manually guessing regex patterns. The clustering
-            discovers the product groups statistically — you just need to translate the best
-            ones into regex filters.
+            When the user asks to see clusters, browse, or explore:
+            - Just summarise the discover_variants output directly. DO NOT call
+              query_listings for each cluster — that wastes tool calls and time.
+            - List 5-8 clusters in a compact format: product name, condition,
+              count, sell-through%, median price. One line each.
+            - The discover_variants result already has all the stats you need.
+            - Only call query_listings when you need to TEST a specific regex
+              or when the user picks a cluster to drill into.
+
+            When the user asks "what else" or "what other clusters":
+            - Show the NEXT 5-8 variants you haven't mentioned yet
+            - Don't repeat variants you already recommended
+            - If you've exhausted the good clusters, say so
+
+            Never reference internal cluster IDs — use the product name from sample titles.
 
             Filtering workflow (when user asks for specific filters):
             1. Build a regex pattern for what the user describes
@@ -698,13 +710,28 @@ public class MarketsChatService : IMarketsChatService
             - \d+\s*x or x\s*\d+ for multi-packs
             - Common exclusions: bundle, lot, case, set, job lot, wholesale
 
+            Bundle/multipack exclusion:
+            - ALWAYS exclude bundles and multipacks from single-item regex by default.
+              Add ^(?!.*(x\s*\d|\d\s*x|bundle|lot|joblot|job lot|wholesale|case of))
+              to the front of your regex. Single-item pricing is meaningless if bundles
+              are mixed in.
+            - If a listing title contains "x2", "x4", "2 x", "3x", etc., it is a
+              multipack — your regex MUST exclude it unless the user asks for bundles.
+
             Communication style:
-            - Be brief but specific. Lead with the key finding and numbers.
-            - Always cite the data: "67 sold, 45% sell-through, median £117"
-            - Name the specific variant you're recommending, not the broad category.
-            - Don't list every sample title — mention 1-2 if relevant.
+            - When recommending a specific flip: keep it SHORT. 1-2 sentences for
+              the main pick + 1-2 runner-up lines. Apply the filter immediately.
+            - When the user asks to explore or browse clusters: show up to 5-8
+              variants in a compact list (product name + key numbers per line).
+              This is NOT dumping raw data — it's a curated summary.
+            - Lead with product name and key numbers, e.g.:
+              "Best flip: Prismatic Evolutions ETB — 80% sell-through, median £131,
+              tight band £126-£136. I've applied the filter."
+            - Never dump raw cluster data or stats tables to the user.
+            - Never reference internal cluster IDs — use the product name.
+            - Don't narrate what you did ("I ran discovery...") — the user saw
+              the tool calls stream in. Just give the finding.
             - Don't explain regex syntax unless asked.
-            - Don't repeat information the user already knows.
             - Use plain language, not technical jargon.
             """);
 
@@ -799,7 +826,7 @@ public class MarketsChatService : IMarketsChatService
 
                     var listings = await _db.Listings
                         .Where(l => l.ScrapeJobId == jobId && l.Title != null && l.Price != null)
-                        .Select(l => new ClusterListingProjection(l.Id, l.Title, l.Price, l.ListingStatus))
+                        .Select(l => new ClusterListingProjection(l.Id, l.Title, l.Price, l.ListingStatus, l.Condition))
                         .ToListAsync();
 
                     _logger.LogInformation("discover_variants: loaded {Count} listings for job {JobId}, threshold={Threshold}",
@@ -817,24 +844,34 @@ public class MarketsChatService : IMarketsChatService
                         listings = listings.OrderBy(_ => rng.Next()).Take(sampleSize).ToList();
                     }
 
-                    var titles = listings.Select(l => l.Title!).ToList();
+                    var titles = listings.Select(l =>
+                    {
+                        var title = l.Title!;
+                        if (!string.IsNullOrEmpty(l.Condition))
+                        {
+                            title += " [" + l.Condition.Replace("_", " ") + "]";
+                        }
+                        return title;
+                    }).ToList();
                     var ids = listings.Select(l => l.Id).ToList();
 
                     _logger.LogInformation("discover_variants: TF-IDF + Ward clustering {Count} titles with threshold={Threshold}",
                         titles.Count, effectiveThreshold);
                     var clusterResult = _clusteringService.ClusterByText(ids, titles, effectiveThreshold);
 
-                    var clusters = BuildVariantClusters(clusterResult, listings);
+                    var allClusters = BuildVariantClusters(clusterResult, listings);
+                    const int maxClustersReturned = 20;
+                    var clusters = allClusters.Take(maxClustersReturned).ToList();
 
                     sw.Stop();
                     _logger.LogInformation(
-                        "discover_variants: found {ClusterCount} clusters from {Count} listings in {Elapsed:F1}s (threshold={Threshold})",
-                        clusters.Count, listings.Count, sw.Elapsed.TotalSeconds, effectiveThreshold);
+                        "discover_variants: found {ClusterCount} clusters from {Count} listings in {Elapsed:F1}s (threshold={Threshold}), returning top {Returned}",
+                        allClusters.Count, listings.Count, sw.Elapsed.TotalSeconds, effectiveThreshold, clusters.Count);
 
                     var result = new DiscoverVariantsResult(
                         totalCount,
                         listings.Count,
-                        clusters.Count,
+                        allClusters.Count,
                         Math.Round(sw.Elapsed.TotalSeconds, 1),
                         effectiveThreshold,
                         clusters);
@@ -890,16 +927,23 @@ public class MarketsChatService : IMarketsChatService
             var q3 = prices[prices.Count * 3 / 4];
             var iqr = q3 - q1;
 
+            // Dominant condition for the cluster
+            var condition = clusterListings
+                .Where(l => !string.IsNullOrEmpty(l.Condition))
+                .GroupBy(l => l.Condition)
+                .OrderByDescending(g => g.Count())
+                .FirstOrDefault()?.Key;
+
             // Sample titles: mix of sold and active
             var soldTitles = clusterListings
                 .Where(l => l.ListingStatus == "Sold")
-                .Take(3)
+                .Take(2)
                 .Select(l => l.Title!);
             var activeTitles = clusterListings
                 .Where(l => l.ListingStatus == "Active")
-                .Take(2)
+                .Take(1)
                 .Select(l => l.Title!);
-            var sampleTitles = soldTitles.Concat(activeTitles).Take(5);
+            var sampleTitles = soldTitles.Concat(activeTitles).Take(3);
 
             clusters.Add(new VariantCluster(
                 cluster.Label,
@@ -907,6 +951,7 @@ public class MarketsChatService : IMarketsChatService
                 active, sold, st,
                 median, iqr,
                 prices.First(), prices.Last(),
+                condition,
                 sampleTitles));
         }
 
