@@ -2057,7 +2057,8 @@ createApp({
               const toolLabels = {
                 query_listings: 'Querying listings...',
                 set_filters: 'Applying filters...',
-                sample_listings: 'Browsing listings...'
+                sample_listings: 'Browsing listings...',
+                discover_variants: 'Discovering product variants...'
               };
               const label = toolLabels[evt.data.name] || 'Working...';
               this.marketsChatToolStatus = label;

@@ -173,6 +173,14 @@ builder.Services.AddSingleton<Microsoft.Extensions.AI.IChatClient>(sp =>
     var model = config["OpenAi:ChatModel"] ?? "gpt-5-mini";
     return new OpenAI.Chat.ChatClient(model, apiKey).AsIChatClient();
 });
+builder.Services.AddSingleton(sp =>
+{
+    var config = sp.GetRequiredService<IConfiguration>();
+    var apiKey = config["OpenAi:ApiKey"]
+        ?? throw new InvalidOperationException("OpenAi:ApiKey is not configured");
+    var model = config["OpenAi:AnnotationModel"] ?? "gpt-5-mini";
+    return new OpenAI.Chat.ChatClient(model, apiKey);
+});
 builder.Services.AddScoped<IMarketsChatService, MarketsChatService>();
 
 // ComparablesEtlService
