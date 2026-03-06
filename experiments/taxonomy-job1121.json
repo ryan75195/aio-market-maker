@@ -1,0 +1,1201 @@
+{
+  "jobId": 1121,
+  "searchTerm": "Brompton Folding Bike",
+  "generatedAt": "2026-03-05T15:21:28",
+  "totalListings": 1202,
+  "labeledListings": 660,
+  "unlabeledListings": 542,
+  "axes": [
+    {
+      "name": "Model",
+      "description": "Different Brompton bike models",
+      "values": [
+        {
+          "label": "M3L",
+          "ngrams": [
+            "m3l"
+          ]
+        },
+        {
+          "label": "M6L",
+          "ngrams": [
+            "m6l"
+          ]
+        },
+        {
+          "label": "Explore",
+          "ngrams": [
+            "explore"
+          ]
+        },
+        {
+          "label": "CHPT3",
+          "ngrams": [
+            "chpt3"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Color",
+      "description": "Color options of the bike",
+      "values": [
+        {
+          "label": "Black",
+          "ngrams": [
+            "black"
+          ]
+        },
+        {
+          "label": "Blue",
+          "ngrams": [
+            "blue"
+          ]
+        },
+        {
+          "label": "Green",
+          "ngrams": [
+            "green"
+          ]
+        },
+        {
+          "label": "Racing Green",
+          "ngrams": [
+            "racing green"
+          ]
+        },
+        {
+          "label": "Turkish Green",
+          "ngrams": [
+            "turkish green"
+          ]
+        },
+        {
+          "label": "Tempest Blue",
+          "ngrams": [
+            "tempest blue"
+          ]
+        },
+        {
+          "label": "Red",
+          "ngrams": [
+            "red"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Speed",
+      "description": "Number of speeds/gears",
+      "values": [
+        {
+          "label": "12 Speed",
+          "ngrams": [
+            "12 speed"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Handlebar Type",
+      "description": "Type of handlebar on the bike",
+      "values": [
+        {
+          "label": "Mid Handlebar",
+          "ngrams": [
+            "mid handlebar"
+          ]
+        }
+      ]
+    }
+  ],
+  "ngramGroups": {
+    "folding bike": {
+      "freq": 619,
+      "forms": [
+        "folding bike",
+        "folding bicycle"
+      ]
+    },
+    "brompton folding": {
+      "freq": 297,
+      "forms": [
+        "brompton folding",
+        "brompton folding bike"
+      ]
+    },
+    "speed folding bike": {
+      "freq": 89,
+      "forms": [
+        "speed folding bike",
+        "speed folding bicycle"
+      ]
+    },
+    "brompton electric line": {
+      "freq": 60,
+      "forms": [
+        "brompton electric line",
+        "brompton line electric"
+      ]
+    }
+  },
+  "categories": [
+    {
+      "label": "Black | 12 Speed",
+      "axisValues": {
+        "Color": "Black",
+        "Speed": "12 Speed"
+      },
+      "total": 7,
+      "active": 5,
+      "sold": 2,
+      "sellThroughPct": 29,
+      "medianPrice": 1430.0,
+      "iqr": 566.1000000000001,
+      "medianActivePrice": 1430.0,
+      "medianSoldPrice": 1817.2,
+      "spread": 387.2,
+      "minPrice": 1230.7,
+      "maxPrice": 4886.7,
+      "sampleTitles": [
+        "NEW Brompton M12L C Line 12 Speed 2025 Folding Bike - Black - RRP £1599",
+        "Brompton C Line 12 Speed 2024 E Folding Bike Ex Demo H Type Bar Black",
+        "Brompton C Line 12 Speed Mid Bar Matt Black 2026 New Never Used In Box",
+        "Brompton T Line Ceratech Black Gold 12 Speed Mid BRAND NEW +Accessories",
+        "Brompton 2026 C Line - 12 Speed - Matt Black 2026 - Medium"
+      ]
+    },
+    {
+      "label": "Explore | Racing Green | Mid Handlebar",
+      "axisValues": {
+        "Model": "Explore",
+        "Color": "Racing Green",
+        "Handlebar Type": "Mid Handlebar"
+      },
+      "total": 2,
+      "active": 1,
+      "sold": 1,
+      "sellThroughPct": 50,
+      "medianPrice": 975.0,
+      "iqr": 0,
+      "medianActivePrice": 850.0,
+      "medianSoldPrice": 975.0,
+      "spread": 125.0,
+      "minPrice": 850.0,
+      "maxPrice": 975.0,
+      "sampleTitles": [
+        "Brompton Bike 6-Speed Explore 2024, Racing Green Mid Handlebar",
+        "Brompton ac Line Explore 6-Speed, Racing Green Mid Handlebar"
+      ]
+    },
+    {
+      "label": "Blue | Mid Handlebar",
+      "axisValues": {
+        "Color": "Blue",
+        "Handlebar Type": "Mid Handlebar"
+      },
+      "total": 6,
+      "active": 0,
+      "sold": 6,
+      "sellThroughPct": 100,
+      "medianPrice": 822.7,
+      "iqr": 429.29999999999995,
+      "medianActivePrice": 0,
+      "medianSoldPrice": 822.7,
+      "spread": 0,
+      "minPrice": 659.5,
+      "maxPrice": 1149.0,
+      "sampleTitles": [
+        "Brompton C Line 3 Speed Mid Handlebar Folding Bike - Lagoon Blue/ Raw",
+        "Brompton C Line 6 Speed 2024 Mid Handlebar Folding Bike - Ocean Blue",
+        "Brompton C Line 6 Speed Mid Handlebar Folding Bike - Ocean Blue",
+        "Brompton C Line 6-Speed Ocean Blue Mid Handlebar Preowned",
+        "Brompton C Line 2024 - 6 speed; Blue, Mid Handlebar"
+      ]
+    },
+    {
+      "label": "Explore | 12 Speed | Mid Handlebar",
+      "axisValues": {
+        "Model": "Explore",
+        "Speed": "12 Speed",
+        "Handlebar Type": "Mid Handlebar"
+      },
+      "total": 2,
+      "active": 0,
+      "sold": 2,
+      "sellThroughPct": 100,
+      "medianPrice": 3576.69,
+      "iqr": 0,
+      "medianActivePrice": 0,
+      "medianSoldPrice": 3576.69,
+      "spread": 0,
+      "minPrice": 3576.69,
+      "maxPrice": 3576.69,
+      "sampleTitles": [
+        "Brompton M12L T-Line Titanium 12 speed Explore Mid Handlebar Folding Bike 2025",
+        "Brompton M12L T-Line Titanium 12 speed Explore Mid Handlebar Folding Bike 2025"
+      ]
+    },
+    {
+      "label": "Explore | Racing Green",
+      "axisValues": {
+        "Model": "Explore",
+        "Color": "Racing Green"
+      },
+      "total": 2,
+      "active": 0,
+      "sold": 2,
+      "sellThroughPct": 100,
+      "medianPrice": 1045.0,
+      "iqr": 0,
+      "medianActivePrice": 0,
+      "medianSoldPrice": 1045.0,
+      "spread": 0,
+      "minPrice": 955.3,
+      "maxPrice": 1045.0,
+      "sampleTitles": [
+        "Brompton C Line Explore 6-Speed, Racing Green, Low Handlebars, 2024",
+        "BROMPTON BIKE, C LINE 6-SPEED (EXPLORE) 2025 – RACING GREEN H HANDLEBAR"
+      ]
+    },
+    {
+      "label": "M3L | Racing Green",
+      "axisValues": {
+        "Model": "M3L",
+        "Color": "Racing Green"
+      },
+      "total": 1,
+      "active": 0,
+      "sold": 1,
+      "sellThroughPct": 100,
+      "medianPrice": 499.99,
+      "iqr": 0,
+      "medianActivePrice": 0,
+      "medianSoldPrice": 499.99,
+      "spread": 0,
+      "minPrice": 499.99,
+      "maxPrice": 499.99,
+      "sampleTitles": [
+        "Brompton Racing Green 3 Speed Mid M3L - WORLDWIDE DELIVERY"
+      ]
+    },
+    {
+      "label": "Explore | Green | Mid Handlebar",
+      "axisValues": {
+        "Model": "Explore",
+        "Color": "Green",
+        "Handlebar Type": "Mid Handlebar"
+      },
+      "total": 1,
+      "active": 0,
+      "sold": 1,
+      "sellThroughPct": 100,
+      "medianPrice": 925.0,
+      "iqr": 0,
+      "medianActivePrice": 0,
+      "medianSoldPrice": 925.0,
+      "spread": 0,
+      "minPrice": 925.0,
+      "maxPrice": 925.0,
+      "sampleTitles": [
+        "Brompton Bike 6-Speed Explore, Matcha Green Mid Handlebar"
+      ]
+    },
+    {
+      "label": "Explore | Green",
+      "axisValues": {
+        "Model": "Explore",
+        "Color": "Green"
+      },
+      "total": 1,
+      "active": 0,
+      "sold": 1,
+      "sellThroughPct": 100,
+      "medianPrice": 1026.7,
+      "iqr": 0,
+      "medianActivePrice": 0,
+      "medianSoldPrice": 1026.7,
+      "spread": 0,
+      "minPrice": 1026.7,
+      "maxPrice": 1026.7,
+      "sampleTitles": [
+        "Brompton x Bear Grylls C Line Explore Special Edition Folding Bike Moss Green"
+      ]
+    },
+    {
+      "label": "M6L | Tempest Blue",
+      "axisValues": {
+        "Model": "M6L",
+        "Color": "Tempest Blue"
+      },
+      "total": 1,
+      "active": 0,
+      "sold": 1,
+      "sellThroughPct": 100,
+      "medianPrice": 850.0,
+      "iqr": 0,
+      "medianActivePrice": 0,
+      "medianSoldPrice": 850.0,
+      "spread": 0,
+      "minPrice": 850.0,
+      "maxPrice": 850.0,
+      "sampleTitles": [
+        "2019 Brompton M6L Tempest Blue Folding Bicycle 6 Speed lightly used plus extras"
+      ]
+    },
+    {
+      "label": "Red | Mid Handlebar",
+      "axisValues": {
+        "Color": "Red",
+        "Handlebar Type": "Mid Handlebar"
+      },
+      "total": 1,
+      "active": 0,
+      "sold": 1,
+      "sellThroughPct": 100,
+      "medianPrice": 594.13,
+      "iqr": 0,
+      "medianActivePrice": 0,
+      "medianSoldPrice": 594.13,
+      "spread": 0,
+      "minPrice": 594.13,
+      "maxPrice": 594.13,
+      "sampleTitles": [
+        "Brompton C Line  Utility Mid Handlebar FoldingBike - Red - 3 speed"
+      ]
+    },
+    {
+      "label": "M6L | Green",
+      "axisValues": {
+        "Model": "M6L",
+        "Color": "Green"
+      },
+      "total": 1,
+      "active": 0,
+      "sold": 1,
+      "sellThroughPct": 100,
+      "medianPrice": 873.7,
+      "iqr": 0,
+      "medianActivePrice": 0,
+      "medianSoldPrice": 873.7,
+      "spread": 0,
+      "minPrice": 873.7,
+      "maxPrice": 873.7,
+      "sampleTitles": [
+        "Brompton C Line M6L (6 Speed)  folding bicycle - Matcha Green"
+      ]
+    },
+    {
+      "label": "Green | Mid Handlebar",
+      "axisValues": {
+        "Color": "Green",
+        "Handlebar Type": "Mid Handlebar"
+      },
+      "total": 1,
+      "active": 1,
+      "sold": 0,
+      "sellThroughPct": 0,
+      "medianPrice": 996.1,
+      "iqr": 0,
+      "medianActivePrice": 996.1,
+      "medianSoldPrice": 0,
+      "spread": 0,
+      "minPrice": 996.1,
+      "maxPrice": 996.1,
+      "sampleTitles": [
+        "Brompton C Line - 4 Speed - Mid Handlebar  Dark Green Folding bike"
+      ]
+    },
+    {
+      "label": "Turkish Green | Mid Handlebar",
+      "axisValues": {
+        "Color": "Turkish Green",
+        "Handlebar Type": "Mid Handlebar"
+      },
+      "total": 1,
+      "active": 1,
+      "sold": 0,
+      "sellThroughPct": 0,
+      "medianPrice": 1600.0,
+      "iqr": 0,
+      "medianActivePrice": 1600.0,
+      "medianSoldPrice": 0,
+      "spread": 0,
+      "minPrice": 1600.0,
+      "maxPrice": 1600.0,
+      "sampleTitles": [
+        "Brompton Electric C Line, Turkish Green, Mid handlebar, 6 speed"
+      ]
+    },
+    {
+      "label": "Blue | 12 Speed",
+      "axisValues": {
+        "Color": "Blue",
+        "Speed": "12 Speed"
+      },
+      "total": 1,
+      "active": 0,
+      "sold": 1,
+      "sellThroughPct": 100,
+      "medianPrice": 1349.0,
+      "iqr": 0,
+      "medianActivePrice": 0,
+      "medianSoldPrice": 1349.0,
+      "spread": 0,
+      "minPrice": 1349.0,
+      "maxPrice": 1349.0,
+      "sampleTitles": [
+        "Brompton C Line 12 Speed Mid Bar Folding Bike Ocean Blue"
+      ]
+    },
+    {
+      "label": "M6L | Turkish Green",
+      "axisValues": {
+        "Model": "M6L",
+        "Color": "Turkish Green"
+      },
+      "total": 1,
+      "active": 1,
+      "sold": 0,
+      "sellThroughPct": 0,
+      "medianPrice": 914.5,
+      "iqr": 0,
+      "medianActivePrice": 914.5,
+      "medianSoldPrice": 0,
+      "spread": 0,
+      "minPrice": 914.5,
+      "maxPrice": 914.5,
+      "sampleTitles": [
+        "Brompton C Line M6L (6 Speed) folding bicycle - Turkish Green"
+      ]
+    },
+    {
+      "label": "Explore | Mid Handlebar",
+      "axisValues": {
+        "Model": "Explore",
+        "Handlebar Type": "Mid Handlebar"
+      },
+      "total": 1,
+      "active": 1,
+      "sold": 0,
+      "sellThroughPct": 0,
+      "medianPrice": 991.0,
+      "iqr": 0,
+      "medianActivePrice": 991.0,
+      "medianSoldPrice": 0,
+      "spread": 0,
+      "minPrice": 991.0,
+      "maxPrice": 991.0,
+      "sampleTitles": [
+        "Brompton C Line Explore 6 Folding Bike 2023, Mid Handlebar, Excellent condition"
+      ]
+    },
+    {
+      "label": "M3L | Green",
+      "axisValues": {
+        "Model": "M3L",
+        "Color": "Green"
+      },
+      "total": 4,
+      "active": 3,
+      "sold": 1,
+      "sellThroughPct": 25,
+      "medianPrice": 725.0,
+      "iqr": 71.39999999999998,
+      "medianActivePrice": 725.0,
+      "medianSoldPrice": 695.2,
+      "spread": -29.8,
+      "minPrice": 669.7,
+      "maxPrice": 766.6,
+      "sampleTitles": [
+        "Brompton M3L Folding Bike - excellent condition, slightly used  (Classic green)",
+        "Brompton M3L folding bicycle in rare Apple Green + Satchel Bag - Leisure Used",
+        "Brompton M3L Matcha Green 3 speed",
+        "Brompton M3L folding bicycle in rare Apple Green"
+      ]
+    },
+    {
+      "label": "Unlabeled",
+      "axisValues": {},
+      "total": 542,
+      "active": 336,
+      "sold": 206,
+      "sellThroughPct": 38,
+      "medianPrice": 750.0,
+      "iqr": 836.4000000000001,
+      "medianActivePrice": 775.0,
+      "medianSoldPrice": 739.0,
+      "spread": -36.0,
+      "minPrice": 7.24,
+      "maxPrice": 10500.0,
+      "sampleTitles": [
+        "Brompton P Line Electric 4 Speed Folding Bike",
+        "Brompton Electric Bike Battery Harldy Used No Charger",
+        "Brompton S6R C Line 6 Speed Folding NANO electric assist bicycle - Hardly Used",
+        "3 Speed Brompton",
+        "Brompton G Line Folding Bike"
+      ]
+    },
+    {
+      "label": "Blue",
+      "axisValues": {
+        "Color": "Blue"
+      },
+      "total": 50,
+      "active": 27,
+      "sold": 23,
+      "sellThroughPct": 46,
+      "medianPrice": 924.7,
+      "iqr": 468.70000000000005,
+      "medianActivePrice": 924.7,
+      "medianSoldPrice": 875.0,
+      "spread": -49.7,
+      "minPrice": 53.0,
+      "maxPrice": 3566.5,
+      "sampleTitles": [
+        "Classic Brompton Folding Bike – Turquoise Blue – 3-Speed – Recently Serviced",
+        "Brompton B75 16\" Folding Bike - Blue - Limited Edition - w/Mudguards",
+        "Brompton 3-Speed Turquoise Blue Foldable Bicycle",
+        "Brompton BLUE C line  6 Speed DYNAMO Light + FREE UK & low cost World DELIVERY",
+        "Classic Brompton Folding Bike – Turquoise Blue – 3-Speed – Recently Serviced"
+      ]
+    },
+    {
+      "label": "M3L",
+      "axisValues": {
+        "Model": "M3L"
+      },
+      "total": 38,
+      "active": 13,
+      "sold": 25,
+      "sellThroughPct": 66,
+      "medianPrice": 720.7,
+      "iqr": 170.0,
+      "medianActivePrice": 750.0,
+      "medianSoldPrice": 699.0,
+      "spread": -51.0,
+      "minPrice": 400.0,
+      "maxPrice": 1434.7,
+      "sampleTitles": [
+        "Brompton M3L Folding Bike - White - A Line - Three Speed - Classic London Built",
+        "2018 Brompton M3L (C line)  3 Speed DYNAMO Light + FREE UK & low World DELIVERY",
+        "Brompton M3L (2019) in Metallic Purple, luggage block and telescopic seatpost",
+        "Brompton M3L (2015) 3-speed folding bike in orange - very good condition",
+        "Brompton M3L-X Superlight Titanium Bicycle - Ridden once!"
+      ]
+    },
+    {
+      "label": "M6L | Racing Green",
+      "axisValues": {
+        "Model": "M6L",
+        "Color": "Racing Green"
+      },
+      "total": 6,
+      "active": 2,
+      "sold": 4,
+      "sellThroughPct": 67,
+      "medianPrice": 899.2,
+      "iqr": 188.70000000000005,
+      "medianActivePrice": 924.7,
+      "medianSoldPrice": 873.7,
+      "spread": -51.0,
+      "minPrice": 700.0,
+      "maxPrice": 975.7,
+      "sampleTitles": [
+        "Brompton M6L racing green",
+        "2024 Brompton M6L Folding Bike 6-Speed Racing Green Excellent Condition",
+        "Brompton C Line M6L (6 Speed)  folding bicycle - Racing Green",
+        "Brompton M6L folding bicycle in Racing Green - Leisure Used Excellent Condition",
+        "BROMPTON M6L  - RACING GREEN - VERY GOOD CONDITION"
+      ]
+    },
+    {
+      "label": "Turkish Green",
+      "axisValues": {
+        "Color": "Turkish Green"
+      },
+      "total": 7,
+      "active": 2,
+      "sold": 5,
+      "sellThroughPct": 71,
+      "medianPrice": 1281.7,
+      "iqr": 782.3,
+      "medianActivePrice": 1345.0,
+      "medianSoldPrice": 1281.7,
+      "spread": -63.3,
+      "minPrice": 516.7,
+      "maxPrice": 1383.7,
+      "sampleTitles": [
+        "2022 Turkish Green 3 Speed Brompton Cycle For Sale - Hardly Used",
+        "Brompton M2L Folding Bike 2021 Turkish green",
+        "BROMPTON P6R-X TURKISH GREEN TITANIUM IN GOOD CONDITION **WORLDWIDE DISPATCH**",
+        "Brompton H6R Folding Bike Turkish Green version R 3-Speed Good Condition",
+        "Brompton H6L Electric Turkish Green"
+      ]
+    },
+    {
+      "label": "M3L | Black",
+      "axisValues": {
+        "Model": "M3L",
+        "Color": "Black"
+      },
+      "total": 20,
+      "active": 12,
+      "sold": 8,
+      "sellThroughPct": 40,
+      "medianPrice": 650.0,
+      "iqr": 125.00999999999999,
+      "medianActivePrice": 675.0,
+      "medianSoldPrice": 599.99,
+      "spread": -75.01,
+      "minPrice": 414.7,
+      "maxPrice": 895.0,
+      "sampleTitles": [
+        "Brompton M3L White/ Black C Line 3 speed .... World Post ✈🌎📦",
+        "Brompton M3L Black Folding Bike Great Condition",
+        "Brompton M3L folding bicycle C Line Equivalent in Satin Black - Leisure Used",
+        "Brompton Black 3 Speed Mid M3L with Brooks Saddle & Grips - WORLDWIDE DELIVERY",
+        "Brompton M3L Folding Bike 3-Speed, Black"
+      ]
+    },
+    {
+      "label": "M3L | Turkish Green",
+      "axisValues": {
+        "Model": "M3L",
+        "Color": "Turkish Green"
+      },
+      "total": 4,
+      "active": 3,
+      "sold": 1,
+      "sellThroughPct": 25,
+      "medianPrice": 760.25,
+      "iqr": 54.299999999999955,
+      "medianActivePrice": 760.25,
+      "medianSoldPrice": 669.7,
+      "spread": -90.55,
+      "minPrice": 669.7,
+      "maxPrice": 775.0,
+      "sampleTitles": [
+        "Brompton M3L (3 Speed) Turkish Green | Incl:  Brooks B17 Saddle & Front Bike Bag",
+        "Brompton M3L (C-Line) Turkish Green folding bike",
+        "Brompton M3L folding bike C Line Equivalent in Turkish Green - Hardly Used",
+        "Brompton M3L folding bike C Line Equivalent in Turkish Green - Hardly Used"
+      ]
+    },
+    {
+      "label": "Black",
+      "axisValues": {
+        "Color": "Black"
+      },
+      "total": 144,
+      "active": 79,
+      "sold": 65,
+      "sellThroughPct": 45,
+      "medianPrice": 848.2,
+      "iqr": 708.8999999999999,
+      "medianActivePrice": 907.33,
+      "medianSoldPrice": 750.0,
+      "spread": -157.33,
+      "minPrice": 10.8,
+      "maxPrice": 10085.7,
+      "sampleTitles": [
+        "BROMPTON P Line Folding Bike - Titanium and steel super light, rear rack, Black",
+        "Brompton Electric 6-speed Folding Bike (Black) - Well Used & Needs a Service",
+        "Brompton S2L Black Edition Folding Bike WITH UPGRADES",
+        "Brompton M6L / C Line Explore 6-Speed 2017 Barely used - Custom order Grey/Black",
+        "Brompton Black 6 Speed Low S6L - WORLDWIDE DELIVERY"
+      ]
+    },
+    {
+      "label": "Red",
+      "axisValues": {
+        "Color": "Red"
+      },
+      "total": 38,
+      "active": 16,
+      "sold": 22,
+      "sellThroughPct": 58,
+      "medianPrice": 669.7,
+      "iqr": 306.0,
+      "medianActivePrice": 812.5,
+      "medianSoldPrice": 650.0,
+      "spread": -162.5,
+      "minPrice": 5.45,
+      "maxPrice": 9085.7,
+      "sampleTitles": [
+        "Brompton M6R Folding Bike 6-Speed Red Excellent Condition",
+        "Brompton S6L Racing Red Folding Bike",
+        "NEW Brompton 3 Gear Speed Folding Bike Touring Commuting Work Red Adult",
+        "Brompton P6R 6-Speed Folding Bike Rack Bike Rare Touring Commuting Red VGC",
+        "Brompton 3 Speed Folding Bike - Red - Fully Serviced With 3 Month Warranty"
+      ]
+    },
+    {
+      "label": "Tempest Blue",
+      "axisValues": {
+        "Color": "Tempest Blue"
+      },
+      "total": 14,
+      "active": 7,
+      "sold": 7,
+      "sellThroughPct": 50,
+      "medianPrice": 802.3,
+      "iqr": 174.70000000000005,
+      "medianActivePrice": 924.7,
+      "medianSoldPrice": 750.0,
+      "spread": -174.7,
+      "minPrice": 599.99,
+      "maxPrice": 1327.6,
+      "sampleTitles": [
+        "Brompton Tempest Blue 2 Speed Low S2L - WORLDWIDE DELIVERY",
+        "Brompton M6R 6 Speed, Tempest Blue July 2020. Inc Brooks Saddle, Rack, Bag +More",
+        "Brompton M6L Folding Bike- 2019 - Tempest Blue - 6 Speed - Like C Line Explorer",
+        "2015 Brompton S3L folding bike C Line Low Equivalent in Tempest Blue/Ivory",
+        "2015 Brompton S3L folding bike C Line Low Equivalent in Tempest Blue/White"
+      ]
+    },
+    {
+      "label": "M6L | Red",
+      "axisValues": {
+        "Model": "M6L",
+        "Color": "Red"
+      },
+      "total": 6,
+      "active": 3,
+      "sold": 3,
+      "sellThroughPct": 50,
+      "medianPrice": 950.0,
+      "iqr": 459.0,
+      "medianActivePrice": 950.0,
+      "medianSoldPrice": 771.7,
+      "spread": -178.3,
+      "minPrice": 618.69,
+      "maxPrice": 1489.99,
+      "sampleTitles": [
+        "Brompton M6L - 2021 - Red Folding Bike Excellent Condition with Extras",
+        "Brompton M6L - 2021 - Red Folding Bike Excellent Condition with Extras",
+        "BROMPTON M6L-X RED TITANIUM **WORLDWIDE DISPATCH**",
+        "Brompton M6L Folding Bike – 2015 Model - red and white",
+        "Red Brompton M6L /C Line 6 Spd + Carbon Wheels + Extras Red Touchpoints RRP£2½k"
+      ]
+    },
+    {
+      "label": "Explore | Black",
+      "axisValues": {
+        "Model": "Explore",
+        "Color": "Black"
+      },
+      "total": 18,
+      "active": 8,
+      "sold": 10,
+      "sellThroughPct": 56,
+      "medianPrice": 1019.89,
+      "iqr": 233.70000000000005,
+      "medianActivePrice": 1128.7,
+      "medianSoldPrice": 945.0,
+      "spread": -183.7,
+      "minPrice": 741.1,
+      "maxPrice": 1895.0,
+      "sampleTitles": [
+        "Brompton C Line Explore 16\" Wheel Folding Bike - Matt Black (Mark/No Light) A",
+        "Brompton C Line 6 Speed Explore - Matt Black",
+        "Brompton Bike 24/25 Season C Line Explore 6 speed,  M Handlebar  Black",
+        "Brompton Bike 24/25 Season C Line Explore 6 speed,  M Handlebar  Black",
+        "Brompton Bike C Line (Explore) Black 2024 6 speed M Handlebar with little use"
+      ]
+    },
+    {
+      "label": "Mid Handlebar",
+      "axisValues": {
+        "Handlebar Type": "Mid Handlebar"
+      },
+      "total": 14,
+      "active": 11,
+      "sold": 3,
+      "sellThroughPct": 21,
+      "medianPrice": 996.1,
+      "iqr": 828.3,
+      "medianActivePrice": 996.1,
+      "medianSoldPrice": 771.7,
+      "spread": -224.4,
+      "minPrice": 24.99,
+      "maxPrice": 3765.05,
+      "sampleTitles": [
+        "Brompton P Line 4 Speed 2022 Mid Handlebar Folding Bike - Storm Grey",
+        "Brompton C Line Bike 6-Speed, Mid Handlebar, Brooks Saddle, and Messenger Bag",
+        "Brompton C Line Folding Bike 6-Speed, Mid Handlebar 2022",
+        "Brompton C Line 6 Speed 2024 Mid Handlebar £970",
+        "Brand New Brompton P Line 2022 Mid Handlebar Folding Bike | Storm Grey | Boxed"
+      ]
+    },
+    {
+      "label": "M3L | Blue",
+      "axisValues": {
+        "Model": "M3L",
+        "Color": "Blue"
+      },
+      "total": 12,
+      "active": 4,
+      "sold": 8,
+      "sellThroughPct": 67,
+      "medianPrice": 618.7,
+      "iqr": 253.9799999999999,
+      "medianActivePrice": 770.68,
+      "medianSoldPrice": 532.0,
+      "spread": -238.68,
+      "minPrice": 299.9,
+      "maxPrice": 1302.1,
+      "sampleTitles": [
+        "Brompton Cobalt Blue 3 Speed Mid M3L - WORLDWIDE DELIVERY",
+        "Brompton M3L Folding Bicycle Lagoon Blue Bike with Carry Bag",
+        "Brompton M3L Folding Bike Blue with Carry Bag",
+        "Brompton M3L Folding Bike - Used twice - Orange and Blue",
+        "Brompton M3L Folding Bike - Lagoon blue"
+      ]
+    },
+    {
+      "label": "Racing Green",
+      "axisValues": {
+        "Color": "Racing Green"
+      },
+      "total": 16,
+      "active": 9,
+      "sold": 7,
+      "sellThroughPct": 44,
+      "medianPrice": 903.28,
+      "iqr": 254.29999999999995,
+      "medianActivePrice": 923.68,
+      "medianSoldPrice": 650.0,
+      "spread": -273.68,
+      "minPrice": 414.7,
+      "maxPrice": 2320.1,
+      "sampleTitles": [
+        "Brompton Racing Green Folding Bike 6-Speed (6ML) with Front Bag",
+        "Brompton folding bike C Line 6 speed in racing green and ivory with accessories",
+        "Brompton 3 Speed British Racing Green",
+        "Brompton Folding Bike 3-Speed Racing Green",
+        "Brompton M6L C Line explore High-Racing Green - only used 3 times - bargain"
+      ]
+    },
+    {
+      "label": "M3L | Red",
+      "axisValues": {
+        "Model": "M3L",
+        "Color": "Red"
+      },
+      "total": 5,
+      "active": 4,
+      "sold": 1,
+      "sellThroughPct": 20,
+      "medianPrice": 600.0,
+      "iqr": 306.0,
+      "medianActivePrice": 822.7,
+      "medianSoldPrice": 516.7,
+      "spread": -306.0,
+      "minPrice": 464.68,
+      "maxPrice": 1791.7,
+      "sampleTitles": [
+        "Brompton M3L folding bicycle in Red Excellent Condition",
+        "3 speed Red M3L folding bike brompton",
+        "Brompton Red 3 speed M3L folding bike bicycle",
+        "His & Hers 3  speed Red M3L folding bike brompton",
+        "Brompton M3L - C Line equivalent Folding bicycle in House Red - Used"
+      ]
+    },
+    {
+      "label": "Explore",
+      "axisValues": {
+        "Model": "Explore"
+      },
+      "total": 32,
+      "active": 12,
+      "sold": 20,
+      "sellThroughPct": 62,
+      "medianPrice": 1128.7,
+      "iqr": 574.3,
+      "medianActivePrice": 1332.7,
+      "medianSoldPrice": 1001.2,
+      "spread": -331.5,
+      "minPrice": 598.3,
+      "maxPrice": 2454.7,
+      "sampleTitles": [
+        "Brompton C Line Explore 6 speed",
+        "BRAND NEW Brompton x Tour de France C Line Explore",
+        "brompton c line explore 6 speed",
+        "Brompton Bike 6-Speed Explore e Golden Lacquer, One Size, Special Edition",
+        "Brompton Electric 6 Speed High C line Explore (2023) - Incl. Roller Rack"
+      ]
+    },
+    {
+      "label": "Explore | Blue",
+      "axisValues": {
+        "Model": "Explore",
+        "Color": "Blue"
+      },
+      "total": 5,
+      "active": 4,
+      "sold": 1,
+      "sellThroughPct": 20,
+      "medianPrice": 1179.7,
+      "iqr": 311.79999999999995,
+      "medianActivePrice": 1286.8,
+      "medianSoldPrice": 925.0,
+      "spread": -361.8,
+      "minPrice": 925.0,
+      "maxPrice": 2295.0,
+      "sampleTitles": [
+        "BROMPTON BIKE, C LINE 6-SPEED (EXPLORE) – OCEAN BLUE – M",
+        "Brompton C Line Explore 6 Speed Low Bar 2024 Folding Bike - Ocean Blue Brand New",
+        "Brompton C Line Explore 6 Speed Low Bar 2024 Folding Bike - Ocean Blue Brand New",
+        "Brompton C Line Explore Elctrc Bike 2025 12-Speed, Roller Frame, Mid Ocean blue",
+        "Brompton C Line Explore 2024 6-speed in Cloud Blue - Barely Used!"
+      ]
+    },
+    {
+      "label": "M6L | Black",
+      "axisValues": {
+        "Model": "M6L",
+        "Color": "Black"
+      },
+      "total": 24,
+      "active": 12,
+      "sold": 12,
+      "sellThroughPct": 50,
+      "medianPrice": 850.0,
+      "iqr": 628.8,
+      "medianActivePrice": 1230.7,
+      "medianSoldPrice": 771.7,
+      "spread": -459.0,
+      "minPrice": 618.7,
+      "maxPrice": 2249.68,
+      "sampleTitles": [
+        "Brompton M6L Black Edition - Orange - Rare Ltd Edition colour and spec",
+        "Brompton M6L Black Edition – Full Black, 6 Speed, Excellent Condition",
+        "Brompton M6L Folding Bike Black",
+        "2020 Brompton M6L Electric - Black Edition - Brand New Wheel / Motor - 6 Speed",
+        "Brompton M6l Black Edition 6 Speed 2020 £1089"
+      ]
+    },
+    {
+      "label": "M3L | Tempest Blue",
+      "axisValues": {
+        "Model": "M3L",
+        "Color": "Tempest Blue"
+      },
+      "total": 6,
+      "active": 2,
+      "sold": 4,
+      "sellThroughPct": 67,
+      "medianPrice": 700.3,
+      "iqr": 304.70000000000005,
+      "medianActivePrice": 1095.0,
+      "medianSoldPrice": 620.0,
+      "spread": -475.0,
+      "minPrice": 454.48,
+      "maxPrice": 1095.0,
+      "sampleTitles": [
+        "Brompton M3L C Line - Tempest Blue - Excellent Condition + £300 Upgrades",
+        "Brompton M3L Folding Bike 3-Speed - Tempest Blue",
+        "Brompton M3L 3 Speed Folding Bike C-line Equivalent Tempest Blue",
+        "Brompton M3L Tempest Blue",
+        "Brompton M3L - Tempest Blue - Excellent Condition - 1 Year Warranty"
+      ]
+    },
+    {
+      "label": "M6L",
+      "axisValues": {
+        "Model": "M6L"
+      },
+      "total": 50,
+      "active": 30,
+      "sold": 20,
+      "sellThroughPct": 40,
+      "medianPrice": 873.7,
+      "iqr": 678.9300000000001,
+      "medianActivePrice": 1332.7,
+      "medianSoldPrice": 799.24,
+      "spread": -533.46,
+      "minPrice": 567.7,
+      "maxPrice": 2913.7,
+      "sampleTitles": [
+        "Brompton Turkish Green (Black Edition) M6L Mid 6 Speed - Worldwide Delivery",
+        "Brompton Lime Green & Black M6L Mid 6 Speed - Worldwide Delivery",
+        "M6L Brompton 6 Gears (2013) Folding Bike Including Carry Bag",
+        "Brompton C Line M6L (6 Speed) folding bicycle - Orange",
+        "Brompton M6L Folding Fold-up Foldable Bike"
+      ]
+    },
+    {
+      "label": "M6L | Blue",
+      "axisValues": {
+        "Model": "M6L",
+        "Color": "Blue"
+      },
+      "total": 4,
+      "active": 1,
+      "sold": 3,
+      "sellThroughPct": 75,
+      "medianPrice": 1179.7,
+      "iqr": 612.0,
+      "medianActivePrice": 1383.7,
+      "medianSoldPrice": 771.7,
+      "spread": -612.0,
+      "minPrice": 414.7,
+      "maxPrice": 1383.7,
+      "sampleTitles": [
+        "Brompton Bike, M6L, Blue, 2013, Great Price",
+        "Brompton Electric M6L- 6 Speed - Bolt Blue - 2020",
+        "Brompton M6L (C Line) Folding Bike Blue Excellent Condition",
+        "Brompton Electric M6L- 6 Speed  - Bolt Blue  - 2020"
+      ]
+    },
+    {
+      "label": "12 Speed",
+      "axisValues": {
+        "Speed": "12 Speed"
+      },
+      "total": 33,
+      "active": 20,
+      "sold": 13,
+      "sellThroughPct": 39,
+      "medianPrice": 1450.0,
+      "iqr": 2529.7,
+      "medianActivePrice": 1850.0,
+      "medianSoldPrice": 1210.3,
+      "spread": -639.7,
+      "minPrice": 15.0,
+      "maxPrice": 4435.7,
+      "sampleTitles": [
+        "BROMPTON P Line - 12 speed - Team GB Olympic Special Edition 2024 brand new",
+        "Brompton C Line 12 Speed Conversion With Rack H6R To H12R Brommieplus",
+        "Brompton T Line Blasted Titanium 12 Speed Low Bar - Lightly Used Great Condition",
+        "Brompton T Line - 12 Speed - Brand New In Box",
+        "Brompton C Line Electric 12 Speed Folding Bike Pop Lilac"
+      ]
+    },
+    {
+      "label": "Explore | Black | Mid Handlebar",
+      "axisValues": {
+        "Model": "Explore",
+        "Color": "Black",
+        "Handlebar Type": "Mid Handlebar"
+      },
+      "total": 5,
+      "active": 2,
+      "sold": 3,
+      "sellThroughPct": 60,
+      "medianPrice": 900.0,
+      "iqr": 30.110000000000014,
+      "medianActivePrice": 1689.7,
+      "medianSoldPrice": 900.0,
+      "spread": -789.7,
+      "minPrice": 873.7,
+      "maxPrice": 1689.7,
+      "sampleTitles": [
+        "Brompton C Line Explore Mid Handlebar 16\" Wheel 2-Gear Folding Bike - Black A",
+        "Brompton Bike 6-Speed Explore, Black Mid Handlebar",
+        "Brompton Bike 6-Speed Explore 2024, Black Mid Handlebar",
+        "Brompton C Line Explore Mid Handlebar 16\" Wheel 2-Gear Folding Bike - Black A",
+        "Brompton C Line Explore Mid Handlebar 16\" Wheel 2-Gear Folding Bike - Black A"
+      ]
+    },
+    {
+      "label": "Black | Mid Handlebar",
+      "axisValues": {
+        "Color": "Black",
+        "Handlebar Type": "Mid Handlebar"
+      },
+      "total": 18,
+      "active": 12,
+      "sold": 6,
+      "sellThroughPct": 33,
+      "medianPrice": 1494.88,
+      "iqr": 1271.1,
+      "medianActivePrice": 1999.99,
+      "medianSoldPrice": 1149.1,
+      "spread": -850.89,
+      "minPrice": 516.7,
+      "maxPrice": 5360.93,
+      "sampleTitles": [
+        "Brompton P Line 2022 4 Speed Mid Handlebar Midnight Black *ONLY USED ONCE*",
+        "Brompton Electric C Line - 4 Speed - Mid Handlebar  Black Folding Bike RRP £3000",
+        "Brompton C Line 6 Speed 2023 Mid Handlebar Folding Bike - Matt Black",
+        "Brompton C Line 6 Speed Mid Handlebar Folding Bike - Matt Black",
+        "Brompton C Line 6 Speed Mid Handlebar Folding Bike - Matt Black"
+      ]
+    },
+    {
+      "label": "CHPT3",
+      "axisValues": {
+        "Model": "CHPT3"
+      },
+      "total": 25,
+      "active": 16,
+      "sold": 9,
+      "sellThroughPct": 36,
+      "medianPrice": 2046.7,
+      "iqr": 1070.9999999999998,
+      "medianActivePrice": 2760.7,
+      "medianSoldPrice": 1842.7,
+      "spread": -918.0,
+      "minPrice": 8.66,
+      "maxPrice": 3576.7,
+      "sampleTitles": [
+        "Brompton CHPT3 V4 2023 Folding Bicycle",
+        "Brompton CHPT3 V4 - CHPT3 Brompton 2023 4 Speed S4L Boxed unused",
+        "Brompton CHPT3 V4 2023 Folding Bicycle",
+        "Brompton CHPT3 V4 2023 Folding Bicycle",
+        "Brompton CHPT3 V2 David Millar's Limited Edition One-Off Paint Scheme"
+      ]
+    },
+    {
+      "label": "Green",
+      "axisValues": {
+        "Color": "Green"
+      },
+      "total": 27,
+      "active": 12,
+      "sold": 15,
+      "sellThroughPct": 56,
+      "medianPrice": 822.7,
+      "iqr": 1518.88,
+      "medianActivePrice": 1944.7,
+      "medianSoldPrice": 639.1,
+      "spread": -1305.6,
+      "minPrice": 63.1,
+      "maxPrice": 2862.7,
+      "sampleTitles": [
+        "Brompton G Line - Roller Rack - Forest Green - Size S",
+        "Brompton G Line with Roller Frame 8-Speed Medium Folding Bike Forest Green Mens",
+        "Brompton Sage Green - Classic + Extras + Brooks + Rack - M6R Mid - World Postage",
+        "Brompton G Line Electric 4 speed - Forest Green - Medium - 164 miles, Sep 2025!",
+        "Brompton Electric - Greenway 345 kWh Battery - for C, P and G Line Electric 2025"
+      ]
+    },
+    {
+      "label": "Racing Green | Mid Handlebar",
+      "axisValues": {
+        "Color": "Racing Green",
+        "Handlebar Type": "Mid Handlebar"
+      },
+      "total": 5,
+      "active": 2,
+      "sold": 3,
+      "sellThroughPct": 60,
+      "medianPrice": 1119.95,
+      "iqr": 210.0,
+      "medianActivePrice": 2320.1,
+      "medianSoldPrice": 939.0,
+      "spread": -1381.1,
+      "minPrice": 720.7,
+      "maxPrice": 2320.1,
+      "sampleTitles": [
+        "Brompton C Line 6 Speed Mid Handlebar Folding Bike - Racing Green",
+        "Brompton C Line 6 Speed Mid Handlebar Folding Bike - Racing Green",
+        "Brompton C Line 2 Speed 2023 Mid Handlebar Folding Bike - Racing Green",
+        "Brompton C Line 12-Speed Mid Handlebar Folding Bike, Racing Green UK EXPORTS",
+        "Brompton C Line 2 Speed 2023 Mid Handlebar Folding Bike - British Racing Green"
+      ]
+    }
+  ]
+}
