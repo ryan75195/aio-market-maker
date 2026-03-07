@@ -29,8 +29,8 @@ public class TaxonomyServiceTests
         // white/black) having moderate similarity for graph edge building.
         var mockEmbedding = new Mock<IEmbeddingService>();
         mockEmbedding
-            .Setup(e => e.GetEmbeddings(It.IsAny<IEnumerable<string>>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((IEnumerable<string> texts, CancellationToken _) =>
+            .Setup(e => e.GetEmbeddings(It.IsAny<IEnumerable<string>>(), It.IsAny<CancellationToken>(), It.IsAny<EmbeddingModel>()))
+            .ReturnsAsync((IEnumerable<string> texts, CancellationToken _, EmbeddingModel __) =>
             {
                 return texts.Select(EmbeddingForText).ToArray();
             });

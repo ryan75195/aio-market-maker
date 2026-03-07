@@ -128,7 +128,7 @@ public class NgramExtractorTests
 
         var mockEmbedding = new Mock<IEmbeddingService>();
         mockEmbedding
-            .Setup(e => e.GetEmbeddings(It.IsAny<IEnumerable<string>>(), It.IsAny<CancellationToken>()))
+            .Setup(e => e.GetEmbeddings(It.IsAny<IEnumerable<string>>(), It.IsAny<CancellationToken>(), It.IsAny<EmbeddingModel>()))
             .ReturnsAsync(new[]
             {
                 new[] { 1f, 0f, 0f },
@@ -157,7 +157,7 @@ public class NgramExtractorTests
 
         var mockEmbedding = new Mock<IEmbeddingService>();
         mockEmbedding
-            .Setup(e => e.GetEmbeddings(It.IsAny<IEnumerable<string>>(), It.IsAny<CancellationToken>()))
+            .Setup(e => e.GetEmbeddings(It.IsAny<IEnumerable<string>>(), It.IsAny<CancellationToken>(), It.IsAny<EmbeddingModel>()))
             .ReturnsAsync(new[]
             {
                 new[] { 1f, 0f },
@@ -168,5 +168,107 @@ public class NgramExtractorTests
         var result = (await extractor.Deduplicate(ngrams)).ToList();
 
         Assert.That(result.Count, Is.EqualTo(2));
+    }
+
+    // ======================================================================
+    // BUG TESTS — discovered from backfill data analysis (2026-03-07)
+    // ======================================================================
+
+    // BUG 1: Marketplace noise words become axis values.
+    // Real data: Vitamix Blender has axis values "only", "non", "brand".
+    //            Ninja Foodi has "disposable", "accessories", "brand".
+    //            Dyson Airwrap has "attachment", "attachments", "brand".
+    // These aren't product variants — they're listing description filler.
+    [Test]
+    [TestCase("only")]
+    [TestCase("non")]
+    [TestCase("brand")]
+    [TestCase("used")]
+    [TestCase("item")]
+    [TestCase("lot")]
+    [TestCase("set")]
+    [TestCase("genuine")]
+    [TestCase("original")]
+    [TestCase("compatible")]
+    [TestCase("replacement")]
+    public void Should_filter_marketplace_noise_words(string noiseWord)
+    {
+        var titles = Enumerable.Repeat($"Dyson Airwrap {noiseWord} complete", 25);
+        var result = _extractor.Extract(titles).ToList();
+
+        Assert.That(result.Any(n => n.Canonical == noiseWord), Is.False,
+            $"'{noiseWord}' should be filtered as marketplace noise");
+    }
+
+    // BUG 2: Plural and singular forms produce separate n-grams.
+    // Real data: Dyson Airwrap has both "attachment" and "attachments" as
+    //            separate Axis 0 values. Nike Air Jordan 1 has "sneakers"
+    //            and "sneaker". These should normalize to the same form.
+    [Test]
+    [TestCase("attachment", "attachments")]
+    [TestCase("accessory", "accessories")]
+    [TestCase("controller", "controllers")]
+    [TestCase("sneaker", "sneakers")]
+    [TestCase("charger", "chargers")]
+    public void Should_normalize_simple_plurals_to_singular(string singular, string plural)
+    {
+        // Mix of singular and plural forms — both should produce the same canonical
+        var titles = Enumerable.Repeat($"PS5 {singular} white", 15)
+            .Concat(Enumerable.Repeat($"PS5 {plural} white", 15));
+        var result = _extractor.Extract(titles).ToList();
+
+        var singularResult = result.FirstOrDefault(n => n.Canonical == singular);
+        var pluralResult = result.FirstOrDefault(n => n.Canonical == plural);
+
+        Assert.Multiple(() =>
+        {
+            // Should have one form, not both
+            Assert.That(singularResult != null || pluralResult != null, Is.True,
+                "At least one form should exist");
+            Assert.That(singularResult != null && pluralResult != null, Is.False,
+                $"Should not have both '{singular}' AND '{plural}' as separate n-grams");
+        });
+    }
+
+    // BUG 3: Spelling variants like "disc"/"disk" and "grey"/"gray" escape
+    //         the embedding dedup (0.95 threshold) and become separate axis values.
+    // Real data: PlayStation 5 has both "disc" (1932 listings) and "disk" (227 listings)
+    //            as separate Axis 0 values. These are the same variant.
+    // This test verifies that the Deduplicate step merges spelling variants
+    // even when embedding similarity is below 0.95 (which it often is for
+    // single-word near-synonyms).
+    [Test]
+    [TestCase("disc", "disk")]
+    [TestCase("grey", "gray")]
+    [TestCase("colour", "color")]
+    public async Task Should_merge_spelling_variants_via_edit_distance(string formA, string formB)
+    {
+        var ngrams = new[]
+        {
+            new Ngram(formA, new[] { formA }, 200),
+            new Ngram(formB, new[] { formB }, 50),
+            new Ngram("console", new[] { "console" }, 300),
+        };
+
+        // Simulate embeddings where disc/disk are similar but below 0.95 cosine
+        // cosine(formA, formB) = 0.85 / (1.0 * sqrt(0.85^2 + 0.527^2)) = 0.85
+        var mockEmbedding = new Mock<IEmbeddingService>();
+        mockEmbedding
+            .Setup(e => e.GetEmbeddings(It.IsAny<IEnumerable<string>>(), It.IsAny<CancellationToken>(), It.IsAny<EmbeddingModel>()))
+            .ReturnsAsync(new[]
+            {
+                new[] { 1f, 0f, 0f },         // formA
+                new[] { 0.85f, 0.527f, 0f },  // formB — cosine ~0.85, below 0.95
+                new[] { 0f, 0f, 1f },          // console — unrelated
+            });
+
+        var extractor = new NgramExtractor(mockEmbedding.Object);
+        var result = (await extractor.Deduplicate(ngrams)).ToList();
+
+        Assert.That(result.Count, Is.EqualTo(2),
+            $"'{formA}' and '{formB}' should merge into one, leaving 2 total n-grams");
+        var merged = result.First(n => n.Canonical == formA);
+        Assert.That(merged.Forms, Does.Contain(formB),
+            $"'{formB}' should be tracked as an alternative form of '{formA}'");
     }
 }

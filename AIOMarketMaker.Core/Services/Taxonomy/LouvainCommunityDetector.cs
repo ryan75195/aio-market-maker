@@ -142,12 +142,7 @@ public class LouvainCommunityDetector : ICommunityDetector
         }
 
         return groups.Values
-            .Select((members, idx) => new Community(
-                idx,
-                members.Select(m => new Ngram(m.ToString(), new[] { m.ToString() }, 0)),
-                ExclusivityDensity: 0.0,
-                Coherence: 0.0,
-                Coverage: 0.0))
+            .Select((members, idx) => new Community(idx, members))
             .ToList();
     }
 }

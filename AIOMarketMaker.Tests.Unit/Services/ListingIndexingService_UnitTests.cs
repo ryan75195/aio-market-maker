@@ -31,7 +31,7 @@ public class ListingIndexingService_UnitTests
         var expectedEmbedding = new float[] { 0.1f, 0.2f, 0.3f };
 
         _embeddingMock
-            .Setup(x => x.GetEmbedding("Test Item Test description", It.IsAny<CancellationToken>()))
+            .Setup(x => x.GetEmbedding("Test Item Test description", It.IsAny<CancellationToken>(), It.IsAny<EmbeddingModel>()))
             .ReturnsAsync(expectedEmbedding);
 
         var result = await _service.Index(listing, embedContent: true);
@@ -43,7 +43,7 @@ public class ListingIndexingService_UnitTests
         });
 
         _embeddingMock.Verify(
-            x => x.GetEmbedding("Test Item Test description", It.IsAny<CancellationToken>()),
+            x => x.GetEmbedding("Test Item Test description", It.IsAny<CancellationToken>(), It.IsAny<EmbeddingModel>()),
             Times.Once);
 
         _vectorIndexMock.Verify(
@@ -65,7 +65,7 @@ public class ListingIndexingService_UnitTests
         });
 
         _embeddingMock.Verify(
-            x => x.GetEmbedding(It.IsAny<string>(), It.IsAny<CancellationToken>()),
+            x => x.GetEmbedding(It.IsAny<string>(), It.IsAny<CancellationToken>(), It.IsAny<EmbeddingModel>()),
             Times.Never);
         _vectorIndexMock.Verify(
             x => x.Upsert(It.IsAny<string>(), It.IsAny<float[]>()),
@@ -95,7 +95,7 @@ public class ListingIndexingService_UnitTests
         });
 
         _embeddingMock.Verify(
-            x => x.GetEmbedding(It.IsAny<string>(), It.IsAny<CancellationToken>()),
+            x => x.GetEmbedding(It.IsAny<string>(), It.IsAny<CancellationToken>(), It.IsAny<EmbeddingModel>()),
             Times.Never);
         _vectorIndexMock.Verify(
             x => x.Upsert(It.IsAny<string>(), It.IsAny<float[]>()),
@@ -117,7 +117,7 @@ public class ListingIndexingService_UnitTests
         };
 
         _embeddingMock
-            .Setup(x => x.GetEmbeddings(It.IsAny<IEnumerable<string>>(), It.IsAny<CancellationToken>()))
+            .Setup(x => x.GetEmbeddings(It.IsAny<IEnumerable<string>>(), It.IsAny<CancellationToken>(), It.IsAny<EmbeddingModel>()))
             .ReturnsAsync(new[]
             {
                 new float[] { 0.1f }, new float[] { 0.2f }, new float[] { 0.3f }
@@ -133,10 +133,10 @@ public class ListingIndexingService_UnitTests
 
         // Single batch API call, not 3 individual calls
         _embeddingMock.Verify(
-            x => x.GetEmbeddings(It.Is<IEnumerable<string>>(t => t.Count() == 3), It.IsAny<CancellationToken>()),
+            x => x.GetEmbeddings(It.Is<IEnumerable<string>>(t => t.Count() == 3), It.IsAny<CancellationToken>(), It.IsAny<EmbeddingModel>()),
             Times.Once);
         _embeddingMock.Verify(
-            x => x.GetEmbedding(It.IsAny<string>(), It.IsAny<CancellationToken>()),
+            x => x.GetEmbedding(It.IsAny<string>(), It.IsAny<CancellationToken>(), It.IsAny<EmbeddingModel>()),
             Times.Never);
 
         _vectorIndexMock.Verify(x => x.Upsert("B1", It.IsAny<float[]>()), Times.Once);
@@ -158,7 +158,7 @@ public class ListingIndexingService_UnitTests
         Assert.That(results.All(r => r.Action == IndexingAction.Skipped), Is.True);
 
         _embeddingMock.Verify(
-            x => x.GetEmbeddings(It.IsAny<IEnumerable<string>>(), It.IsAny<CancellationToken>()),
+            x => x.GetEmbeddings(It.IsAny<IEnumerable<string>>(), It.IsAny<CancellationToken>(), It.IsAny<EmbeddingModel>()),
             Times.Never);
     }
 
@@ -173,7 +173,7 @@ public class ListingIndexingService_UnitTests
         };
 
         _embeddingMock
-            .Setup(x => x.GetEmbeddings(It.IsAny<IEnumerable<string>>(), It.IsAny<CancellationToken>()))
+            .Setup(x => x.GetEmbeddings(It.IsAny<IEnumerable<string>>(), It.IsAny<CancellationToken>(), It.IsAny<EmbeddingModel>()))
             .ReturnsAsync(new[] { new float[] { 0.5f } });
 
         var results = (await _service.IndexBatch(listings, embedContent: true)).ToList();
@@ -187,7 +187,7 @@ public class ListingIndexingService_UnitTests
 
         // Only 1 text sent to batch API (the listing with real content)
         _embeddingMock.Verify(
-            x => x.GetEmbeddings(It.Is<IEnumerable<string>>(t => t.Count() == 1), It.IsAny<CancellationToken>()),
+            x => x.GetEmbeddings(It.Is<IEnumerable<string>>(t => t.Count() == 1), It.IsAny<CancellationToken>(), It.IsAny<EmbeddingModel>()),
             Times.Once);
     }
 
@@ -202,12 +202,12 @@ public class ListingIndexingService_UnitTests
 
         // Batch call fails
         _embeddingMock
-            .Setup(x => x.GetEmbeddings(It.IsAny<IEnumerable<string>>(), It.IsAny<CancellationToken>()))
+            .Setup(x => x.GetEmbeddings(It.IsAny<IEnumerable<string>>(), It.IsAny<CancellationToken>(), It.IsAny<EmbeddingModel>()))
             .ThrowsAsync(new HttpRequestException("Rate limited"));
 
         // Individual calls succeed
         _embeddingMock
-            .Setup(x => x.GetEmbedding(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Setup(x => x.GetEmbedding(It.IsAny<string>(), It.IsAny<CancellationToken>(), It.IsAny<EmbeddingModel>()))
             .ReturnsAsync(new float[] { 0.1f });
 
         var results = (await _service.IndexBatch(listings, embedContent: true)).ToList();
@@ -216,7 +216,7 @@ public class ListingIndexingService_UnitTests
 
         // Should have used individual fallback
         _embeddingMock.Verify(
-            x => x.GetEmbedding(It.IsAny<string>(), It.IsAny<CancellationToken>()),
+            x => x.GetEmbedding(It.IsAny<string>(), It.IsAny<CancellationToken>(), It.IsAny<EmbeddingModel>()),
             Times.Exactly(2));
     }
 
@@ -228,7 +228,7 @@ public class ListingIndexingService_UnitTests
         Assert.That(results, Is.Empty);
 
         _embeddingMock.Verify(
-            x => x.GetEmbeddings(It.IsAny<IEnumerable<string>>(), It.IsAny<CancellationToken>()),
+            x => x.GetEmbeddings(It.IsAny<IEnumerable<string>>(), It.IsAny<CancellationToken>(), It.IsAny<EmbeddingModel>()),
             Times.Never);
     }
 
@@ -238,10 +238,10 @@ public class ListingIndexingService_UnitTests
         var listings = new[] { CreateListing(listingId: "FAIL1", title: "Item") };
 
         _embeddingMock
-            .Setup(x => x.GetEmbeddings(It.IsAny<IEnumerable<string>>(), It.IsAny<CancellationToken>()))
+            .Setup(x => x.GetEmbeddings(It.IsAny<IEnumerable<string>>(), It.IsAny<CancellationToken>(), It.IsAny<EmbeddingModel>()))
             .ThrowsAsync(new HttpRequestException("Batch failed"));
         _embeddingMock
-            .Setup(x => x.GetEmbedding(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Setup(x => x.GetEmbedding(It.IsAny<string>(), It.IsAny<CancellationToken>(), It.IsAny<EmbeddingModel>()))
             .ThrowsAsync(new HttpRequestException("Individual also failed"));
 
         var results = (await _service.IndexBatch(listings, embedContent: true)).ToList();

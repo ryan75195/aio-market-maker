@@ -1,5 +1,3 @@
-using System.Text.RegularExpressions;
-
 namespace AIOMarketMaker.Core.Services.Taxonomy;
 
 public class MutualExclusivityAnalyzer : IMutualExclusivityAnalyzer
@@ -54,7 +52,7 @@ public class MutualExclusivityAnalyzer : IMutualExclusivityAnalyzer
                 if (overlap < threshold)
                 {
                     result.Add(new MutuallyExclusivePair(
-                        setList[i].Ngram, setList[j].Ngram, overlap, 0.0));
+                        setList[i].Ngram, setList[j].Ngram, overlap));
                 }
             }
         }
@@ -64,10 +62,27 @@ public class MutualExclusivityAnalyzer : IMutualExclusivityAnalyzer
 
     internal static bool PatternMatches(string pattern, string titleLower)
     {
-        if (!pattern.Contains(' '))
+        if (pattern.Contains(' '))
         {
-            return Regex.IsMatch(titleLower, $@"\b{Regex.Escape(pattern)}\b");
+            return titleLower.Contains(pattern, StringComparison.Ordinal);
         }
-        return titleLower.Contains(pattern, StringComparison.Ordinal);
+
+        // Word-boundary match without regex allocation
+        var idx = titleLower.IndexOf(pattern, StringComparison.Ordinal);
+        while (idx >= 0)
+        {
+            var before = idx == 0 || !char.IsLetterOrDigit(titleLower[idx - 1]);
+            var end = idx + pattern.Length;
+            var after = end >= titleLower.Length || !char.IsLetterOrDigit(titleLower[end]);
+
+            if (before && after)
+            {
+                return true;
+            }
+
+            idx = titleLower.IndexOf(pattern, idx + 1, StringComparison.Ordinal);
+        }
+
+        return false;
     }
 }

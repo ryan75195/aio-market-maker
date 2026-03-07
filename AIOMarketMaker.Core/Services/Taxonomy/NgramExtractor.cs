@@ -109,10 +109,10 @@ public partial class NgramExtractor : INgramExtractor
         }
 
         var texts = ngramList.Select(n => n.Canonical).ToList();
-        var vectors = await _embeddingService.GetEmbeddings(texts, ct);
+        var vectors = await _embeddingService.GetEmbeddings(texts, ct, EmbeddingModel.Small);
 
         // L2-normalize
-        var normed = vectors.Select(Normalize).ToArray();
+        var normed = vectors.Select(VectorMath.Normalize).ToArray();
 
         // Union-Find
         var parent = Enumerable.Range(0, ngramList.Count).ToArray();
@@ -141,7 +141,7 @@ public partial class NgramExtractor : INgramExtractor
         {
             for (var j = i + 1; j < ngramList.Count; j++)
             {
-                var similarity = CosineSimilarity(normed[i], normed[j]);
+                var similarity = VectorMath.CosineSimilarity(normed[i], normed[j]);
                 if (similarity >= 0.95
                     && !AreNumericVariants(texts[i], texts[j]))
                 {
@@ -171,26 +171,6 @@ public partial class NgramExtractor : INgramExtractor
             var allForms = sorted.SelectMany(i => ngramList[i].Forms).Distinct().ToList();
             return new Ngram(canonical.Canonical, allForms, totalFrequency);
         });
-    }
-
-    private static float[] Normalize(float[] vector)
-    {
-        var magnitude = MathF.Sqrt(vector.Sum(v => v * v));
-        if (magnitude == 0)
-        {
-            return vector;
-        }
-        return vector.Select(v => v / magnitude).ToArray();
-    }
-
-    private static double CosineSimilarity(float[] a, float[] b)
-    {
-        var dot = 0f;
-        for (var i = 0; i < a.Length; i++)
-        {
-            dot += a[i] * b[i];
-        }
-        return dot; // Already normalized, so dot product = cosine similarity
     }
 
     private static List<string> ExtractWords(string title)

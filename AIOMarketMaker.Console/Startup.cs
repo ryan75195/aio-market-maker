@@ -11,6 +11,7 @@ using AIOMarketMaker.Core.Data;
 using AIOMarketMaker.Core.Data.Migrations;
 using AIOMarketMaker.Core.Parsers;
 using AIOMarketMaker.Core.Services;
+using AIOMarketMaker.Core.Services.Taxonomy;
 using AIOMarketMaker.ML.Services;
 using AIOMarketMaker.Console.Tasks;
 using ScraperWorker.Services;
@@ -231,6 +232,13 @@ public static class HostHelper
                 services.AddScoped<IComparablesEtlService, ComparablesEtlService>();
                 services.AddSingleton<IBatchStage, ComparablesBatchStage>();
 
+                // Taxonomy pipeline
+                services.AddSingleton<INgramExtractor, NgramExtractor>();
+                services.AddSingleton<IMutualExclusivityAnalyzer, MutualExclusivityAnalyzer>();
+                services.AddSingleton<ICommunityDetector, LouvainCommunityDetector>();
+                services.AddSingleton<ITaxonomyService, TaxonomyService>();
+                services.AddScoped<ITaxonomyPersistenceService, TaxonomyPersistenceService>();
+
                 // Task system
                 services.AddTaskRunner();
                 services.AddTask<SearchTask>();
@@ -244,6 +252,8 @@ public static class HostHelper
                 services.AddTask<KAnalysisTask>();
                 services.AddTask<BatchLabelTask>();
                 services.AddTask<BackfillPredictionsTask>();
+                services.AddTask<TaxonomyTask>();
+                services.AddTask<BackfillTaxonomyTask>();
             })
             .Build();
     }

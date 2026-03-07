@@ -4,14 +4,11 @@ public record Ngram(string Canonical, IEnumerable<string> Forms, int Frequency);
 
 public record MatchSet(Ngram Ngram, IReadOnlySet<int> ListingIndices);
 
-public record MutuallyExclusivePair(
-    Ngram A, Ngram B, double Overlap, double EmbeddingSimilarity);
+public record MutuallyExclusivePair(Ngram A, Ngram B, double Overlap);
 
 public record WeightedEdge(int NodeA, int NodeB, double Weight);
 
-public record Community(
-    int Id, IEnumerable<Ngram> Members,
-    double ExclusivityDensity, double Coherence, double Coverage);
+public record Community(int Id, IEnumerable<int> MemberIndices);
 
 public record Axis(string Name, IEnumerable<AxisValue> Values);
 
@@ -33,5 +30,5 @@ public record TaxonomyResult(
 
 public interface ITaxonomyService
 {
-    Task<TaxonomyResult> Generate(IEnumerable<string> titles);
+    Task<TaxonomyResult> Generate(IEnumerable<string> titles, CancellationToken ct = default);
 }

@@ -55,7 +55,7 @@ public class LouvainCommunityDetectorTests
         var result = _detector.Detect(edges, nodeCount: 4, resolution: 1.0).ToList();
 
         Assert.That(result.Count, Is.EqualTo(1));
-        var totalMembers = result.Sum(c => c.Members.Count());
+        var totalMembers = result.Sum(c => c.MemberIndices.Count());
         Assert.That(totalMembers, Is.EqualTo(4));
     }
 
@@ -106,9 +106,9 @@ public class LouvainCommunityDetectorTests
         var result = _detector.Detect(edges, nodeCount: 6, resolution: 2.0).ToList();
 
         var communityWith0 = result.First(c =>
-            c.Members.Any(m => m.Canonical == "0"));
+            c.MemberIndices.Contains(0));
         Assert.That(
-            communityWith0.Members.Any(m => m.Canonical == "1"),
+            communityWith0.MemberIndices.Contains(1),
             Is.True);
     }
 }

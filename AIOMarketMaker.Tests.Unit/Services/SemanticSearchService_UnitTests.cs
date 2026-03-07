@@ -61,7 +61,7 @@ public class SemanticSearchService_UnitTests
             Assert.That(result.UpsertedCount, Is.EqualTo(0));
             Assert.That(result.SkippedCount, Is.EqualTo(1));
         });
-        _mockEmbedding.Verify(x => x.GetEmbeddings(It.IsAny<IEnumerable<string>>(), It.IsAny<CancellationToken>()), Times.Never);
+        _mockEmbedding.Verify(x => x.GetEmbeddings(It.IsAny<IEnumerable<string>>(), It.IsAny<CancellationToken>(), It.IsAny<EmbeddingModel>()), Times.Never);
     }
 
     private static IEnumerable<TestCaseData> ValidContentCases()
@@ -78,7 +78,7 @@ public class SemanticSearchService_UnitTests
     {
         var listing = new Listing { ListingId = "123", Title = title, Description = description };
         _mockEmbedding
-            .Setup(x => x.GetEmbeddings(It.IsAny<IEnumerable<string>>(), It.IsAny<CancellationToken>()))
+            .Setup(x => x.GetEmbeddings(It.IsAny<IEnumerable<string>>(), It.IsAny<CancellationToken>(), It.IsAny<EmbeddingModel>()))
             .ReturnsAsync(new[] { new float[] { 0.1f } });
 
         var result = await _service.IndexListings(new[] { listing });
@@ -121,7 +121,7 @@ public class SemanticSearchService_UnitTests
     {
         var queryEmbedding = new float[] { 0.1f };
         _mockEmbedding
-            .Setup(x => x.GetEmbedding(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Setup(x => x.GetEmbedding(It.IsAny<string>(), It.IsAny<CancellationToken>(), It.IsAny<EmbeddingModel>()))
             .ReturnsAsync(queryEmbedding);
 
         _mockVectorIndex
@@ -201,7 +201,7 @@ public class SemanticSearchService_UnitTests
     public async Task Should_use_config_topk_when_not_specified()
     {
         var queryEmbedding = new float[] { 0.1f };
-        _mockEmbedding.Setup(x => x.GetEmbedding(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+        _mockEmbedding.Setup(x => x.GetEmbedding(It.IsAny<string>(), It.IsAny<CancellationToken>(), It.IsAny<EmbeddingModel>()))
             .ReturnsAsync(queryEmbedding);
         _mockVectorIndex.Setup(x => x.Search(It.IsAny<float[]>(), It.IsAny<int>()))
             .Returns(Array.Empty<VectorSearchHit>());
@@ -218,7 +218,7 @@ public class SemanticSearchService_UnitTests
     public async Task Should_override_topk_when_specified()
     {
         var queryEmbedding = new float[] { 0.1f };
-        _mockEmbedding.Setup(x => x.GetEmbedding(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+        _mockEmbedding.Setup(x => x.GetEmbedding(It.IsAny<string>(), It.IsAny<CancellationToken>(), It.IsAny<EmbeddingModel>()))
             .ReturnsAsync(queryEmbedding);
         _mockVectorIndex.Setup(x => x.Search(It.IsAny<float[]>(), It.IsAny<int>()))
             .Returns(Array.Empty<VectorSearchHit>());
@@ -245,8 +245,8 @@ public class SemanticSearchService_UnitTests
         };
 
         _mockEmbedding
-            .Setup(x => x.GetEmbeddings(It.IsAny<IEnumerable<string>>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((IEnumerable<string> texts, CancellationToken _) =>
+            .Setup(x => x.GetEmbeddings(It.IsAny<IEnumerable<string>>(), It.IsAny<CancellationToken>(), It.IsAny<EmbeddingModel>()))
+            .ReturnsAsync((IEnumerable<string> texts, CancellationToken _, EmbeddingModel __) =>
                 texts.Select(_ => new float[] { 0.1f }).ToArray());
 
         var result = await service.IndexListings(listings);
@@ -269,7 +269,7 @@ public class SemanticSearchService_UnitTests
         };
 
         _mockEmbedding
-            .Setup(x => x.GetEmbeddings(It.IsAny<IEnumerable<string>>(), It.IsAny<CancellationToken>()))
+            .Setup(x => x.GetEmbeddings(It.IsAny<IEnumerable<string>>(), It.IsAny<CancellationToken>(), It.IsAny<EmbeddingModel>()))
             .ReturnsAsync(new[] { new float[] { 0.1f } });
 
         var callCount = 0;
@@ -306,8 +306,8 @@ public class SemanticSearchService_UnitTests
         };
 
         _mockEmbedding
-            .Setup(x => x.GetEmbeddings(It.IsAny<IEnumerable<string>>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((IEnumerable<string> texts, CancellationToken _) =>
+            .Setup(x => x.GetEmbeddings(It.IsAny<IEnumerable<string>>(), It.IsAny<CancellationToken>(), It.IsAny<EmbeddingModel>()))
+            .ReturnsAsync((IEnumerable<string> texts, CancellationToken _, EmbeddingModel __) =>
                 texts.Select(_ => new float[] { 0.1f }).ToArray());
 
         var result = await _service.IndexListings(listings);
@@ -338,7 +338,7 @@ public class SemanticSearchService_UnitTests
     public async Task Should_return_empty_hits_when_no_matches()
     {
         var queryEmbedding = new float[] { 0.1f };
-        _mockEmbedding.Setup(x => x.GetEmbedding(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+        _mockEmbedding.Setup(x => x.GetEmbedding(It.IsAny<string>(), It.IsAny<CancellationToken>(), It.IsAny<EmbeddingModel>()))
             .ReturnsAsync(queryEmbedding);
         _mockVectorIndex.Setup(x => x.Search(It.IsAny<float[]>(), It.IsAny<int>()))
             .Returns(Array.Empty<VectorSearchHit>());

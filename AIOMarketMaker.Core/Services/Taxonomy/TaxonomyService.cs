@@ -25,14 +25,14 @@ public class TaxonomyService : ITaxonomyService
         _embeddingService = embeddingService;
     }
 
-    public async Task<TaxonomyResult> Generate(IEnumerable<string> titles)
+    public async Task<TaxonomyResult> Generate(IEnumerable<string> titles, CancellationToken ct = default)
     {
         var titleList = titles.ToList();
         var total = titleList.Count;
 
         // Stage 1: Extract and dedup n-grams
         var rawNgrams = _extractor.Extract(titleList);
-        var ngrams = (await _extractor.Deduplicate(rawNgrams)).ToList();
+        var ngrams = (await _extractor.Deduplicate(rawNgrams, ct)).ToList();
 
         // Compute match sets and filter to significant
         var allMatchSets = _analyzer.ComputeMatchSets(titleList, ngrams).ToList();
@@ -68,7 +68,7 @@ public class TaxonomyService : ITaxonomyService
 
         // Stage 2: Build graph and detect communities
         var candidateNames = candidates.Select(c => c.Ngram.Canonical).ToList();
-        var candidateEmbeddings = await _embeddingService.GetEmbeddings(candidateNames);
+        var candidateEmbeddings = await _embeddingService.GetEmbeddings(candidateNames, ct, EmbeddingModel.Small);
 
         var nameToIndex = new Dictionary<string, int>();
         for (var i = 0; i < candidateNames.Count; i++)
@@ -77,7 +77,7 @@ public class TaxonomyService : ITaxonomyService
         }
 
         // Normalize embeddings for cosine similarity
-        var normed = candidateEmbeddings.Select(Normalize).ToArray();
+        var normed = candidateEmbeddings.Select(VectorMath.Normalize).ToArray();
 
         var graphEdges = new List<WeightedEdge>();
         foreach (var pair in exclusivePairs)
@@ -88,7 +88,7 @@ public class TaxonomyService : ITaxonomyService
                 continue;
             }
 
-            var similarity = CosineSimilarity(normed[idxA], normed[idxB]);
+            var similarity = VectorMath.CosineSimilarity(normed[idxA], normed[idxB]);
             if (similarity > GraphEdgeSimilarityThreshold)
             {
                 graphEdges.Add(new WeightedEdge(idxA, idxB, similarity));
@@ -103,9 +103,7 @@ public class TaxonomyService : ITaxonomyService
         var communityIndex = 0;
         foreach (var community in rawCommunities)
         {
-            var memberIndices = community.Members
-                .Select(m => int.Parse(m.Canonical))
-                .ToList();
+            var memberIndices = community.MemberIndices.ToList();
 
             if (memberIndices.Count < 2)
             {
@@ -424,23 +422,4 @@ public class TaxonomyService : ITaxonomyService
         return result;
     }
 
-    private static float[] Normalize(float[] vector)
-    {
-        var magnitude = MathF.Sqrt(vector.Sum(v => v * v));
-        if (magnitude == 0)
-        {
-            return vector;
-        }
-        return vector.Select(v => v / magnitude).ToArray();
-    }
-
-    private static double CosineSimilarity(float[] a, float[] b)
-    {
-        var dot = 0f;
-        for (var i = 0; i < a.Length; i++)
-        {
-            dot += a[i] * b[i];
-        }
-        return dot;
-    }
 }

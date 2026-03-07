@@ -3,6 +3,7 @@ using AIOMarketMaker.Api.Endpoints;
 using AIOMarketMaker.Core.Data;
 using AIOMarketMaker.Core.Data.Migrations;
 using AIOMarketMaker.Core.Services;
+using AIOMarketMaker.Core.Services.Taxonomy;
 using AIOMarketMaker.ML.Services;
 using AIOMarketMaker.Core.Parsers;
 using ScraperWorker.Services;
@@ -188,6 +189,14 @@ builder.Services.AddScoped<IComparablesEtlService, ComparablesEtlService>();
 builder.Services.AddSingleton<IBatchStage, ComparablesBatchStage>();
 builder.Services.AddSingleton<IBatchStage, PredictionBatchStage>();
 builder.Services.AddScoped<IListingPredictionService, ListingPredictionService>();
+
+// Taxonomy pipeline
+builder.Services.AddSingleton<INgramExtractor, NgramExtractor>();
+builder.Services.AddSingleton<IMutualExclusivityAnalyzer, MutualExclusivityAnalyzer>();
+builder.Services.AddSingleton<ICommunityDetector, LouvainCommunityDetector>();
+builder.Services.AddSingleton<ITaxonomyService, TaxonomyService>();
+builder.Services.AddScoped<ITaxonomyPersistenceService, TaxonomyPersistenceService>();
+builder.Services.AddSingleton<IPostJobStage, TaxonomyPostJobStage>();
 
 // Scraping concurrency config
 var scrapingConfig = new ScrapingConfig(
