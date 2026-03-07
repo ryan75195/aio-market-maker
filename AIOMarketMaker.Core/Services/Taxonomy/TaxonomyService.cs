@@ -163,14 +163,7 @@ public class TaxonomyService : ITaxonomyService
 
                     var setA = GetValueMatchSet(values[i], matchSets);
                     var setB = GetValueMatchSet(values[j], matchSets);
-
-                    if (setA.Count == 0 || setB.Count == 0)
-                    {
-                        continue;
-                    }
-
-                    var overlap = (double)setA.Count(idx => setB.Contains(idx))
-                        / Math.Min(setA.Count, setB.Count);
+                    var overlap = CalculateOverlap(setA, setB);
 
                     if (overlap >= ValueDedupOverlap)
                     {
@@ -215,13 +208,12 @@ public class TaxonomyService : ITaxonomyService
                     var partners = 0;
                     for (var j = 0; j < values.Count; j++)
                     {
-                        if (i == j || valueSets[i].Count == 0 || valueSets[j].Count == 0)
+                        if (i == j)
                         {
                             continue;
                         }
 
-                        var overlap = (double)valueSets[i].Count(idx => valueSets[j].Contains(idx))
-                            / Math.Min(valueSets[i].Count, valueSets[j].Count);
+                        var overlap = CalculateOverlap(valueSets[i], valueSets[j]);
 
                         if (overlap > threshold)
                         {
@@ -274,13 +266,7 @@ public class TaxonomyService : ITaxonomyService
                 {
                     for (var j = i + 1; j < values.Count; j++)
                     {
-                        if (valueSets[i].Count == 0 || valueSets[j].Count == 0)
-                        {
-                            continue;
-                        }
-
-                        var overlap = (double)valueSets[i].Count(idx => valueSets[j].Contains(idx))
-                            / Math.Min(valueSets[i].Count, valueSets[j].Count);
+                        var overlap = CalculateOverlap(valueSets[i], valueSets[j]);
 
                         if (overlap >= ExclusivityThreshold)
                         {
@@ -406,6 +392,17 @@ public class TaxonomyService : ITaxonomyService
     }
 
     // --- Helpers ---
+
+    private static double CalculateOverlap(IReadOnlySet<int> setA, IReadOnlySet<int> setB)
+    {
+        if (setA.Count == 0 || setB.Count == 0)
+        {
+            return 0.0;
+        }
+
+        var intersection = setA.Count(idx => setB.Contains(idx));
+        return (double)intersection / Math.Min(setA.Count, setB.Count);
+    }
 
     private static IReadOnlySet<int> GetValueMatchSet(
         AxisValue value, Dictionary<string, MatchSet> matchSets)
