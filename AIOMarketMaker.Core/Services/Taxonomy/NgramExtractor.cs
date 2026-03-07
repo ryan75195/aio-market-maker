@@ -1,15 +1,19 @@
 using System.Text.RegularExpressions;
-using AIOMarketMaker.Core.Services;
 
 namespace AIOMarketMaker.Core.Services.Taxonomy;
 
 public partial class NgramExtractor : INgramExtractor
 {
+    private const int MinUnigramFrequency = 20;
+    private const int MinBigramFrequency = 10;
+    private const int FrequencyScaleDivisor = 200;
+    private const double SynonymSimilarityThreshold = 0.95;
+
     private static readonly HashSet<string> StopWords = new(StringComparer.OrdinalIgnoreCase)
     {
         "the", "a", "an", "and", "or", "of", "for", "in", "on", "at", "to",
         "is", "it", "by", "as", "be", "no", "not", "so", "up", "if", "my",
-        "new", "free", "with", "this", "that", "from", "was", "are", "has"
+        "this", "that", "from", "was", "are", "has"
     };
 
     private readonly IEmbeddingService _embeddingService;
@@ -24,60 +28,22 @@ public partial class NgramExtractor : INgramExtractor
     public IEnumerable<RawNgram> Extract(IEnumerable<string> titles)
     {
         var titleList = titles.ToList();
-        var count = titleList.Count;
-        var minUnigramFrequency = Math.Max(20, count / 200);
-        var minBigramFrequency = Math.Max(10, count / 200);
+        var frequencies = CountNgramFrequencies(titleList);
+        return FilterByFrequency(frequencies, titleList.Count);
+    }
 
-        var frequencies = new Dictionary<string, int>(StringComparer.Ordinal);
-
-        foreach (var title in titleList)
+    public async Task<IEnumerable<Ngram>> MergeSynonyms(
+        IEnumerable<RawNgram> rawNgrams, CancellationToken ct = default)
+    {
+        var ngramList = rawNgrams.ToList();
+        if (ngramList.Count == 0)
         {
-            var words = ExtractWords(title);
-            if (words.Count == 0)
-            {
-                continue;
-            }
-
-            var seen = new HashSet<string>(StringComparer.Ordinal);
-
-            // Unigrams
-            foreach (var word in words)
-            {
-                if (seen.Add(word))
-                {
-                    frequencies[word] = frequencies.GetValueOrDefault(word) + 1;
-                }
-            }
-
-            // Bigrams
-            for (var i = 0; i < words.Count - 1; i++)
-            {
-                var bigram = $"{words[i]} {words[i + 1]}";
-                if (seen.Add(bigram))
-                {
-                    frequencies[bigram] = frequencies.GetValueOrDefault(bigram) + 1;
-                }
-            }
-
-            // Trigrams
-            for (var i = 0; i < words.Count - 2; i++)
-            {
-                var trigram = $"{words[i]} {words[i + 1]} {words[i + 2]}";
-                if (seen.Add(trigram))
-                {
-                    frequencies[trigram] = frequencies.GetValueOrDefault(trigram) + 1;
-                }
-            }
+            return Enumerable.Empty<Ngram>();
         }
 
-        return frequencies
-            .Where(kvp =>
-            {
-                var wordCount = kvp.Key.Count(c => c == ' ') + 1;
-                var threshold = wordCount == 1 ? minUnigramFrequency : minBigramFrequency;
-                return kvp.Value >= threshold;
-            })
-            .Select(kvp => new RawNgram(kvp.Key, kvp.Value));
+        var texts = ngramList.Select(n => n.Term).ToList();
+        var clusters = await ClusterBySimilarity(texts, ct);
+        return BuildMergedNgrams(ngramList, clusters);
     }
 
     public static bool AreNumericVariants(string a, string b)
@@ -101,71 +67,109 @@ public partial class NgramExtractor : INgramExtractor
         return !digitsA.SequenceEqual(digitsB);
     }
 
-    public async Task<IEnumerable<Ngram>> MergeSynonyms(
-        IEnumerable<RawNgram> rawNgrams, CancellationToken ct = default)
+    private Dictionary<string, int> CountNgramFrequencies(List<string> titles)
     {
-        var ngramList = rawNgrams.ToList();
-        if (ngramList.Count == 0)
+        var frequencies = new Dictionary<string, int>(StringComparer.Ordinal);
+
+        foreach (var title in titles)
         {
-            return Enumerable.Empty<Ngram>();
+            var words = Tokenize(title);
+            if (words.Count == 0)
+            {
+                continue;
+            }
+
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+            CountUnigrams(words, seen, frequencies);
+            CountBigrams(words, seen, frequencies);
+            CountTrigrams(words, seen, frequencies);
         }
 
-        var texts = ngramList.Select(n => n.Term).ToList();
-        var vectors = await _embeddingService.GetEmbeddings(texts, ct, EmbeddingModel.Small);
+        return frequencies;
+    }
 
-        // L2-normalize
+    private static void CountUnigrams(
+        List<string> words, HashSet<string> seen, Dictionary<string, int> frequencies)
+    {
+        foreach (var word in words)
+        {
+            if (seen.Add(word))
+            {
+                frequencies[word] = frequencies.GetValueOrDefault(word) + 1;
+            }
+        }
+    }
+
+    private static void CountBigrams(
+        List<string> words, HashSet<string> seen, Dictionary<string, int> frequencies)
+    {
+        for (var i = 0; i < words.Count - 1; i++)
+        {
+            var bigram = $"{words[i]} {words[i + 1]}";
+            if (seen.Add(bigram))
+            {
+                frequencies[bigram] = frequencies.GetValueOrDefault(bigram) + 1;
+            }
+        }
+    }
+
+    private static void CountTrigrams(
+        List<string> words, HashSet<string> seen, Dictionary<string, int> frequencies)
+    {
+        for (var i = 0; i < words.Count - 2; i++)
+        {
+            var trigram = $"{words[i]} {words[i + 1]} {words[i + 2]}";
+            if (seen.Add(trigram))
+            {
+                frequencies[trigram] = frequencies.GetValueOrDefault(trigram) + 1;
+            }
+        }
+    }
+
+    private static IEnumerable<RawNgram> FilterByFrequency(
+        Dictionary<string, int> frequencies, int titleCount)
+    {
+        var minUnigram = Math.Max(MinUnigramFrequency, titleCount / FrequencyScaleDivisor);
+        var minBigram = Math.Max(MinBigramFrequency, titleCount / FrequencyScaleDivisor);
+
+        return frequencies
+            .Where(kvp =>
+            {
+                var wordCount = kvp.Key.Count(c => c == ' ') + 1;
+                var threshold = wordCount == 1 ? minUnigram : minBigram;
+                return kvp.Value >= threshold;
+            })
+            .Select(kvp => new RawNgram(kvp.Key, kvp.Value));
+    }
+
+    private async Task<IEnumerable<IReadOnlyList<int>>> ClusterBySimilarity(
+        List<string> texts, CancellationToken ct)
+    {
+        var vectors = await _embeddingService.GetEmbeddings(texts, ct, EmbeddingModel.Small);
         var normed = vectors.Select(VectorMath.Normalize).ToArray();
 
-        // Union-Find
-        var parent = Enumerable.Range(0, ngramList.Count).ToArray();
+        var uf = new UnionFind(texts.Count);
 
-        int Find(int x)
+        for (var i = 0; i < texts.Count; i++)
         {
-            while (parent[x] != x)
-            {
-                parent[x] = parent[parent[x]];
-                x = parent[x];
-            }
-            return x;
-        }
-
-        void Union(int x, int y)
-        {
-            var rootX = Find(x);
-            var rootY = Find(y);
-            if (rootX != rootY)
-            {
-                parent[rootX] = rootY;
-            }
-        }
-
-        for (var i = 0; i < ngramList.Count; i++)
-        {
-            for (var j = i + 1; j < ngramList.Count; j++)
+            for (var j = i + 1; j < texts.Count; j++)
             {
                 var similarity = VectorMath.CosineSimilarity(normed[i], normed[j]);
-                if (similarity >= 0.95
+                if (similarity >= SynonymSimilarityThreshold
                     && !AreNumericVariants(texts[i], texts[j]))
                 {
-                    Union(i, j);
+                    uf.Union(i, j);
                 }
             }
         }
 
-        // Group by root
-        var groups = new Dictionary<int, List<int>>();
-        for (var i = 0; i < ngramList.Count; i++)
-        {
-            var root = Find(i);
-            if (!groups.TryGetValue(root, out var list))
-            {
-                list = new List<int>();
-                groups[root] = list;
-            }
-            list.Add(i);
-        }
+        return uf.GetGroups();
+    }
 
-        return groups.Values.Select(indices =>
+    private static IEnumerable<Ngram> BuildMergedNgrams(
+        List<RawNgram> ngramList, IEnumerable<IReadOnlyList<int>> clusters)
+    {
+        return clusters.Select(indices =>
         {
             var sorted = indices.OrderByDescending(i => ngramList[i].Frequency).ToList();
             var canonical = ngramList[sorted[0]].Term;
@@ -175,7 +179,7 @@ public partial class NgramExtractor : INgramExtractor
         });
     }
 
-    private List<string> ExtractWords(string title)
+    private List<string> Tokenize(string title)
     {
         return WordPattern().Matches(title.ToLowerInvariant())
             .Select(m => m.Value)
@@ -189,4 +193,50 @@ public partial class NgramExtractor : INgramExtractor
 
     [GeneratedRegex(@"\d+")]
     private static partial Regex DigitPattern();
+}
+
+internal class UnionFind
+{
+    private readonly int[] _parent;
+
+    public UnionFind(int size)
+    {
+        _parent = Enumerable.Range(0, size).ToArray();
+    }
+
+    public int Find(int x)
+    {
+        while (_parent[x] != x)
+        {
+            _parent[x] = _parent[_parent[x]];
+            x = _parent[x];
+        }
+        return x;
+    }
+
+    public void Union(int x, int y)
+    {
+        var rootX = Find(x);
+        var rootY = Find(y);
+        if (rootX != rootY)
+        {
+            _parent[rootX] = rootY;
+        }
+    }
+
+    public IEnumerable<IReadOnlyList<int>> GetGroups()
+    {
+        var groups = new Dictionary<int, List<int>>();
+        for (var i = 0; i < _parent.Length; i++)
+        {
+            var root = Find(i);
+            if (!groups.TryGetValue(root, out var list))
+            {
+                list = new List<int>();
+                groups[root] = list;
+            }
+            list.Add(i);
+        }
+        return groups.Values;
+    }
 }

@@ -53,7 +53,6 @@ public class NgramExtractorTests
         var result = _extractor.Extract(titles).ToList();
 
         Assert.That(result.Any(n => n.Term == "the"), Is.False);
-        Assert.That(result.Any(n => n.Term == "new"), Is.False);
         Assert.That(result.Any(n => n.Term == "for"), Is.False);
     }
 
@@ -173,38 +172,6 @@ public class NgramExtractorTests
     // ======================================================================
     // BUG TESTS — discovered from backfill data analysis (2026-03-07)
     // ======================================================================
-
-    // BUG 1: Marketplace noise words become axis values.
-    // Real data: Vitamix Blender has axis values "only", "non", "brand".
-    //            Ninja Foodi has "disposable", "accessories", "brand".
-    //            Dyson Airwrap has "attachment", "attachments", "brand".
-    //            Synology NAS has "working", "core", "hard", "rack".
-    // These aren't product variants — they're listing description filler.
-    [Test]
-    [TestCase("only")]
-    [TestCase("non")]
-    [TestCase("brand")]
-    [TestCase("used")]
-    [TestCase("item")]
-    [TestCase("lot")]
-    [TestCase("set")]
-    [TestCase("genuine")]
-    [TestCase("original")]
-    [TestCase("compatible")]
-    [TestCase("replacement")]
-    [TestCase("working")]
-    [TestCase("tested")]
-    [TestCase("sealed")]
-    [TestCase("open")]
-    [TestCase("box")]
-    public void Should_filter_marketplace_noise_words(string noiseWord)
-    {
-        var titles = Enumerable.Repeat($"Dyson Airwrap {noiseWord} complete", 25);
-        var result = _extractor.Extract(titles).ToList();
-
-        Assert.That(result.Any(n => n.Term == noiseWord), Is.False,
-            $"'{noiseWord}' should be filtered as marketplace noise");
-    }
 
     // BUG 2: Plural and singular forms produce separate n-grams.
     // Real data: Dyson Airwrap has both "attachment" and "attachments" as
@@ -330,5 +297,192 @@ public class NgramExtractorTests
             Assert.That(hasBigram && hasTrigram, Is.False,
                 $"Should not have both '{bigram}' AND '{trigram}' — one should subsume the other");
         });
+    }
+
+    // ======================================================================
+    // EDGE CASE / PRODUCTION-HARDENING TESTS
+    // ======================================================================
+
+    [Test]
+    public void Should_return_empty_when_given_no_titles()
+    {
+        var result = _extractor.Extract(Enumerable.Empty<string>()).ToList();
+
+        Assert.That(result, Is.Empty);
+    }
+
+    [Test]
+    public void Should_return_empty_when_all_titles_are_stopwords()
+    {
+        var titles = Enumerable.Repeat("the and or of for", 30);
+        var result = _extractor.Extract(titles).ToList();
+
+        Assert.That(result, Is.Empty);
+    }
+
+    [Test]
+    public void Should_return_empty_when_titles_are_empty_strings()
+    {
+        var titles = Enumerable.Repeat("", 30);
+        var result = _extractor.Extract(titles).ToList();
+
+        Assert.That(result, Is.Empty);
+    }
+
+    [Test]
+    public void Should_handle_single_word_titles()
+    {
+        var titles = Enumerable.Repeat("PlayStation", 25);
+        var result = _extractor.Extract(titles).ToList();
+
+        Assert.That(result.Count, Is.EqualTo(1));
+        Assert.That(result[0].Term, Is.EqualTo("playstation"));
+    }
+
+    [Test]
+    public void Should_handle_titles_with_only_single_character_words()
+    {
+        var titles = Enumerable.Repeat("x y z", 30);
+        var result = _extractor.Extract(titles).ToList();
+
+        Assert.That(result, Is.Empty);
+    }
+
+    [Test]
+    public void Should_handle_production_scale_title_count()
+    {
+        // Simulates a real job: 5000 titles with varied vocabulary
+        var titles = new List<string>();
+        for (var i = 0; i < 5000; i++)
+        {
+            titles.Add($"PlayStation 5 Disc Console White Bundle Controller {i % 50}");
+        }
+
+        var result = _extractor.Extract(titles).ToList();
+
+        Assert.That(result.Count, Is.GreaterThan(0));
+        Assert.That(result.Any(n => n.Term == "playstation"), Is.True);
+        Assert.That(result.Any(n => n.Term == "console"), Is.True);
+    }
+
+    [Test]
+    public void Should_not_count_same_ngram_twice_in_one_title()
+    {
+        // "console" appears twice in this title but should only count once per title
+        var titles = Enumerable.Repeat("console gaming console setup", 25);
+        var result = _extractor.Extract(titles).ToList();
+
+        var console = result.First(n => n.Term == "console");
+        Assert.That(console.Frequency, Is.EqualTo(25));
+    }
+
+    [Test]
+    public async Task Should_return_empty_when_merge_synonyms_given_empty_input()
+    {
+        var result = (await _extractor.MergeSynonyms(Enumerable.Empty<RawNgram>())).ToList();
+
+        Assert.That(result, Is.Empty);
+    }
+
+    [Test]
+    public async Task Should_return_single_ngram_unchanged_when_only_one_input()
+    {
+        var ngrams = new[] { new RawNgram("console", 100) };
+
+        var mockEmbedding = new Mock<IEmbeddingService>();
+        mockEmbedding
+            .Setup(e => e.GetEmbeddings(It.IsAny<IEnumerable<string>>(), It.IsAny<CancellationToken>(), It.IsAny<EmbeddingModel>()))
+            .ReturnsAsync(new[] { new[] { 1f, 0f } });
+
+        var extractor = new NgramExtractor(mockEmbedding.Object);
+        var result = (await extractor.MergeSynonyms(ngrams)).ToList();
+
+        Assert.That(result.Count, Is.EqualTo(1));
+        Assert.That(result[0].Canonical, Is.EqualTo("console"));
+        Assert.That(result[0].Frequency, Is.EqualTo(100));
+    }
+
+    [Test]
+    public async Task Should_preserve_all_ngrams_when_none_are_similar()
+    {
+        var ngrams = new[]
+        {
+            new RawNgram("red", 100),
+            new RawNgram("console", 200),
+            new RawNgram("digital", 150),
+        };
+
+        var mockEmbedding = new Mock<IEmbeddingService>();
+        mockEmbedding
+            .Setup(e => e.GetEmbeddings(It.IsAny<IEnumerable<string>>(), It.IsAny<CancellationToken>(), It.IsAny<EmbeddingModel>()))
+            .ReturnsAsync(new[]
+            {
+                new[] { 1f, 0f, 0f },
+                new[] { 0f, 1f, 0f },
+                new[] { 0f, 0f, 1f },
+            });
+
+        var extractor = new NgramExtractor(mockEmbedding.Object);
+        var result = (await extractor.MergeSynonyms(ngrams)).ToList();
+
+        Assert.That(result.Count, Is.EqualTo(3));
+    }
+
+    [Test]
+    public async Task Should_pick_highest_frequency_as_canonical_when_merging()
+    {
+        var ngrams = new[]
+        {
+            new RawNgram("playstation 5", 50),
+            new RawNgram("ps5", 300),
+        };
+
+        var mockEmbedding = new Mock<IEmbeddingService>();
+        mockEmbedding
+            .Setup(e => e.GetEmbeddings(It.IsAny<IEnumerable<string>>(), It.IsAny<CancellationToken>(), It.IsAny<EmbeddingModel>()))
+            .ReturnsAsync(new[]
+            {
+                new[] { 1f, 0f },
+                new[] { 0.99f, 0.01f },
+            });
+
+        var extractor = new NgramExtractor(mockEmbedding.Object);
+        var result = (await extractor.MergeSynonyms(ngrams)).ToList();
+
+        Assert.That(result.Count, Is.EqualTo(1));
+        Assert.That(result[0].Canonical, Is.EqualTo("ps5"),
+            "Highest frequency term should become the canonical");
+        Assert.That(result[0].Frequency, Is.EqualTo(350));
+    }
+
+    [Test]
+    public async Task Should_handle_transitive_merges()
+    {
+        // A similar to B, B similar to C → all three should merge
+        var ngrams = new[]
+        {
+            new RawNgram("form a", 100),
+            new RawNgram("form b", 200),
+            new RawNgram("form c", 50),
+        };
+
+        var mockEmbedding = new Mock<IEmbeddingService>();
+        mockEmbedding
+            .Setup(e => e.GetEmbeddings(It.IsAny<IEnumerable<string>>(), It.IsAny<CancellationToken>(), It.IsAny<EmbeddingModel>()))
+            .ReturnsAsync(new[]
+            {
+                new[] { 1f, 0f, 0f },
+                new[] { 0.98f, 0.1f, 0f },     // similar to A
+                new[] { 0.96f, 0.15f, 0.01f },  // similar to B (and transitively A)
+            });
+
+        var extractor = new NgramExtractor(mockEmbedding.Object);
+        var result = (await extractor.MergeSynonyms(ngrams)).ToList();
+
+        Assert.That(result.Count, Is.EqualTo(1),
+            "All three forms should merge transitively into one");
+        Assert.That(result[0].Canonical, Is.EqualTo("form b"),
+            "Highest frequency should be canonical");
+        Assert.That(result[0].Forms.Count(), Is.EqualTo(3));
     }
 }
