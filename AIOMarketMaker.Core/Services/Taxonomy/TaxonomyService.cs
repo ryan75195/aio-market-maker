@@ -33,23 +33,56 @@ public class TaxonomyService : ITaxonomyService
     public async Task<TaxonomyResult> Generate(IEnumerable<string> titles, CancellationToken ct = default)
     {
         var titleList = titles.ToList();
-        var total = titleList.Count;
 
-        // Stage 1: Extract and dedup n-grams
         var rawNgrams = _extractor.Extract(titleList);
         var ngrams = (await _extractor.MergeSynonyms(rawNgrams, ct)).ToList();
 
-        // Compute match sets and filter to significant
-        var allMatchSets = _analyzer.ComputeMatchSets(titleList, ngrams).ToList();
-        var minMatches = (int)(total * SignificanceThreshold);
+        var candidates = FindCandidates(titleList, ngrams, out var allMatchSets, out var exclusivePairs);
+        if (candidates.Count < MinAxisValues)
+        {
+            return EmptyResult(titleList);
+        }
+
+        var graphEdges = await BuildGraphEdges(candidates, exclusivePairs, ct);
+        var communities = _detector.Detect(graphEdges, candidates.Count, resolution: LouvainResolution);
+        var axes = MapCommunitiesToAxes(communities, candidates);
+
+        var matchSetLookup = allMatchSets.ToDictionary(matchSet => matchSet.Ngram.Canonical);
+        axes = PostProcess(axes, matchSetLookup);
+
+        var assignments = AssignListings(titleList, axes, matchSetLookup);
+        var covered = assignments.Count(a => a.Cell.Count > 0);
+        var conflicts = assignments.Count(a => a.HasConflict);
+        var total = titleList.Count;
+
+        return new TaxonomyResult(
+            axes, assignments, Enumerable.Empty<CellStats>(),
+            total > 0 ? 100.0 * covered / total : 0,
+            total > 0 ? 100.0 * conflicts / total : 0);
+    }
+
+    private static TaxonomyResult EmptyResult(List<string> titles)
+    {
+        return new TaxonomyResult(
+            Enumerable.Empty<Axis>(),
+            titles.Select((_, i) => new CellAssignment(i, new Dictionary<string, string>(), false)),
+            Enumerable.Empty<CellStats>(),
+            0.0, 0.0);
+    }
+
+    private List<MatchSet> FindCandidates(
+        List<string> titles, List<Ngram> ngrams,
+        out List<MatchSet> allMatchSets,
+        out List<MutuallyExclusivePair> exclusivePairs)
+    {
+        allMatchSets = _analyzer.ComputeMatchSets(titles, ngrams).ToList();
+        var minMatches = (int)(titles.Count * SignificanceThreshold);
         var significantSets = allMatchSets
             .Where(ms => ms.ListingIndices.Count >= minMatches)
             .ToList();
 
-        // Find mutually exclusive pairs
-        var exclusivePairs = _analyzer.FindExclusivePairs(significantSets).ToList();
+        exclusivePairs = _analyzer.FindExclusivePairs(significantSets).ToList();
 
-        // Filter to candidates participating in enough ME pairs
         var pairCounts = new Dictionary<string, int>();
         foreach (var pair in exclusivePairs)
         {
@@ -57,23 +90,19 @@ public class TaxonomyService : ITaxonomyService
             pairCounts[pair.B.Canonical] = pairCounts.GetValueOrDefault(pair.B.Canonical) + 1;
         }
 
-        var candidates = significantSets
+        return significantSets
             .Where(ms => pairCounts.GetValueOrDefault(ms.Ngram.Canonical) >= MinExclusivePairs)
             .ToList();
+    }
 
-        if (candidates.Count < MinAxisValues)
-        {
-            return new TaxonomyResult(
-                Enumerable.Empty<Axis>(),
-                titleList.Select((_, i) => new CellAssignment(
-                    i, new Dictionary<string, string>(), false)),
-                Enumerable.Empty<CellStats>(),
-                0.0, 0.0);
-        }
-
-        // Stage 2: Build graph and detect communities
+    private async Task<List<WeightedEdge>> BuildGraphEdges(
+        List<MatchSet> candidates,
+        List<MutuallyExclusivePair> exclusivePairs,
+        CancellationToken ct)
+    {
         var candidateNames = candidates.Select(c => c.Ngram.Canonical).ToList();
-        var candidateEmbeddings = await _embeddingService.GetEmbeddings(candidateNames, ct, EmbeddingModel.Small);
+        var embeddings = await _embeddingService.GetEmbeddings(candidateNames, ct, EmbeddingModel.Small);
+        var normalizedEmbeddings = embeddings.Select(VectorMath.Normalize).ToArray();
 
         var nameToIndex = new Dictionary<string, int>();
         for (var i = 0; i < candidateNames.Count; i++)
@@ -81,72 +110,58 @@ public class TaxonomyService : ITaxonomyService
             nameToIndex[candidateNames[i]] = i;
         }
 
-        // Normalize embeddings for cosine similarity
-        var normed = candidateEmbeddings.Select(VectorMath.Normalize).ToArray();
-
-        var graphEdges = new List<WeightedEdge>();
+        var edges = new List<WeightedEdge>();
         foreach (var pair in exclusivePairs)
         {
-            if (!nameToIndex.TryGetValue(pair.A.Canonical, out var idxA) ||
-                !nameToIndex.TryGetValue(pair.B.Canonical, out var idxB))
+            if (!nameToIndex.TryGetValue(pair.A.Canonical, out var indexA) ||
+                !nameToIndex.TryGetValue(pair.B.Canonical, out var indexB))
             {
                 continue;
             }
 
-            var similarity = VectorMath.CosineSimilarity(normed[idxA], normed[idxB]);
+            var similarity = VectorMath.CosineSimilarity(normalizedEmbeddings[indexA], normalizedEmbeddings[indexB]);
             if (similarity > GraphEdgeSimilarityThreshold)
             {
-                graphEdges.Add(new WeightedEdge(idxA, idxB, similarity));
+                edges.Add(new WeightedEdge(indexA, indexB, similarity));
             }
         }
 
-        var rawCommunities = _detector.Detect(
-            graphEdges, candidates.Count, resolution: LouvainResolution).ToList();
+        return edges;
+    }
 
-        // Map communities from node indices to actual n-grams
+    private static List<Axis> MapCommunitiesToAxes(
+        IEnumerable<Community> communities, List<MatchSet> candidates)
+    {
         var axes = new List<Axis>();
-        var communityIndex = 0;
-        foreach (var community in rawCommunities)
+        var axisIndex = 0;
+
+        foreach (var community in communities)
         {
             var memberIndices = community.MemberIndices.ToList();
-
             if (memberIndices.Count < MinAxisValues)
             {
                 continue;
             }
 
-            var memberNgrams = memberIndices
-                .Select(i => candidates[i].Ngram)
+            var values = memberIndices
+                .Select(i => new AxisValue(candidates[i].Ngram.Canonical, new[] { candidates[i].Ngram }))
                 .ToList();
 
-            var values = memberNgrams
-                .Select(n => new AxisValue(n.Canonical, new[] { n }))
-                .ToList();
-
-            axes.Add(new Axis($"Axis {communityIndex}", values));
-            communityIndex++;
+            axes.Add(new Axis($"Axis {axisIndex}", values));
+            axisIndex++;
         }
 
-        // Stage 3: Post-processing
-        var matchSetLookup = allMatchSets.ToDictionary(ms => ms.Ngram.Canonical);
+        return axes;
+    }
+
+    private static List<Axis> PostProcess(
+        List<Axis> axes, Dictionary<string, MatchSet> matchSetLookup)
+    {
         axes = DeduplicateAxisValues(axes, matchSetLookup);
         axes = PruneOverlappingValues(axes, matchSetLookup);
         axes = EnforceMutualExclusivityPerValue(axes, matchSetLookup);
-
-        // Cell assignment
-        var assignments = AssignListings(titleList, axes, matchSetLookup);
-        var covered = assignments.Count(a => a.Cell.Count > 0);
-        var conflicts = assignments.Count(a => a.HasConflict);
-
-        return new TaxonomyResult(
-            axes,
-            assignments,
-            Enumerable.Empty<CellStats>(), // Pricing stats require price data -- skipped for now
-            total > 0 ? 100.0 * covered / total : 0,
-            total > 0 ? 100.0 * conflicts / total : 0);
+        return axes;
     }
-
-    // --- Post-processing methods ---
 
     private static List<Axis> DeduplicateAxisValues(
         List<Axis> axes, Dictionary<string, MatchSet> matchSets)
@@ -311,8 +326,6 @@ public class TaxonomyService : ITaxonomyService
         return result;
     }
 
-    // --- Cell assignment ---
-
     private static List<CellAssignment> AssignListings(
         List<string> titles, List<Axis> axes,
         Dictionary<string, MatchSet> matchSets)
@@ -341,8 +354,6 @@ public class TaxonomyService : ITaxonomyService
                 }
                 else if (matchedValues.Count > 1)
                 {
-                    // Conflict -- pick the longest match (most specific) but flag it
-                    // Substring conflict resolution: if one value is a substring of another, keep the longer one
                     var resolved = ResolveSubstringConflict(matchedValues);
                     if (resolved != null)
                     {
@@ -351,7 +362,7 @@ public class TaxonomyService : ITaxonomyService
                     else
                     {
                         hasConflict = true;
-                        cell[axis.Name] = matchedValues[0]; // pick first
+                        cell[axis.Name] = matchedValues[0];
                     }
                 }
             }
@@ -364,7 +375,6 @@ public class TaxonomyService : ITaxonomyService
 
     private static string? ResolveSubstringConflict(List<string> values)
     {
-        // If one value contains another (e.g., "slim" vs "ps5 slim"), keep the longer one
         for (var i = 0; i < values.Count; i++)
         {
             var isSubstringOfAnother = false;
@@ -380,7 +390,6 @@ public class TaxonomyService : ITaxonomyService
 
             if (!isSubstringOfAnother)
             {
-                // Check all other values are substrings of this one
                 var allOthersSubstring = true;
                 for (var j = 0; j < values.Count; j++)
                 {
@@ -397,10 +406,8 @@ public class TaxonomyService : ITaxonomyService
                 }
             }
         }
-        return null; // Can't resolve -- true conflict
+        return null;
     }
-
-    // --- Helpers ---
 
     private static double CalculateOverlap(IReadOnlySet<int> setA, IReadOnlySet<int> setB)
     {
@@ -416,7 +423,6 @@ public class TaxonomyService : ITaxonomyService
     private static IReadOnlySet<int> GetValueMatchSet(
         AxisValue value, Dictionary<string, MatchSet> matchSets)
     {
-        // Union all match sets for this value's ngrams
         var result = new HashSet<int>();
         foreach (var ngram in value.Ngrams)
         {
