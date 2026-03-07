@@ -243,9 +243,7 @@ public class TaxonomyService : ITaxonomyService
                         }
                     }
 
-                    if (partners > worstPartners ||
-                        (partners == worstPartners && partners > 0
-                         && worstIndex >= 0 && valueSets[i].Count < valueSets[worstIndex].Count))
+                    if (IsWorseOverlapper(partners, worstPartners, i, worstIndex, valueSets))
                     {
                         worstPartners = partners;
                         worstIndex = i;
@@ -418,6 +416,23 @@ public class TaxonomyService : ITaxonomyService
 
         var intersection = setA.Count(idx => setB.Contains(idx));
         return (double)intersection / Math.Min(setA.Count, setB.Count);
+    }
+
+    private static bool IsWorseOverlapper(
+        int partners, int worstPartners,
+        int candidateIndex, int currentWorstIndex,
+        List<IReadOnlySet<int>> valueSets)
+    {
+        if (partners > worstPartners)
+        {
+            return true;
+        }
+
+        // Tie-break: among equal violators, prefer removing the smaller set
+        return partners == worstPartners
+            && partners > 0
+            && currentWorstIndex >= 0
+            && valueSets[candidateIndex].Count < valueSets[currentWorstIndex].Count;
     }
 
     private static IReadOnlySet<int> GetValueMatchSet(
