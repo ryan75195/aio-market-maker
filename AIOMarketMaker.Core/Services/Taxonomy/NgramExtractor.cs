@@ -21,7 +21,7 @@ public partial class NgramExtractor : INgramExtractor
         _nlpToolkit = nlpToolkit ?? new NlpToolkit();
     }
 
-    public IEnumerable<Ngram> Extract(IEnumerable<string> titles)
+    public IEnumerable<RawNgram> Extract(IEnumerable<string> titles)
     {
         var titleList = titles.ToList();
         var count = titleList.Count;
@@ -77,7 +77,7 @@ public partial class NgramExtractor : INgramExtractor
                 var threshold = wordCount == 1 ? minUnigramFrequency : minBigramFrequency;
                 return kvp.Value >= threshold;
             })
-            .Select(kvp => new Ngram(kvp.Key, new[] { kvp.Key }, kvp.Value));
+            .Select(kvp => new RawNgram(kvp.Key, kvp.Value));
     }
 
     public static bool AreNumericVariants(string a, string b)
@@ -101,16 +101,16 @@ public partial class NgramExtractor : INgramExtractor
         return !digitsA.SequenceEqual(digitsB);
     }
 
-    public async Task<IEnumerable<Ngram>> Deduplicate(
-        IEnumerable<Ngram> ngrams, CancellationToken ct = default)
+    public async Task<IEnumerable<Ngram>> MergeSynonyms(
+        IEnumerable<RawNgram> rawNgrams, CancellationToken ct = default)
     {
-        var ngramList = ngrams.ToList();
+        var ngramList = rawNgrams.ToList();
         if (ngramList.Count == 0)
         {
             return Enumerable.Empty<Ngram>();
         }
 
-        var texts = ngramList.Select(n => n.Canonical).ToList();
+        var texts = ngramList.Select(n => n.Term).ToList();
         var vectors = await _embeddingService.GetEmbeddings(texts, ct, EmbeddingModel.Small);
 
         // L2-normalize
@@ -168,10 +168,10 @@ public partial class NgramExtractor : INgramExtractor
         return groups.Values.Select(indices =>
         {
             var sorted = indices.OrderByDescending(i => ngramList[i].Frequency).ToList();
-            var canonical = ngramList[sorted[0]];
+            var canonical = ngramList[sorted[0]].Term;
             var totalFrequency = sorted.Sum(i => ngramList[i].Frequency);
-            var allForms = sorted.SelectMany(i => ngramList[i].Forms).Distinct().ToList();
-            return new Ngram(canonical.Canonical, allForms, totalFrequency);
+            var allForms = sorted.Select(i => ngramList[i].Term).Distinct().ToList();
+            return new Ngram(canonical, allForms, totalFrequency);
         });
     }
 

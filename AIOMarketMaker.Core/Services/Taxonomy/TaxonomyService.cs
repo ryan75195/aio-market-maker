@@ -32,7 +32,7 @@ public class TaxonomyService : ITaxonomyService
 
         // Stage 1: Extract and dedup n-grams
         var rawNgrams = _extractor.Extract(titleList);
-        var ngrams = (await _extractor.Deduplicate(rawNgrams, ct)).ToList();
+        var ngrams = (await _extractor.MergeSynonyms(rawNgrams, ct)).ToList();
 
         // Compute match sets and filter to significant
         var allMatchSets = _analyzer.ComputeMatchSets(titleList, ngrams).ToList();

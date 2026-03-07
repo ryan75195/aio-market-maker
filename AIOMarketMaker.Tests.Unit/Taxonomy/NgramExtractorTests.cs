@@ -22,9 +22,9 @@ public class NgramExtractorTests
         var titles = Enumerable.Repeat("PlayStation Console Digital", 25);
         var result = _extractor.Extract(titles).ToList();
 
-        Assert.That(result.Any(n => n.Canonical == "playstation"), Is.True);
-        Assert.That(result.Any(n => n.Canonical == "console"), Is.True);
-        Assert.That(result.Any(n => n.Canonical == "digital"), Is.True);
+        Assert.That(result.Any(n => n.Term == "playstation"), Is.True);
+        Assert.That(result.Any(n => n.Term == "console"), Is.True);
+        Assert.That(result.Any(n => n.Term == "digital"), Is.True);
     }
 
     [Test]
@@ -33,8 +33,8 @@ public class NgramExtractorTests
         var titles = Enumerable.Repeat("PS5 Slim Console White", 25);
         var result = _extractor.Extract(titles).ToList();
 
-        Assert.That(result.Any(n => n.Canonical == "ps5 slim"), Is.True);
-        Assert.That(result.Any(n => n.Canonical == "slim console"), Is.True);
+        Assert.That(result.Any(n => n.Term == "ps5 slim"), Is.True);
+        Assert.That(result.Any(n => n.Term == "slim console"), Is.True);
     }
 
     [Test]
@@ -43,7 +43,7 @@ public class NgramExtractorTests
         var titles = Enumerable.Repeat("PS5 Slim Digital Console", 25);
         var result = _extractor.Extract(titles).ToList();
 
-        Assert.That(result.Any(n => n.Canonical == "ps5 slim digital"), Is.True);
+        Assert.That(result.Any(n => n.Term == "ps5 slim digital"), Is.True);
     }
 
     [Test]
@@ -52,9 +52,9 @@ public class NgramExtractorTests
         var titles = Enumerable.Repeat("the best new console for gaming", 25);
         var result = _extractor.Extract(titles).ToList();
 
-        Assert.That(result.Any(n => n.Canonical == "the"), Is.False);
-        Assert.That(result.Any(n => n.Canonical == "new"), Is.False);
-        Assert.That(result.Any(n => n.Canonical == "for"), Is.False);
+        Assert.That(result.Any(n => n.Term == "the"), Is.False);
+        Assert.That(result.Any(n => n.Term == "new"), Is.False);
+        Assert.That(result.Any(n => n.Term == "for"), Is.False);
     }
 
     [Test]
@@ -63,7 +63,7 @@ public class NgramExtractorTests
         var titles = Enumerable.Repeat("PS5 x controller", 25);
         var result = _extractor.Extract(titles).ToList();
 
-        Assert.That(result.Any(n => n.Canonical == "x"), Is.False);
+        Assert.That(result.Any(n => n.Term == "x"), Is.False);
     }
 
     [Test]
@@ -73,7 +73,7 @@ public class NgramExtractorTests
             .Concat(Enumerable.Repeat("Xbox Console", 30));
         var result = _extractor.Extract(titles).ToList();
 
-        var console = result.First(n => n.Canonical == "console");
+        var console = result.First(n => n.Term == "console");
         Assert.That(console.Frequency, Is.EqualTo(80));
     }
 
@@ -84,16 +84,16 @@ public class NgramExtractorTests
         var rare = Enumerable.Repeat("RareWord Console", 19);
         var result = _extractor.Extract(titles.Concat(rare)).ToList();
 
-        Assert.That(result.Any(n => n.Canonical == "rareword"), Is.False);
+        Assert.That(result.Any(n => n.Term == "rareword"), Is.False);
     }
 
     [Test]
-    public void Should_return_lowercase_canonicals()
+    public void Should_return_lowercase_terms()
     {
         var titles = Enumerable.Repeat("PlayStation CONSOLE Digital", 25);
         var result = _extractor.Extract(titles).ToList();
 
-        Assert.That(result.All(n => n.Canonical == n.Canonical.ToLowerInvariant()));
+        Assert.That(result.All(n => n.Term == n.Term.ToLowerInvariant()));
     }
 
     [Test]
@@ -121,9 +121,9 @@ public class NgramExtractorTests
     {
         var ngrams = new[]
         {
-            new Ngram("playstation 5", new[] { "playstation 5" }, 100),
-            new Ngram("ps5", new[] { "ps5" }, 200),
-            new Ngram("digital", new[] { "digital" }, 50),
+            new RawNgram("playstation 5", 100),
+            new RawNgram("ps5", 200),
+            new RawNgram("digital", 50),
         };
 
         var mockEmbedding = new Mock<IEmbeddingService>();
@@ -137,7 +137,7 @@ public class NgramExtractorTests
             });
 
         var extractor = new NgramExtractor(mockEmbedding.Object);
-        var result = (await extractor.Deduplicate(ngrams)).ToList();
+        var result = (await extractor.MergeSynonyms(ngrams)).ToList();
 
         Assert.That(result.Count, Is.EqualTo(2));
         var merged = result.First(n => n.Canonical == "ps5");
@@ -151,8 +151,8 @@ public class NgramExtractorTests
     {
         var ngrams = new[]
         {
-            new Ngram("256gb", new[] { "256gb" }, 100),
-            new Ngram("512gb", new[] { "512gb" }, 80),
+            new RawNgram("256gb", 100),
+            new RawNgram("512gb", 80),
         };
 
         var mockEmbedding = new Mock<IEmbeddingService>();
@@ -165,7 +165,7 @@ public class NgramExtractorTests
             });
 
         var extractor = new NgramExtractor(mockEmbedding.Object);
-        var result = (await extractor.Deduplicate(ngrams)).ToList();
+        var result = (await extractor.MergeSynonyms(ngrams)).ToList();
 
         Assert.That(result.Count, Is.EqualTo(2));
     }
@@ -202,7 +202,7 @@ public class NgramExtractorTests
         var titles = Enumerable.Repeat($"Dyson Airwrap {noiseWord} complete", 25);
         var result = _extractor.Extract(titles).ToList();
 
-        Assert.That(result.Any(n => n.Canonical == noiseWord), Is.False,
+        Assert.That(result.Any(n => n.Term == noiseWord), Is.False,
             $"'{noiseWord}' should be filtered as marketplace noise");
     }
 
@@ -223,8 +223,8 @@ public class NgramExtractorTests
             .Concat(Enumerable.Repeat($"PS5 {plural} white", 15));
         var result = _extractor.Extract(titles).ToList();
 
-        var singularResult = result.FirstOrDefault(n => n.Canonical == singular);
-        var pluralResult = result.FirstOrDefault(n => n.Canonical == plural);
+        var singularResult = result.FirstOrDefault(n => n.Term == singular);
+        var pluralResult = result.FirstOrDefault(n => n.Term == plural);
 
         Assert.Multiple(() =>
         {
@@ -251,9 +251,9 @@ public class NgramExtractorTests
     {
         var ngrams = new[]
         {
-            new Ngram(formA, new[] { formA }, 200),
-            new Ngram(formB, new[] { formB }, 50),
-            new Ngram("console", new[] { "console" }, 300),
+            new RawNgram(formA, 200),
+            new RawNgram(formB, 50),
+            new RawNgram("console", 300),
         };
 
         // Simulate embeddings where disc/disk are similar but below 0.95 cosine
@@ -269,7 +269,7 @@ public class NgramExtractorTests
             });
 
         var extractor = new NgramExtractor(mockEmbedding.Object);
-        var result = (await extractor.Deduplicate(ngrams)).ToList();
+        var result = (await extractor.MergeSynonyms(ngrams)).ToList();
 
         Assert.That(result.Count, Is.EqualTo(2),
             $"'{formA}' and '{formB}' should merge into one, leaving 2 total n-grams");
@@ -296,8 +296,8 @@ public class NgramExtractorTests
             .ToList();
         var result = _extractor.Extract(titles).ToList();
 
-        var hasUnigram = result.Any(n => n.Canonical == unigram);
-        var hasBigram = result.Any(n => n.Canonical == bigram);
+        var hasUnigram = result.Any(n => n.Term == unigram);
+        var hasBigram = result.Any(n => n.Term == bigram);
 
         Assert.Multiple(() =>
         {
@@ -320,8 +320,8 @@ public class NgramExtractorTests
             .ToList();
         var result = _extractor.Extract(titles).ToList();
 
-        var hasBigram = result.Any(n => n.Canonical == bigram);
-        var hasTrigram = result.Any(n => n.Canonical == trigram);
+        var hasBigram = result.Any(n => n.Term == bigram);
+        var hasTrigram = result.Any(n => n.Term == trigram);
 
         Assert.Multiple(() =>
         {

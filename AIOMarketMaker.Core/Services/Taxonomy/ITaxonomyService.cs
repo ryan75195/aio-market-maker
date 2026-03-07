@@ -1,5 +1,7 @@
 namespace AIOMarketMaker.Core.Services.Taxonomy;
 
+public record RawNgram(string Term, int Frequency);
+
 public record Ngram(string Canonical, IEnumerable<string> Forms, int Frequency);
 
 public record MatchSet(Ngram Ngram, IReadOnlySet<int> ListingIndices);
