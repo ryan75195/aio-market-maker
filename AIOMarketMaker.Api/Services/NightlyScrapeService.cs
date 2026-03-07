@@ -1,4 +1,4 @@
-using AIOMarketMaker.Core.Services;
+using AIOMarketMaker.Core.Services.Pipeline;
 
 namespace AIOMarketMaker.Api.Services;
 

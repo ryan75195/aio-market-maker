@@ -1,10 +1,11 @@
 using System.Diagnostics;
 using AIOMarketMaker.Core.Data;
+using AIOMarketMaker.Core.Services.Taxonomy;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
-namespace AIOMarketMaker.Core.Services.Taxonomy;
+namespace AIOMarketMaker.Core.Services.Pipeline;
 
 public class TaxonomyPostJobStage : IPostJobStage
 {

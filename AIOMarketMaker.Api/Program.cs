@@ -3,6 +3,7 @@ using AIOMarketMaker.Api.Endpoints;
 using AIOMarketMaker.Core.Data;
 using AIOMarketMaker.Core.Data.Migrations;
 using AIOMarketMaker.Core.Services;
+using AIOMarketMaker.Core.Services.Pipeline;
 using AIOMarketMaker.Core.Services.Taxonomy;
 using AIOMarketMaker.ML.Services;
 using AIOMarketMaker.Core.Parsers;

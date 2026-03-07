@@ -1,4 +1,4 @@
-namespace AIOMarketMaker.Core.Services;
+namespace AIOMarketMaker.Core.Services.Pipeline;
 
 public record BatchContext(Guid BatchId, IEnumerable<ScrapeJobConfig> Jobs, IEnumerable<int> RunIds);
 

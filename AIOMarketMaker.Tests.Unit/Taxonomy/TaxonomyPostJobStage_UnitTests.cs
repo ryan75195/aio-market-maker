@@ -1,6 +1,7 @@
 using AIOMarketMaker.Core.Data;
 using AIOMarketMaker.Core.Data.Models;
 using AIOMarketMaker.Core.Services;
+using AIOMarketMaker.Core.Services.Pipeline;
 using AIOMarketMaker.Core.Services.Taxonomy;
 using AIOMarketMaker.Tests.Common;
 using Microsoft.Extensions.DependencyInjection;

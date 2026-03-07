@@ -5,7 +5,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
-namespace AIOMarketMaker.Core.Services;
+namespace AIOMarketMaker.Core.Services.Pipeline;
 
 public class PredictionBatchStage : IBatchStage
 {
