@@ -254,6 +254,7 @@ public static class HostHelper
                 services.AddTask<BackfillPredictionsTask>();
                 services.AddTask<TaxonomyTask>();
                 services.AddTask<BackfillTaxonomyTask>();
+                services.AddTask<ViewTaxonomyTask>();
             })
             .Build();
     }

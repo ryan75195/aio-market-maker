@@ -180,6 +180,55 @@ public class TaxonomyPersistenceService_UnitTests
         Assert.That(assignments.Count(a => a.HasConflict), Is.EqualTo(1));
     }
 
+    [Test]
+    public async Task Should_retrieve_saved_taxonomy_by_job_id()
+    {
+        var job = AddJob();
+        var listings = AddListings(job.Id, 3);
+        var result = BuildTaxonomyResult(
+            axes: new[] { new Axis("Axis 0", new[]
+            {
+                new AxisValue("disc", new[] { new Ngram("disc", new[] { "disc" }, 50) }),
+                new AxisValue("digital", new[] { new Ngram("digital", new[] { "digital" }, 40) })
+            }) },
+            assignmentCount: 3,
+            coveragePercent: 66.7);
+
+        await _service.Save(job.Id, result, listings.Select(l => l.Id), 100);
+
+        // Need fresh service since ChangeTracker was cleared
+        var reader = new TaxonomyPersistenceService(_db);
+        var loaded = await reader.GetByJob(job.Id);
+
+        Assert.That(loaded, Is.Not.Null);
+        Assert.Multiple(() =>
+        {
+            Assert.That(loaded!.ScrapeJobId, Is.EqualTo(job.Id));
+            Assert.That(loaded.AxisCount, Is.EqualTo(1));
+            Assert.That(loaded.CoveragePercent, Is.EqualTo(66.7).Within(0.1));
+            Assert.That(loaded.Axes.Count(), Is.EqualTo(1));
+        });
+
+        var axis = loaded!.Axes.First();
+        Assert.Multiple(() =>
+        {
+            Assert.That(axis.Name, Is.EqualTo("Axis 0"));
+            Assert.That(axis.Values.Count(), Is.EqualTo(2));
+            Assert.That(axis.Values.Any(v => v.Label == "disc"), Is.True);
+            Assert.That(axis.Values.Any(v => v.Label == "digital"), Is.True);
+        });
+    }
+
+    [Test]
+    public async Task Should_return_null_when_no_taxonomy_exists_for_job()
+    {
+        var job = AddJob();
+
+        var loaded = await _service.GetByJob(job.Id);
+
+        Assert.That(loaded, Is.Null);
+    }
+
     // -- Helpers --
 
     private ScrapeJob AddJob(string searchTerm = "PS5")

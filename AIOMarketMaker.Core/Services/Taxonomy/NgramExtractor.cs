@@ -13,10 +13,12 @@ public partial class NgramExtractor : INgramExtractor
     };
 
     private readonly IEmbeddingService _embeddingService;
+    private readonly INlpToolkit _nlpToolkit;
 
-    public NgramExtractor(IEmbeddingService embeddingService)
+    public NgramExtractor(IEmbeddingService embeddingService, INlpToolkit? nlpToolkit = null)
     {
         _embeddingService = embeddingService;
+        _nlpToolkit = nlpToolkit ?? new NlpToolkit();
     }
 
     public IEnumerable<Ngram> Extract(IEnumerable<string> titles)
@@ -173,11 +175,12 @@ public partial class NgramExtractor : INgramExtractor
         });
     }
 
-    private static List<string> ExtractWords(string title)
+    private List<string> ExtractWords(string title)
     {
         return WordPattern().Matches(title.ToLowerInvariant())
             .Select(m => m.Value)
             .Where(w => w.Length > 1 && !StopWords.Contains(w))
+            .Select(w => _nlpToolkit.Singularize(w))
             .ToList();
     }
 

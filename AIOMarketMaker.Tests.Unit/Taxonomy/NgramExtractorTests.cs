@@ -178,6 +178,7 @@ public class NgramExtractorTests
     // Real data: Vitamix Blender has axis values "only", "non", "brand".
     //            Ninja Foodi has "disposable", "accessories", "brand".
     //            Dyson Airwrap has "attachment", "attachments", "brand".
+    //            Synology NAS has "working", "core", "hard", "rack".
     // These aren't product variants — they're listing description filler.
     [Test]
     [TestCase("only")]
@@ -191,6 +192,11 @@ public class NgramExtractorTests
     [TestCase("original")]
     [TestCase("compatible")]
     [TestCase("replacement")]
+    [TestCase("working")]
+    [TestCase("tested")]
+    [TestCase("sealed")]
+    [TestCase("open")]
+    [TestCase("box")]
     public void Should_filter_marketplace_noise_words(string noiseWord)
     {
         var titles = Enumerable.Repeat($"Dyson Airwrap {noiseWord} complete", 25);
@@ -270,5 +276,59 @@ public class NgramExtractorTests
         var merged = result.First(n => n.Canonical == formA);
         Assert.That(merged.Forms, Does.Contain(formB),
             $"'{formB}' should be tracked as an alternative form of '{formA}'");
+    }
+
+    // BUG 4: Bigrams containing a unigram produce redundant n-grams.
+    // Real data: Synology NAS has "ds218" (unigram, Axis 5) AND "synology ds218"
+    //            (bigram, Axis 7) as separate n-grams that end up on different axes.
+    //            Similarly "bay nas" (Axis 4) and "bay nas enclosure" (Axis 13).
+    //            HP LaserJet has "laserjet pro" (Axis 5) AND "laserjet pro mfp" (Axis 7).
+    // When a bigram is just "brand + model" and the unigram already captures
+    // the distinguishing part, the bigram should be subsumed.
+    [Test]
+    [TestCase("ds218", "synology ds218")]
+    [TestCase("ds223", "synology ds223")]
+    [TestCase("digital", "ps5 digital")]
+    public void Should_subsume_bigram_when_it_contains_a_unigram(string unigram, string bigram)
+    {
+        // Generate titles where both the unigram and bigram appear frequently
+        var titles = Enumerable.Repeat($"Synology {unigram} NAS 2-Bay", 30)
+            .ToList();
+        var result = _extractor.Extract(titles).ToList();
+
+        var hasUnigram = result.Any(n => n.Canonical == unigram);
+        var hasBigram = result.Any(n => n.Canonical == bigram);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(hasUnigram || hasBigram, Is.True,
+                $"At least one of '{unigram}' or '{bigram}' should exist");
+            Assert.That(hasUnigram && hasBigram, Is.False,
+                $"Should not have both '{unigram}' AND '{bigram}' — one should subsume the other");
+        });
+    }
+
+    // BUG 4b: Trigrams containing a bigram produce redundant n-grams.
+    // Real data: Synology NAS has "bay nas" (Axis 4) and "bay nas enclosure" (Axis 13),
+    //            "bay nas storage" (Axis 13), "bay nas server" (Axis 13) as separate axes.
+    [Test]
+    [TestCase("bay nas", "bay nas enclosure")]
+    [TestCase("bay nas", "bay nas storage")]
+    public void Should_subsume_trigram_when_it_contains_a_bigram(string bigram, string trigram)
+    {
+        var titles = Enumerable.Repeat("Synology 2-Bay NAS Enclosure Storage Server", 30)
+            .ToList();
+        var result = _extractor.Extract(titles).ToList();
+
+        var hasBigram = result.Any(n => n.Canonical == bigram);
+        var hasTrigram = result.Any(n => n.Canonical == trigram);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(hasBigram || hasTrigram, Is.True,
+                $"At least one of '{bigram}' or '{trigram}' should exist");
+            Assert.That(hasBigram && hasTrigram, Is.False,
+                $"Should not have both '{bigram}' AND '{trigram}' — one should subsume the other");
+        });
     }
 }

@@ -7,6 +7,15 @@ namespace AIOMarketMaker.Core.Services.Taxonomy;
 
 public record PersistedTaxonomyRun(int RunId, int AxisCount, int AssignedListings, double CoveragePercent);
 
+public record StoredAxis(string Name, IEnumerable<StoredAxisValue> Values);
+
+public record StoredAxisValue(string Label, string? NgramsJson);
+
+public record StoredTaxonomyRun(
+    int Id, int ScrapeJobId, int AxisCount, int TotalListings, int AssignedListings,
+    double CoveragePercent, double ConflictPercent, int DurationMs, DateTime CreatedUtc,
+    IEnumerable<StoredAxis> Axes);
+
 public interface ITaxonomyPersistenceService
 {
     Task<PersistedTaxonomyRun> Save(
@@ -15,6 +24,8 @@ public interface ITaxonomyPersistenceService
         IEnumerable<int> listingIds,
         int durationMs,
         CancellationToken ct = default);
+
+    Task<StoredTaxonomyRun?> GetByJob(int scrapeJobId, CancellationToken ct = default);
 }
 
 public class TaxonomyPersistenceService : ITaxonomyPersistenceService
@@ -123,5 +134,27 @@ public class TaxonomyPersistenceService : ITaxonomyPersistenceService
         }
 
         return new PersistedTaxonomyRun(run.Id, axesList.Count, assignedCount, result.CoveragePercent);
+    }
+
+    public async Task<StoredTaxonomyRun?> GetByJob(int scrapeJobId, CancellationToken ct = default)
+    {
+        var run = await _dbContext.TaxonomyRuns
+            .AsNoTracking()
+            .Include(r => r.Axes.OrderBy(a => a.SortOrder))
+                .ThenInclude(a => a.Values.OrderBy(v => v.SortOrder))
+            .FirstOrDefaultAsync(r => r.ScrapeJobId == scrapeJobId, ct);
+
+        if (run == null)
+        {
+            return null;
+        }
+
+        var axes = run.Axes.Select(a => new StoredAxis(
+            a.Name,
+            a.Values.Select(v => new StoredAxisValue(v.Label, v.NgramsJson))));
+
+        return new StoredTaxonomyRun(
+            run.Id, run.ScrapeJobId, run.AxisCount, run.TotalListings, run.AssignedListings,
+            run.CoveragePercent, run.ConflictPercent, run.DurationMs, run.CreatedUtc, axes);
     }
 }
