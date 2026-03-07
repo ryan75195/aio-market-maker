@@ -7,6 +7,11 @@ public class TaxonomyService : ITaxonomyService
     private const double GraphEdgeSimilarityThreshold = 0.15;
     private const double ValueDedupOverlap = 0.85;
     private const double ExclusivityThreshold = 0.05;
+    private const int MinAxisValues = 2;
+    private const double LouvainResolution = 2.0;
+    private const double PruneLargeAxisThreshold = 0.35;
+    private const double PruneSmallAxisThreshold = 0.20;
+    private const int PruneLargeAxisMinValues = 5;
 
     private readonly INgramExtractor _extractor;
     private readonly IMutualExclusivityAnalyzer _analyzer;
@@ -56,7 +61,7 @@ public class TaxonomyService : ITaxonomyService
             .Where(ms => pairCounts.GetValueOrDefault(ms.Ngram.Canonical) >= MinExclusivePairs)
             .ToList();
 
-        if (candidates.Count < 2)
+        if (candidates.Count < MinAxisValues)
         {
             return new TaxonomyResult(
                 Enumerable.Empty<Axis>(),
@@ -96,7 +101,7 @@ public class TaxonomyService : ITaxonomyService
         }
 
         var rawCommunities = _detector.Detect(
-            graphEdges, candidates.Count, resolution: 2.0).ToList();
+            graphEdges, candidates.Count, resolution: LouvainResolution).ToList();
 
         // Map communities from node indices to actual n-grams
         var axes = new List<Axis>();
@@ -105,7 +110,7 @@ public class TaxonomyService : ITaxonomyService
         {
             var memberIndices = community.MemberIndices.ToList();
 
-            if (memberIndices.Count < 2)
+            if (memberIndices.Count < MinAxisValues)
             {
                 continue;
             }
@@ -177,7 +182,7 @@ public class TaxonomyService : ITaxonomyService
             }
 
             var surviving = values.Where((_, idx) => !toRemove.Contains(idx)).ToList();
-            if (surviving.Count >= 2)
+            if (surviving.Count >= MinAxisValues)
             {
                 result.Add(new Axis(axis.Name, surviving));
             }
@@ -192,12 +197,14 @@ public class TaxonomyService : ITaxonomyService
         foreach (var axis in axes)
         {
             var values = axis.Values.ToList();
-            var threshold = values.Count >= 5 ? 0.35 : 0.20;
+            var threshold = values.Count >= PruneLargeAxisMinValues
+                ? PruneLargeAxisThreshold
+                : PruneSmallAxisThreshold;
 
             var valueSets = values.Select(v => GetValueMatchSet(v, matchSets)).ToList();
             var pruning = true;
 
-            while (pruning && values.Count >= 2)
+            while (pruning && values.Count >= MinAxisValues)
             {
                 pruning = false;
                 var worstIndex = -1;
@@ -234,12 +241,14 @@ public class TaxonomyService : ITaxonomyService
                 {
                     values.RemoveAt(worstIndex);
                     valueSets.RemoveAt(worstIndex);
-                    threshold = values.Count >= 5 ? 0.35 : 0.20;
+                    threshold = values.Count >= PruneLargeAxisMinValues
+                        ? PruneLargeAxisThreshold
+                        : PruneSmallAxisThreshold;
                     pruning = true;
                 }
             }
 
-            if (values.Count >= 2)
+            if (values.Count >= MinAxisValues)
             {
                 result.Add(new Axis(axis.Name, values));
             }
@@ -256,7 +265,7 @@ public class TaxonomyService : ITaxonomyService
             var values = axis.Values.ToList();
             var changed = true;
 
-            while (changed && values.Count >= 2)
+            while (changed && values.Count >= MinAxisValues)
             {
                 changed = false;
                 var valueSets = values.Select(v => GetValueMatchSet(v, matchSets)).ToList();
@@ -294,7 +303,7 @@ public class TaxonomyService : ITaxonomyService
                 }
             }
 
-            if (values.Count >= 2)
+            if (values.Count >= MinAxisValues)
             {
                 result.Add(new Axis(axis.Name, values));
             }
