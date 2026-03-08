@@ -116,17 +116,17 @@ public class ArbitrageTask : ITask
         var cellsList = result.Cells.OrderByDescending(c => c.SoldCount).ToList();
         System.Console.WriteLine($"=== CELL PRICING ({cellsList.Count} cells) ===");
         System.Console.WriteLine();
-        System.Console.WriteLine($"{"Cell",-50} {"Active",7} {"Sold",7} {"Med.Active",11} {"Med.Sold",11} {"Spread",9}");
-        System.Console.WriteLine(new string('-', 95));
+        System.Console.WriteLine($"{"Cell",-80} {"Active",7} {"Sold",7} {"Med.Active",11} {"Med.Sold",11} {"Spread",9}");
+        System.Console.WriteLine(new string('-', 125));
 
         foreach (var cell in cellsList.Take(20))
         {
-            var cellName = cell.CellKey.Length > 48 ? cell.CellKey[..45] + "..." : cell.CellKey;
+            var cellName = cell.CellKey.Length > 78 ? cell.CellKey[..75] + "..." : cell.CellKey;
             var medActive = cell.MedianActivePrice.HasValue ? $"{cell.MedianActivePrice:C0}" : "-";
             var medSold = cell.MedianSoldPrice.HasValue ? $"{cell.MedianSoldPrice:C0}" : "-";
             var spread = cell.Spread.HasValue ? $"{cell.Spread:C0}" : "-";
 
-            System.Console.WriteLine($"{cellName,-50} {cell.ActiveCount,7} {cell.SoldCount,7} {medActive,11} {medSold,11} {spread,9}");
+            System.Console.WriteLine($"{cellName,-80} {cell.ActiveCount,7} {cell.SoldCount,7} {medActive,11} {medSold,11} {spread,9}");
         }
         System.Console.WriteLine();
     }
