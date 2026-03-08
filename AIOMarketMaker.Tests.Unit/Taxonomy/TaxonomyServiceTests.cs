@@ -1,5 +1,6 @@
 using AIOMarketMaker.Core.Services;
 using AIOMarketMaker.Core.Services.Taxonomy;
+using Microsoft.Extensions.Logging;
 using Moq;
 
 namespace AIOMarketMaker.Tests.Unit.Taxonomy;
@@ -39,7 +40,9 @@ public class TaxonomyServiceTests
         var analyzer = new MutualExclusivityAnalyzer();
         var detector = new LouvainCommunityDetector();
 
-        _service = new TaxonomyService(extractor, analyzer, detector, mockEmbedding.Object);
+        _service = new TaxonomyService(
+            extractor, analyzer, detector, mockEmbedding.Object,
+            new Mock<ILogger<TaxonomyService>>().Object);
     }
 
     /// <summary>

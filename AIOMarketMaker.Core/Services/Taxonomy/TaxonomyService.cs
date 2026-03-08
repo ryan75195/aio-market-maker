@@ -1,3 +1,5 @@
+using Microsoft.Extensions.Logging;
+
 namespace AIOMarketMaker.Core.Services.Taxonomy;
 
 public class TaxonomyService : ITaxonomyService
@@ -27,20 +29,29 @@ public class TaxonomyService : ITaxonomyService
     private readonly IMutualExclusivityAnalyzer _analyzer;
     private readonly ICommunityDetector _detector;
     private readonly IEmbeddingService _embeddingService;
+    private readonly ITaxonomyRefiner? _refiner;
+    private readonly ILogger<TaxonomyService> _logger;
 
     public TaxonomyService(
         INgramExtractor extractor,
         IMutualExclusivityAnalyzer analyzer,
         ICommunityDetector detector,
-        IEmbeddingService embeddingService)
+        IEmbeddingService embeddingService,
+        ILogger<TaxonomyService> logger,
+        ITaxonomyRefiner? refiner = null)
     {
         _extractor = extractor;
         _analyzer = analyzer;
         _detector = detector;
         _embeddingService = embeddingService;
+        _logger = logger;
+        _refiner = refiner;
     }
 
-    public async Task<TaxonomyResult> Generate(IEnumerable<string> titles, CancellationToken ct = default)
+    public async Task<TaxonomyResult> Generate(
+        IEnumerable<string> titles,
+        string? productName = null,
+        CancellationToken ct = default)
     {
         var titleList = titles.ToList();
 
@@ -74,6 +85,20 @@ public class TaxonomyService : ITaxonomyService
         }
 
         axes = PostProcess(axes, matchSetLookup, valueEmbeddings);
+
+        if (_refiner != null && productName != null)
+        {
+            try
+            {
+                var sampleTitles = titleList.Take(20);
+                var refinement = await _refiner.Refine(axes, productName, sampleTitles, ct);
+                axes = ApplyRefinement(axes, refinement);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "LLM taxonomy refinement failed, using unrefined axes");
+            }
+        }
 
         var assignments = AssignListings(titleList, axes, matchSetLookup);
         var covered = assignments.Count(a => a.Cell.Count > 0);

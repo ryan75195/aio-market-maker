@@ -102,7 +102,7 @@ public class ArbitrageTask : ITask
         var titles = listings.Select(l => l.Title!).ToList();
         System.Console.WriteLine("Running taxonomy...");
         var sw = System.Diagnostics.Stopwatch.StartNew();
-        var taxonomy = await _taxonomyService.Generate(titles, ct);
+        var taxonomy = await _taxonomyService.Generate(titles, ct: ct);
         sw.Stop();
         System.Console.WriteLine($"Taxonomy: {taxonomy.Axes.Count()} axes, " +
             $"{taxonomy.CoveragePercent:F1}% coverage in {sw.Elapsed.TotalSeconds:F1}s");

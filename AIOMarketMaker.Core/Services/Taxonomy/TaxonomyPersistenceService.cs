@@ -81,7 +81,8 @@ public class TaxonomyPersistenceService : ITaxonomyPersistenceService
             {
                 TaxonomyRunId = run.Id,
                 Name = axis.Name,
-                SortOrder = axisIdx
+                SortOrder = axisIdx,
+                Importance = axis.Importance
             };
             _dbContext.TaxonomyAxes.Add(dbAxis);
             await _dbContext.SaveChangesAsync(ct);

@@ -32,5 +32,8 @@ public record TaxonomyResult(
 
 public interface ITaxonomyService
 {
-    Task<TaxonomyResult> Generate(IEnumerable<string> titles, CancellationToken ct = default);
+    Task<TaxonomyResult> Generate(
+        IEnumerable<string> titles,
+        string? productName = null,
+        CancellationToken ct = default);
 }

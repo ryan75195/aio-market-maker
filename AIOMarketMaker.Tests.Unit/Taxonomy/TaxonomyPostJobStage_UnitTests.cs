@@ -55,7 +55,7 @@ public class TaxonomyPostJobStage_UnitTests
         await _stage.Execute(context);
 
         _taxonomyMock.Verify(
-            x => x.Generate(It.IsAny<IEnumerable<string>>(), It.IsAny<CancellationToken>()),
+            x => x.Generate(It.IsAny<IEnumerable<string>>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()),
             Times.Never);
     }
 
@@ -67,7 +67,7 @@ public class TaxonomyPostJobStage_UnitTests
         var context = new PostJobContext(1, job.Id, "PS5");
 
         _taxonomyMock
-            .Setup(x => x.Generate(It.IsAny<IEnumerable<string>>(), It.IsAny<CancellationToken>()))
+            .Setup(x => x.Generate(It.IsAny<IEnumerable<string>>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(EmptyResult());
 
         _persistenceMock
@@ -80,6 +80,7 @@ public class TaxonomyPostJobStage_UnitTests
         _taxonomyMock.Verify(
             x => x.Generate(
                 It.Is<IEnumerable<string>>(titles => titles.Count() == 15),
+                It.IsAny<string?>(),
                 It.IsAny<CancellationToken>()),
             Times.Once);
     }
@@ -92,7 +93,7 @@ public class TaxonomyPostJobStage_UnitTests
         var context = new PostJobContext(1, job.Id, "PS5");
 
         _taxonomyMock
-            .Setup(x => x.Generate(It.IsAny<IEnumerable<string>>(), It.IsAny<CancellationToken>()))
+            .Setup(x => x.Generate(It.IsAny<IEnumerable<string>>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(EmptyResult());
 
         _persistenceMock
@@ -132,7 +133,7 @@ public class TaxonomyPostJobStage_UnitTests
         var context = new PostJobContext(1, job.Id, "PS5");
 
         _taxonomyMock
-            .Setup(x => x.Generate(It.IsAny<IEnumerable<string>>(), It.IsAny<CancellationToken>()))
+            .Setup(x => x.Generate(It.IsAny<IEnumerable<string>>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(EmptyResult());
 
         _persistenceMock
@@ -146,6 +147,7 @@ public class TaxonomyPostJobStage_UnitTests
         _taxonomyMock.Verify(
             x => x.Generate(
                 It.Is<IEnumerable<string>>(titles => titles.Count() == 12),
+                It.IsAny<string?>(),
                 It.IsAny<CancellationToken>()),
             Times.Once);
     }

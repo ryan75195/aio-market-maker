@@ -53,7 +53,7 @@ public class TaxonomyPostJobStage : IPostJobStage
             context.JobId, listings.Count);
 
         var sw = Stopwatch.StartNew();
-        var result = await taxonomyService.Generate(titles, ct);
+        var result = await taxonomyService.Generate(titles, context.SearchTerm, ct);
         sw.Stop();
 
         var persisted = await persistenceService.Save(

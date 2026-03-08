@@ -170,7 +170,7 @@ public class BackfillTaxonomyTask : ITask
         var listingIds = listings.Select(l => l.Id).ToList();
 
         var sw = Stopwatch.StartNew();
-        var result = await _taxonomyService.Generate(titles, ct);
+        var result = await _taxonomyService.Generate(titles, ct: ct);
         sw.Stop();
 
         var persisted = await persistence.Save(jobId, result, listingIds, (int)sw.ElapsedMilliseconds, ct);

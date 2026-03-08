@@ -168,6 +168,19 @@ public static class HostHelper
                 services.AddSingleton<ICommunityDetector, LouvainCommunityDetector>();
                 services.AddSingleton<ITaxonomyService, TaxonomyService>();
                 services.AddScoped<ITaxonomyPersistenceService, TaxonomyPersistenceService>();
+                services.AddSingleton<ITaxonomyRefiner>(sp =>
+                {
+                    var config = sp.GetRequiredService<IConfiguration>();
+                    var apiKey = config.GetValue<string>("OpenAi:ApiKey");
+                    if (string.IsNullOrEmpty(apiKey))
+                    {
+                        return null!;
+                    }
+                    var model = config.GetValue<string>("OpenAi:TaxonomyModel") ?? "gpt-4o-mini";
+                    var client = new OpenAI.Chat.ChatClient(model, apiKey);
+                    var logger = sp.GetRequiredService<ILogger<LlmTaxonomyRefiner>>();
+                    return new LlmTaxonomyRefiner(client, logger);
+                });
                 services.AddSingleton<ICellPricingService, CellPricingService>();
 
                 // Task system
