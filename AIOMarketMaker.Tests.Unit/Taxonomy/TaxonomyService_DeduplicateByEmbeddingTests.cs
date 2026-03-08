@@ -87,7 +87,7 @@ public class TaxonomyService_DeduplicateByEmbeddingTests
     }
 
     [Test]
-    public void Should_drop_axis_when_dedup_leaves_fewer_than_two_values()
+    public void Should_preserve_two_value_axis_even_when_values_are_similar()
     {
         var axes = new List<Axis>
         {
@@ -106,7 +106,9 @@ public class TaxonomyService_DeduplicateByEmbeddingTests
 
         var result = TaxonomyService.DeduplicateByEmbedding(axes, embeddings);
 
-        Assert.That(result.Count, Is.EqualTo(0));
+        // 2-value axis protection: merge is blocked to preserve the axis
+        Assert.That(result.Count, Is.EqualTo(1));
+        Assert.That(result[0].Values.Count(), Is.EqualTo(2));
     }
 
     [Test]

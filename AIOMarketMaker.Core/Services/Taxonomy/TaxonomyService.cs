@@ -980,8 +980,11 @@ public class TaxonomyService : ITaxonomyService
         axisList.RemoveAll(a => dropSet.Contains(a.Name));
 
         // Apply per-axis refinements
-        var refinedAxes = refinement.Axes.ToDictionary(
-            r => r.Original, r => r, StringComparer.OrdinalIgnoreCase);
+        var refinedAxes = new Dictionary<string, RefinedAxis>(StringComparer.OrdinalIgnoreCase);
+        foreach (var r in refinement.Axes)
+        {
+            refinedAxes[r.Original] = r;
+        }
 
         for (var i = 0; i < axisList.Count; i++)
         {

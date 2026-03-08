@@ -154,6 +154,28 @@ public class ApplyRefinementTests
     }
 
     [Test]
+    public void Should_handle_duplicate_original_names_in_refinement()
+    {
+        var axes = new List<Axis> { MakeAxis("Axis 0", "standard", "deluxe") };
+        var refinement = new TaxonomyRefinement(
+            new[]
+            {
+                new RefinedAxis("Axis 0", "Edition", 3,
+                    Enumerable.Empty<string>(), Enumerable.Empty<string>()),
+                new RefinedAxis("Axis 0", "Variant", 5,
+                    Enumerable.Empty<string>(), Enumerable.Empty<string>()),
+            },
+            Enumerable.Empty<AxisMerge>(),
+            Enumerable.Empty<string>());
+
+        var result = TaxonomyService.ApplyRefinement(axes, refinement);
+
+        Assert.That(result, Has.Count.EqualTo(1));
+        Assert.That(result[0].Name, Is.EqualTo("Variant"));
+        Assert.That(result[0].Importance, Is.EqualTo(5));
+    }
+
+    [Test]
     public void Should_return_axes_unchanged_when_refinement_is_empty()
     {
         var axes = new List<Axis>
