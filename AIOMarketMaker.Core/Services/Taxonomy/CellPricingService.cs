@@ -25,11 +25,16 @@ public class CellPricingService : ICellPricingService
             }
 
             coveredCount++;
-            var cellKey = BuildCellKey(assignment.Cell);
+            var cell = new Dictionary<string, string>(assignment.Cell);
+            if (listing.Condition != null)
+            {
+                cell["condition"] = listing.Condition;
+            }
+            var cellKey = BuildCellKey(cell);
             if (!cellGroups.ContainsKey(cellKey))
             {
                 cellGroups[cellKey] = new List<PricedListing>();
-                cellMaps[cellKey] = assignment.Cell;
+                cellMaps[cellKey] = cell;
             }
             cellGroups[cellKey].Add(listing);
         }

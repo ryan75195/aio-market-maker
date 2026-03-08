@@ -1,6 +1,6 @@
 namespace AIOMarketMaker.Core.Services.Taxonomy;
 
-public record PricedListing(int ListingId, string Title, decimal Price, bool IsSold, int ListingIndex);
+public record PricedListing(int ListingId, string Title, decimal Price, bool IsSold, int ListingIndex, string? Condition = null);
 
 public record CellPricingResult(
     IEnumerable<CellPricing> Cells,

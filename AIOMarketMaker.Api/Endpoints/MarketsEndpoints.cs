@@ -267,7 +267,7 @@ public static class MarketsEndpoints
         {
             listingIndex[l.Id] = idx;
             var isSold = l.ListingStatus is "Sold" or "Ended";
-            pricedListings.Add(new PricedListing(l.Id, l.Title ?? "", l.Price ?? 0, isSold, idx));
+            pricedListings.Add(new PricedListing(l.Id, l.Title ?? "", l.Price ?? 0, isSold, idx, l.Condition));
             idx++;
         }
 

@@ -186,6 +186,64 @@ public class CellPricingService_UnitTests
         });
     }
 
+    [Test]
+    public void Should_separate_cells_by_condition()
+    {
+        // Same taxonomy cell (digital), but NEW sells for £400, USED sells for £200
+        // Without condition filtering, median would be £300 — wrong for both
+        var taxonomy = BuildTaxonomy(
+            axes: new[] { ("edition", new[] { "digital", "disc" }) },
+            assignments: new[]
+            {
+                (0, new Dictionary<string, string> { ["edition"] = "digital" }),
+                (1, new Dictionary<string, string> { ["edition"] = "digital" }),
+                (2, new Dictionary<string, string> { ["edition"] = "digital" }),
+                (3, new Dictionary<string, string> { ["edition"] = "digital" }),
+            });
+
+        var listings = new[]
+        {
+            new PricedListing(1, "PS5 Digital New", 400m, IsSold: true, ListingIndex: 0, Condition: "NEW"),
+            new PricedListing(2, "PS5 Digital New", 400m, IsSold: true, ListingIndex: 1, Condition: "NEW"),
+            new PricedListing(3, "PS5 Digital Used", 200m, IsSold: true, ListingIndex: 2, Condition: "USED"),
+            new PricedListing(4, "PS5 Digital Used", 200m, IsSold: true, ListingIndex: 3, Condition: "USED"),
+        };
+
+        var result = _service.Compute(taxonomy, listings, feePercent: 0, minComps: 1);
+        var cells = result.Cells.ToList();
+
+        Assert.That(cells, Has.Count.EqualTo(2));
+        var newCell = cells.First(c => c.CellKey.Contains("NEW"));
+        var usedCell = cells.First(c => c.CellKey.Contains("USED"));
+        Assert.Multiple(() =>
+        {
+            Assert.That(newCell.MedianSoldPrice, Is.EqualTo(400m));
+            Assert.That(usedCell.MedianSoldPrice, Is.EqualTo(200m));
+        });
+    }
+
+    [Test]
+    public void Should_handle_null_condition_as_separate_group()
+    {
+        var taxonomy = BuildTaxonomy(
+            axes: new[] { ("edition", new[] { "digital", "disc" }) },
+            assignments: new[]
+            {
+                (0, new Dictionary<string, string> { ["edition"] = "digital" }),
+                (1, new Dictionary<string, string> { ["edition"] = "digital" }),
+            });
+
+        var listings = new[]
+        {
+            new PricedListing(1, "PS5 Digital", 400m, IsSold: true, ListingIndex: 0, Condition: "NEW"),
+            new PricedListing(2, "PS5 Digital", 200m, IsSold: true, ListingIndex: 1, Condition: null),
+        };
+
+        var result = _service.Compute(taxonomy, listings, feePercent: 0, minComps: 1);
+
+        Assert.That(result.Cells.Count(), Is.EqualTo(2));
+    }
+
     // -- Helpers --
 
     private static TaxonomyResult BuildTaxonomy(

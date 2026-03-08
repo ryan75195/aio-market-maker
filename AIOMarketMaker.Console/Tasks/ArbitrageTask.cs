@@ -4,7 +4,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace AIOMarketMaker.Console.Tasks;
 
-record ArbitrageListingProjection(int Id, string? Title, decimal? Price, string? ListingStatus);
+record ArbitrageListingProjection(int Id, string? Title, decimal? Price, string? ListingStatus, string? Condition);
 
 public class ArbitrageTask : ITask
 {
@@ -64,7 +64,8 @@ public class ArbitrageTask : ITask
         var pricedListings = listings.Select((l, idx) => new PricedListing(
             l.Id, l.Title!, l.Price!.Value,
             IsSold: l.ListingStatus == "Sold",
-            ListingIndex: idx));
+            ListingIndex: idx,
+            Condition: l.Condition));
 
         var result = _pricingService.Compute(taxonomy, pricedListings, feePercent, minComps);
 
@@ -92,7 +93,7 @@ public class ArbitrageTask : ITask
             .AsNoTracking()
             .Where(l => l.ScrapeJobId == jobId && l.Title != null && l.Price != null)
             .OrderBy(l => l.Id)
-            .Select(l => new ArbitrageListingProjection(l.Id, l.Title, l.Price, l.ListingStatus))
+            .Select(l => new ArbitrageListingProjection(l.Id, l.Title, l.Price, l.ListingStatus, l.Condition))
             .ToListAsync(ct);
     }
 
