@@ -6,6 +6,7 @@ public class TaxonomyAxis
     public int TaxonomyRunId { get; set; }
     public required string Name { get; set; }
     public int SortOrder { get; set; }
+    public int? Importance { get; set; }
 
     public TaxonomyRun TaxonomyRun { get; set; } = null!;
     public ICollection<TaxonomyAxisValue> Values { get; set; } = new List<TaxonomyAxisValue>();
