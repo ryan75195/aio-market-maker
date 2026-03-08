@@ -932,4 +932,57 @@ public class TaxonomyService : ITaxonomyService
         }
     }
 
+    internal static List<Axis> ApplyRefinement(
+        IEnumerable<Axis> axes, TaxonomyRefinement refinement)
+    {
+        var axisList = axes.ToList();
+        var dropSet = new HashSet<string>(refinement.DropAxes, StringComparer.OrdinalIgnoreCase);
+
+        // Apply merges first
+        foreach (var merge in refinement.MergeAxes)
+        {
+            var keepIdx = axisList.FindIndex(a => a.Name == merge.Keep);
+            var absorbIdx = axisList.FindIndex(a => a.Name == merge.Absorb);
+            if (keepIdx >= 0 && absorbIdx >= 0)
+            {
+                var merged = axisList[keepIdx].Values.Concat(axisList[absorbIdx].Values);
+                axisList[keepIdx] = axisList[keepIdx] with { Values = merged.ToList() };
+                dropSet.Add(merge.Absorb);
+            }
+        }
+
+        // Remove dropped axes
+        axisList.RemoveAll(a => dropSet.Contains(a.Name));
+
+        // Apply per-axis refinements
+        var refinedAxes = refinement.Axes.ToDictionary(
+            r => r.Original, r => r, StringComparer.OrdinalIgnoreCase);
+
+        for (var i = 0; i < axisList.Count; i++)
+        {
+            if (!refinedAxes.TryGetValue(axisList[i].Name, out var refined))
+            {
+                continue;
+            }
+
+            var values = axisList[i].Values.ToList();
+
+            var removeSet = new HashSet<string>(refined.RemoveValues, StringComparer.OrdinalIgnoreCase);
+            values.RemoveAll(v => removeSet.Contains(v.Label));
+
+            foreach (var addLabel in refined.AddValues)
+            {
+                if (values.All(v => !v.Label.Equals(addLabel, StringComparison.OrdinalIgnoreCase)))
+                {
+                    values.Add(new AxisValue(addLabel,
+                        new[] { new Ngram(addLabel, new[] { addLabel }, 0) }));
+                }
+            }
+
+            axisList[i] = new Axis(refined.Name, values, refined.Importance);
+        }
+
+        return axisList;
+    }
+
 }

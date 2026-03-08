@@ -12,7 +12,7 @@ public record WeightedEdge(int NodeA, int NodeB, double Weight);
 
 public record Community(int Id, IEnumerable<int> MemberIndices);
 
-public record Axis(string Name, IEnumerable<AxisValue> Values);
+public record Axis(string Name, IEnumerable<AxisValue> Values, int? Importance = null);
 
 public record AxisValue(string Label, IEnumerable<Ngram> Ngrams);
 
