@@ -116,7 +116,51 @@ createApp({
         topOpportunities: [],
         recentRuns: []
       },
-      overviewCharts: {}
+      overviewCharts: {},
+      // Markets tab state
+      marketsLoading: false,
+      marketsError: null,
+      marketsData: null,
+      marketsSearch: '',
+      marketsGroupFilter: '',
+      marketsSortKey: 'salesPerDay',
+      marketsSortDir: -1,
+      // Markets detail (drill-in)
+      marketsSelected: null,
+      marketsListings: [],
+      marketsListingsLoading: false,
+      marketsListingSearch: '',
+      marketsStatusFilter: '',
+      marketsConditionFilter: '',
+      marketsMinPrice: '',
+      marketsMaxPrice: '',
+      marketsMinDays: '',
+      marketsMaxDays: '',
+      marketsRegex: '',
+      marketsRegexError: '',
+      marketsShowFilters: false,
+      // Chat panel
+      marketsChatOpen: false,
+      marketsChatMessages: [],
+      marketsChatInput: '',
+      marketsChatLoading: false,
+      marketsChatToolStatus: null,
+      marketsChatExpanded: false,
+      _chatAbortController: null,
+      marketsListingSortKey: 'daysOnMarket',
+      marketsListingSortDir: 1,
+      marketsListingPage: 1,
+      marketsListingPageSize: 50,
+      marketsListingTotal: 0,
+      marketsListingStats: null,
+      // Taxonomy facets
+      marketsTaxonomy: null,
+      marketsTaxonomyLoading: false,
+      marketsAxisFilters: {},
+      // Cell pricing
+      marketsPricing: null,
+      marketsPricingLoading: false,
+      marketsOpportunityMap: {},
     };
   },
 
@@ -375,7 +419,104 @@ createApp({
       const activeBatch = this.batches.find(b => ['Running', 'Queued'].includes(b.status));
       if (!activeBatch) { return null; }
       return this._batchStats(activeBatch);
-    }
+    },
+
+    // ── Markets tab computed ─────────────────────────────────
+
+    filteredMarkets() {
+      if (!this.marketsData?.jobs) { return []; }
+      let list = this.marketsData.jobs;
+      if (this.marketsSearch) {
+        const q = this.marketsSearch.toLowerCase();
+        list = list.filter(j => j.searchTerm?.toLowerCase().includes(q));
+      }
+      if (this.marketsGroupFilter) {
+        list = list.filter(j => j.categories?.includes(this.marketsGroupFilter));
+      }
+      const key = this.marketsSortKey;
+      const dir = this.marketsSortDir;
+      if (key === 'searchTerm') {
+        return [...list].sort((a, b) => (a.searchTerm || '').localeCompare(b.searchTerm || '') * dir);
+      }
+      return [...list].sort((a, b) => ((a[key] ?? 0) - (b[key] ?? 0)) * dir);
+    },
+
+    marketsMaxVelocity() {
+      if (!this.marketsData?.jobs) { return 1; }
+      return Math.max(...this.marketsData.jobs.map(j => j.salesPerDay), 1);
+    },
+
+    marketsTotalSold() {
+      if (!this.marketsData?.jobs) { return 0; }
+      return this.marketsData.jobs.reduce((s, j) => s + j.soldCount, 0);
+    },
+
+    marketsTotalSalesPerDay() {
+      if (!this.marketsData?.jobs) { return 0; }
+      return this.marketsData.jobs.reduce((s, j) => s + j.salesPerDay, 0);
+    },
+
+    marketsActiveFilterCount() {
+      let count = 0;
+      if (this.marketsListingSearch) { count++; }
+      if (this.marketsStatusFilter) { count++; }
+      if (this.marketsConditionFilter) { count++; }
+      if (this.marketsMinPrice) { count++; }
+      if (this.marketsMaxPrice) { count++; }
+      if (this.marketsMinDays) { count++; }
+      if (this.marketsMaxDays) { count++; }
+      if (this.marketsRegex) { count++; }
+      return count;
+    },
+
+    marketsDetailKpis() {
+      const s = this.marketsListingStats;
+      if (!s) { return { count: 0, sold: 0, active: 0, sellThrough: 0, avgDays: 0, avgPrice: '0', priceRange: '0' }; }
+      const avgPrice = s.avgPrice ? s.avgPrice.toFixed(0) : '0';
+      const priceRange = s.minPrice && s.maxPrice
+        ? s.minPrice.toFixed(0) + '\u2013' + s.maxPrice.toFixed(0)
+        : '0';
+      return {
+        count: this.marketsListingTotal,
+        sold: s.soldCount,
+        active: s.activeCount,
+        sellThrough: s.sellThrough,
+        avgDays: s.avgDaysToSell,
+        avgPrice,
+        priceRange,
+      };
+    },
+    marketsPricingMedianSold() {
+      if (!this.marketsPricing?.cells?.length) { return null; }
+      const soldCells = this.marketsPricing.cells.filter(c => c.medianSoldPrice > 0);
+      if (!soldCells.length) { return null; }
+      const sum = soldCells.reduce((s, c) => s + c.medianSoldPrice, 0);
+      return (sum / soldCells.length).toFixed(0);
+    },
+  },
+
+  watch: {
+    marketsListingSearch() {
+      this._debouncedMarketsReload();
+    },
+    marketsConditionFilter() {
+      this._debouncedMarketsReload();
+    },
+    marketsMinPrice() {
+      this._debouncedMarketsReload();
+    },
+    marketsMaxPrice() {
+      this._debouncedMarketsReload();
+    },
+    marketsMinDays() {
+      this._debouncedMarketsReload();
+    },
+    marketsMaxDays() {
+      this._debouncedMarketsReload();
+    },
+    marketsRegex() {
+      this._debouncedMarketsReload();
+    },
   },
 
   async mounted() {
@@ -1688,6 +1829,439 @@ createApp({
 
     getEbayListingUrl(listingId) {
       return `https://www.ebay.co.uk/itm/${listingId}`;
-    }
+    },
+
+    // ── Markets tab methods ──────────────────────────────────
+
+    async loadMarkets() {
+      this.marketsLoading = true;
+      this.marketsError = null;
+      try {
+        this.marketsData = await this.apiCall('/markets');
+      } catch (error) {
+        this.marketsError = error.message;
+      } finally {
+        this.marketsLoading = false;
+      }
+    },
+
+    clearMarketsFilters() {
+      this.marketsListingSearch = '';
+      this.marketsStatusFilter = '';
+      this.marketsConditionFilter = '';
+      this.marketsMinPrice = '';
+      this.marketsMaxPrice = '';
+      this.marketsMinDays = '';
+      this.marketsMaxDays = '';
+      this.marketsRegex = '';
+      this.marketsRegexError = '';
+      this.marketsAxisFilters = {};
+      this.marketsListingPage = 1;
+      this.loadMarketListings();
+      this.loadTaxonomy();
+      this.loadPricing();
+    },
+
+    _debouncedMarketsReload() {
+      clearTimeout(this._marketsFilterTimer);
+      this._marketsFilterTimer = setTimeout(() => {
+        this.marketsListingPage = 1;
+        this.loadMarketListings();
+      }, 400);
+    },
+
+    async openMarketJob(job) {
+      this.marketsSelected = job;
+      this.marketsListingSearch = '';
+      this.marketsStatusFilter = '';
+      this.marketsConditionFilter = '';
+      this.marketsMinPrice = '';
+      this.marketsMaxPrice = '';
+      this.marketsMinDays = '';
+      this.marketsMaxDays = '';
+      this.marketsRegex = '';
+      this.marketsRegexError = '';
+      this.marketsShowFilters = false;
+      this.marketsChatOpen = false;
+      this.marketsChatMessages = [];
+      this.marketsChatInput = '';
+      this.marketsChatLoading = false;
+      this.marketsChatToolStatus = null;
+      this.marketsChatExpanded = false;
+      this.marketsListingSortKey = 'daysOnMarket';
+      this.marketsListingSortDir = 1;
+      this.marketsListingPage = 1;
+      this.marketsAxisFilters = {};
+      this.marketsTaxonomy = null;
+      this.marketsPricing = null;
+      this.marketsOpportunityMap = {};
+      await this.loadMarketListings();
+      this.loadTaxonomy();
+      this.loadPricing();
+    },
+
+    async loadMarketListings() {
+      this.marketsListingsLoading = true;
+      this.marketsRegexError = '';
+      try {
+        const params = new URLSearchParams();
+        params.set('page', this.marketsListingPage);
+        params.set('pageSize', this.marketsListingPageSize);
+        params.set('sortBy', this.marketsListingSortKey);
+        params.set('sortDir', this.marketsListingSortDir === 1 ? 'asc' : 'desc');
+        if (this.marketsStatusFilter) {
+          params.set('status', this.marketsStatusFilter);
+        }
+        if (this.marketsListingSearch) {
+          params.set('search', this.marketsListingSearch);
+        }
+        if (this.marketsConditionFilter) {
+          params.set('condition', this.marketsConditionFilter);
+        }
+        if (this.marketsMinPrice) {
+          params.set('minPrice', this.marketsMinPrice);
+        }
+        if (this.marketsMaxPrice) {
+          params.set('maxPrice', this.marketsMaxPrice);
+        }
+        if (this.marketsMinDays) {
+          params.set('minDays', this.marketsMinDays);
+        }
+        if (this.marketsMaxDays) {
+          params.set('maxDays', this.marketsMaxDays);
+        }
+        if (this.marketsRegex) {
+          params.set('regex', this.marketsRegex);
+        }
+        for (const [axis, value] of Object.entries(this.marketsAxisFilters)) {
+          params.set('axis' + axis, value);
+        }
+        const data = await this.apiCall(
+          `/markets/${this.marketsSelected.jobId}/listings?${params.toString()}`
+        );
+        this.marketsListings = data.items;
+        this.marketsListingTotal = data.totalCount;
+        this.marketsListingStats = data.stats;
+      } catch (error) {
+        if (error.message?.includes('regex') || error.message?.includes('Invalid')) {
+          this.marketsRegexError = 'Invalid regex pattern';
+        } else {
+          this.marketsError = error.message;
+        }
+      } finally {
+        this.marketsListingsLoading = false;
+      }
+    },
+
+    async loadTaxonomy() {
+      this.marketsTaxonomyLoading = true;
+      try {
+        const params = new URLSearchParams();
+        for (const [axis, value] of Object.entries(this.marketsAxisFilters)) {
+          params.set('axis' + axis, value);
+        }
+        const qs = params.toString();
+        const url = `/markets/${this.marketsSelected.jobId}/taxonomy${qs ? '?' + qs : ''}`;
+        this.marketsTaxonomy = await this.apiCall(url);
+      } catch (error) {
+        console.error('Failed to load taxonomy:', error);
+        this.marketsTaxonomy = null;
+      } finally {
+        this.marketsTaxonomyLoading = false;
+      }
+    },
+
+    async loadPricing() {
+      this.marketsPricingLoading = true;
+      try {
+        const params = new URLSearchParams();
+        params.set('fee', (this.settings.opportunities.feePercent || 13.25).toString());
+        params.set('minComps', (this.settings.opportunities.minComps || 3).toString());
+        for (const [axis, value] of Object.entries(this.marketsAxisFilters)) {
+          params.set('axis' + axis, value);
+        }
+        const url = `/markets/${this.marketsSelected.jobId}/pricing?${params.toString()}`;
+        this.marketsPricing = await this.apiCall(url);
+        this.marketsOpportunityMap = {};
+        if (this.marketsPricing?.opportunities) {
+          for (const opp of this.marketsPricing.opportunities) {
+            this.marketsOpportunityMap[opp.listingId] = opp;
+          }
+        }
+      } catch (error) {
+        console.error('Failed to load pricing:', error);
+        this.marketsPricing = null;
+        this.marketsOpportunityMap = {};
+      } finally {
+        this.marketsPricingLoading = false;
+      }
+    },
+
+    toggleAxisFilter(axisName, value) {
+      if (this.marketsAxisFilters[axisName] === value) {
+        const copy = { ...this.marketsAxisFilters };
+        delete copy[axisName];
+        this.marketsAxisFilters = copy;
+      } else {
+        this.marketsAxisFilters = { ...this.marketsAxisFilters, [axisName]: value };
+      }
+      this.marketsListingPage = 1;
+      this.loadTaxonomy();
+      this.loadPricing();
+      this.loadMarketListings();
+    },
+
+    backToMarkets() {
+      this.marketsSelected = null;
+      this.marketsListings = [];
+      this.marketsTaxonomy = null;
+      this.marketsPricing = null;
+      this.marketsOpportunityMap = {};
+      this.marketsAxisFilters = {};
+    },
+
+    setMarketsSort(key) {
+      if (this.marketsSortKey === key) {
+        this.marketsSortDir *= -1;
+      } else {
+        this.marketsSortKey = key;
+        this.marketsSortDir = key === 'searchTerm' ? 1 : -1;
+      }
+    },
+
+    setMarketsListingSort(key) {
+      if (this.marketsListingSortKey === key) {
+        this.marketsListingSortDir *= -1;
+      } else {
+        this.marketsListingSortKey = key;
+        this.marketsListingSortDir = (key === 'title' || key === 'listingStatus' || key === 'condition') ? 1 : -1;
+      }
+      if (key === 'opportunity') {
+        this.marketsListings.sort((a, b) => {
+          const oa = this.marketsOpportunityMap[a.id];
+          const ob = this.marketsOpportunityMap[b.id];
+          const pa = oa ? oa.estimatedProfit : -Infinity;
+          const pb = ob ? ob.estimatedProfit : -Infinity;
+          return this.marketsListingSortDir === 1 ? pa - pb : pb - pa;
+        });
+        return;
+      }
+      this.marketsListingPage = 1;
+      this.loadMarketListings();
+    },
+
+    marketsStClass(val) {
+      if (val >= 40) { return 'st-high'; }
+      if (val >= 25) { return 'st-mid'; }
+      return 'st-low';
+    },
+
+    marketsDaysClass(val) {
+      if (val == null) { return ''; }
+      if (val <= 7) { return 'st-high'; }
+      if (val <= 21) { return 'st-mid'; }
+      return 'st-low';
+    },
+
+    // Chat panel methods
+    toggleMarketsChat() {
+      this.marketsChatOpen = !this.marketsChatOpen;
+      if (this.marketsChatOpen && this.marketsChatMessages.length === 0) {
+        const term = this.marketsSelected?.searchTerm || 'this category';
+        this.marketsChatMessages.push({
+          role: 'assistant',
+          text: `I can help you find specific variants within "${term}". Describe what you're looking for — e.g. "825GB console only, no bundles" — and I'll filter the listings for you.`,
+          time: new Date()
+        });
+      }
+      this.$nextTick(() => this._scrollChatToBottom());
+    },
+
+    async sendChatMessage() {
+      const text = this.marketsChatInput.trim();
+      if (!text || this.marketsChatLoading) { return; }
+
+      this.marketsChatMessages.push({ role: 'user', text, time: new Date() });
+      this.marketsChatInput = '';
+      this.marketsChatLoading = true;
+      this.marketsChatToolStatus = null;
+      this._chatAbortController = new AbortController();
+      this.$nextTick(() => this._scrollChatToBottom());
+
+      try {
+        const body = {
+          message: text,
+          history: this.marketsChatMessages
+            .filter(m => m.role === 'user' || m.role === 'assistant')
+            .slice(0, -1)
+            .map(m => ({ role: m.role, content: m.text })),
+          currentFilters: {
+            regex: this.marketsRegex || null,
+            condition: this.marketsConditionFilter || null,
+            minPrice: this.marketsMinPrice ? Number(this.marketsMinPrice) : null,
+            maxPrice: this.marketsMaxPrice ? Number(this.marketsMaxPrice) : null,
+            minDays: this.marketsMinDays ? Number(this.marketsMinDays) : null,
+            maxDays: this.marketsMaxDays ? Number(this.marketsMaxDays) : null,
+            status: this.marketsStatusFilter || null
+          }
+        };
+
+        const baseUrl = this.config.marketMakerApi.baseUrl;
+        const functionKey = this.config.marketMakerApi.functionKey;
+        const url = new URL(`${baseUrl}/markets/${this.marketsSelected.jobId}/chat/stream`);
+        if (functionKey && functionKey !== 'your-function-key-here') {
+          url.searchParams.set('code', functionKey);
+        }
+
+        const response = await fetch(url.toString(), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+          signal: this._chatAbortController.signal
+        });
+
+        if (!response.ok) {
+          const errorBody = await response.json().catch(() => ({ error: response.statusText }));
+          throw new Error(errorBody.error || `HTTP ${response.status}`);
+        }
+
+        if (!response.body) {
+          throw new Error('No response body received');
+        }
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) { break; }
+
+          buffer += decoder.decode(value, { stream: true });
+          const parts = buffer.split('\n\n');
+          buffer = parts.pop();
+
+          for (const part of parts) {
+            const line = part.trim();
+            if (!line.startsWith('data:')) { continue; }
+            const json = line.slice(5).trim();
+            let evt;
+            try {
+              evt = JSON.parse(json);
+            } catch {
+              continue;
+            }
+
+            if (evt.type === 'tool_call') {
+              const toolLabels = {
+                query_listings: 'Querying listings...',
+                set_filters: 'Applying filters...',
+                sample_listings: 'Browsing listings...',
+                discover_variants: 'Discovering product variants...'
+              };
+              const label = toolLabels[evt.data.name] || 'Working...';
+              this.marketsChatToolStatus = label;
+              this.marketsChatMessages.push({
+                role: 'tool',
+                toolName: evt.data.name,
+                text: label,
+                status: 'running',
+                time: new Date()
+              });
+              this.$nextTick(() => this._scrollChatToBottom());
+            } else if (evt.type === 'tool_result') {
+              this.marketsChatToolStatus = evt.data.summary;
+              const lastTool = [...this.marketsChatMessages].reverse().find(m => m.role === 'tool' && m.status === 'running');
+              if (lastTool) {
+                lastTool.text = evt.data.summary;
+                lastTool.status = 'done';
+              }
+              this.$nextTick(() => this._scrollChatToBottom());
+            } else if (evt.type === 'response') {
+              this.marketsChatToolStatus = null;
+              this.marketsChatMessages.push({
+                role: 'assistant',
+                text: evt.data.message,
+                time: new Date()
+              });
+
+              if (evt.data.filters) {
+                this.marketsRegex = evt.data.filters.regex || '';
+                this.marketsConditionFilter = evt.data.filters.condition || '';
+                this.marketsMinPrice = evt.data.filters.minPrice != null ? String(evt.data.filters.minPrice) : '';
+                this.marketsMaxPrice = evt.data.filters.maxPrice != null ? String(evt.data.filters.maxPrice) : '';
+                this.marketsMinDays = evt.data.filters.minDays != null ? String(evt.data.filters.minDays) : '';
+                this.marketsMaxDays = evt.data.filters.maxDays != null ? String(evt.data.filters.maxDays) : '';
+                this.marketsStatusFilter = evt.data.filters.status || '';
+                this.marketsListingPage = 1;
+                await this.loadMarketListings();
+              }
+
+              this.$nextTick(() => this._scrollChatToBottom());
+            } else if (evt.type === 'error') {
+              this.marketsChatToolStatus = null;
+              this.marketsChatMessages.push({
+                role: 'assistant',
+                text: evt.data.error || 'Sorry, something went wrong. Try again.',
+                time: new Date()
+              });
+              this.$nextTick(() => this._scrollChatToBottom());
+            }
+          }
+        }
+      } catch (error) {
+        if (error.name === 'AbortError') {
+          this.marketsChatMessages.push({
+            role: 'assistant',
+            text: 'Stopped.',
+            time: new Date()
+          });
+        } else {
+          this.marketsChatMessages.push({
+            role: 'assistant',
+            text: 'Sorry, something went wrong. Try again.',
+            time: new Date()
+          });
+        }
+      } finally {
+        this.marketsChatLoading = false;
+        this.marketsChatToolStatus = null;
+        this._chatAbortController = null;
+        this.$nextTick(() => this._scrollChatToBottom());
+      }
+    },
+
+    stopChatMessage() {
+      if (this._chatAbortController) {
+        this._chatAbortController.abort();
+      }
+    },
+
+    handleChatKeydown(e) {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        this.sendChatMessage();
+      }
+    },
+
+    formatChatMessage(text) {
+      const escaped = text
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+      return escaped.replace(/`([^`]+)`/g, '<code>$1</code>');
+    },
+
+    chatTimeLabel(time) {
+      if (!time) { return ''; }
+      const d = new Date(time);
+      return d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+    },
+
+    _scrollChatToBottom() {
+      const el = this.$el?.querySelector('.chat-messages');
+      if (el) { el.scrollTop = el.scrollHeight; }
+    },
   }
 }).mount('#app');

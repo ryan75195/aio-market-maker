@@ -11,6 +11,8 @@ using AIOMarketMaker.Core.Data;
 using AIOMarketMaker.Core.Data.Migrations;
 using AIOMarketMaker.Core.Parsers;
 using AIOMarketMaker.Core.Services;
+using AIOMarketMaker.Core.Services.Pipeline;
+using AIOMarketMaker.Core.Services.Taxonomy;
 using AIOMarketMaker.ML.Services;
 using AIOMarketMaker.Console.Tasks;
 using ScraperWorker.Services;
@@ -158,92 +160,25 @@ public static class HostHelper
                 services.AddSingleton(clusteringConfig);
                 services.AddSingleton<IClusteringService, ClusteringService>();
 
-                // Vector index (local USearch)
-                var vectorIndexConfig = new VectorIndexConfig(
-                    IndexPath: configuration.GetValue<string>("VectorIndex:IndexPath")
-                        ?? configuration.GetValue<string>("Values:VectorIndex:IndexPath")
-                        ?? "./data/vectors.usearch",
-                    IdMapPath: configuration.GetValue<string>("VectorIndex:IdMapPath")
-                        ?? configuration.GetValue<string>("Values:VectorIndex:IdMapPath")
-                        ?? "./data/vectors-idmap.json",
-                    TopK: configuration.GetValue<int?>("VectorIndex:TopK")
-                        ?? configuration.GetValue<int?>("Values:VectorIndex:TopK")
-                        ?? 30,
-                    SimilarityThreshold: configuration.GetValue<float?>("VectorIndex:SimilarityThreshold")
-                        ?? configuration.GetValue<float?>("Values:VectorIndex:SimilarityThreshold")
-                        ?? 0.80f,
-                    Dimensions: configuration.GetValue<int?>("VectorIndex:Dimensions")
-                        ?? configuration.GetValue<int?>("Values:VectorIndex:Dimensions")
-                        ?? 3072,
-                    Connectivity: configuration.GetValue<int?>("VectorIndex:Connectivity")
-                        ?? configuration.GetValue<int?>("Values:VectorIndex:Connectivity")
-                        ?? 16,
-                    ExpansionAdd: configuration.GetValue<int?>("VectorIndex:ExpansionAdd")
-                        ?? configuration.GetValue<int?>("Values:VectorIndex:ExpansionAdd")
-                        ?? 128,
-                    ExpansionSearch: configuration.GetValue<int?>("VectorIndex:ExpansionSearch")
-                        ?? configuration.GetValue<int?>("Values:VectorIndex:ExpansionSearch")
-                        ?? 64);
-                services.AddSingleton(vectorIndexConfig);
-                services.AddSingleton<IVectorIndex>(sp =>
-                {
-                    var config = sp.GetRequiredService<VectorIndexConfig>();
-                    var index = new USearchVectorIndex(config);
-                    if (File.Exists(config.IndexPath) && File.Exists(config.IdMapPath))
-                    {
-                        index.Load();
-                        sp.GetRequiredService<ILogger<USearchVectorIndex>>()
-                            .LogInformation("Loaded vector index with {Count} vectors from {Path}",
-                                index.Count, config.IndexPath);
-                    }
-                    return index;
-                });
-                services.AddSingleton<ISemanticSearchService, SemanticSearchService>();
+                // Comparable pipeline disabled — replaced by taxonomy-based cell pricing.
 
-                // Listing indexing service
-                services.AddSingleton<IListingIndexingService, ListingIndexingService>();
-
-                // Variant classifier (local ONNX model + ensemble calibration)
-                var classifierConfig = new OnnxClassifierConfig(
-                    ModelPath: configuration.GetValue<string>("VariantClassifier:ModelPath") ?? "models/variant-classifier/model.onnx",
-                    VocabPath: configuration.GetValue<string>("VariantClassifier:VocabPath") ?? "models/variant-classifier/vocab.json",
-                    MergesPath: configuration.GetValue<string>("VariantClassifier:MergesPath") ?? "models/variant-classifier/merges.txt",
-                    MaxLength: configuration.GetValue<int?>("VariantClassifier:MaxLength") ?? 512);
-                services.AddSingleton(classifierConfig);
-                services.AddSingleton<VariantModelRunner>();
-                services.AddSingleton<IVariantModelRunner>(sp => sp.GetRequiredService<VariantModelRunner>());
-
-                var ensembleLogitWeight = configuration.GetValue<float>("VariantClassifier:Ensemble:LogitWeight");
-                if (ensembleLogitWeight != 0)
-                {
-                    services.AddSingleton(new EnsembleConfig(
-                        LogitWeight: ensembleLogitWeight,
-                        SimilarityWeight: configuration.GetValue<float>("VariantClassifier:Ensemble:SimilarityWeight"),
-                        Intercept: configuration.GetValue<float>("VariantClassifier:Ensemble:Intercept")));
-                }
-                else
-                {
-                    services.AddSingleton<EnsembleConfig>(_ => null!);
-                }
-                services.AddSingleton<IVariantClassifierClient, VariantClassifier>();
-
-                // ComparablesEtlService
-                services.AddScoped<IComparablesEtlService, ComparablesEtlService>();
-                services.AddSingleton<IBatchStage, ComparablesBatchStage>();
+                // Taxonomy pipeline
+                services.AddSingleton<INgramExtractor, NgramExtractor>();
+                services.AddSingleton<IMutualExclusivityAnalyzer, MutualExclusivityAnalyzer>();
+                services.AddSingleton<ICommunityDetector, LouvainCommunityDetector>();
+                services.AddSingleton<ITaxonomyService, TaxonomyService>();
+                services.AddScoped<ITaxonomyPersistenceService, TaxonomyPersistenceService>();
+                services.AddSingleton<ICellPricingService, CellPricingService>();
 
                 // Task system
                 services.AddTaskRunner();
-                services.AddTask<SearchTask>();
-                services.AddTask<SearchTestTask>();
-                services.AddTask<PricingTask>();
                 services.AddTask<MigrateTask>();
-                services.AddTask<BackfillConfidenceTask>();
-                services.AddTask<ComparablesTask>();
-                services.AddTask<ReindexMissingTask>();
-                services.AddTask<ValidationTask>();
-                services.AddTask<KAnalysisTask>();
                 services.AddTask<BatchLabelTask>();
                 services.AddTask<BackfillPredictionsTask>();
+                services.AddTask<TaxonomyTask>();
+                services.AddTask<BackfillTaxonomyTask>();
+                services.AddTask<ViewTaxonomyTask>();
+                services.AddTask<ArbitrageTask>();
             })
             .Build();
     }

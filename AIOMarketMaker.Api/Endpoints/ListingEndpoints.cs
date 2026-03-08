@@ -64,7 +64,6 @@ public static class ListingEndpoints
     private static async Task<IResult> GetActiveListings(
         EtlDbContext db,
         IListingPredictionService predictionService,
-        ISemanticSearchService semanticSearchService,
         int page = 1,
         int pageSize = 50,
         string sortBy = "potentialProfit",
@@ -74,32 +73,14 @@ public static class ListingEndpoints
         decimal priceBand = 0,
         decimal feePercent = 0,
         bool matchCondition = true,
-        decimal maxPrice = 0,
-        string? searchQuery = null)
+        decimal maxPrice = 0)
     {
         var filters = new PredictionFilters(priceBand, feePercent, matchCondition, minComps, maxPrice);
         var jobIdList = ParseJobIds(jobIds);
 
-        List<int>? searchListingIds = null;
-        if (!string.IsNullOrWhiteSpace(searchQuery))
-        {
-            var searchResult = await semanticSearchService.Search(searchQuery, 5000);
-            var matchedEbayIds = searchResult.Hits.Select(h => h.ListingId).ToHashSet();
-            searchListingIds = await db.Listings
-                .Where(l => l.ListingStatus == "Active" && matchedEbayIds.Contains(l.ListingId))
-                .Select(l => l.Id)
-                .ToListAsync();
-
-            if (searchListingIds.Count == 0)
-            {
-                return Results.Ok(new PagedResponse<OpportunityListing>(
-                    Enumerable.Empty<OpportunityListing>(), 0, page, pageSize, 0));
-            }
-        }
-
         var paged = await predictionService.GetPredictions(
             filters, jobIdList.Count > 0 ? jobIdList : null,
-            sortBy, sortDir, page, pageSize, searchListingIds);
+            sortBy, sortDir, page, pageSize, null);
 
         if (paged.TotalCount == 0)
         {
@@ -258,7 +239,7 @@ public static class ListingEndpoints
     }
 
     private static async Task<IResult> ClearAllListings(
-        EtlDbContext db, IVectorIndex vectorIndex, ILogger<Program> logger)
+        EtlDbContext db, ILogger<Program> logger)
     {
         var count = await db.Listings.CountAsync();
 
@@ -271,9 +252,7 @@ public static class ListingEndpoints
             logger.LogInformation("Cleared {Count} listings from database", count);
         }
 
-        bool indexCleared = ClearVectorIndex(vectorIndex, logger);
-
-        return Results.Ok(new ClearListingsResponse(count, indexCleared));
+        return Results.Ok(new ClearListingsResponse(count, false));
     }
 
     private static async Task<IResult> ClearAllHistory(
@@ -291,7 +270,7 @@ public static class ListingEndpoints
     }
 
     private static async Task<IResult> ClearAllData(
-        EtlDbContext db, BlobServiceClient blobService, IVectorIndex vectorIndex,
+        EtlDbContext db, BlobServiceClient blobService,
         ILogger<Program> logger)
     {
         var listingsCount = await db.Listings.CountAsync();
@@ -327,31 +306,11 @@ public static class ListingEndpoints
             logger.LogWarning(ex, "Failed to clear blob storage (non-fatal)");
         }
 
-        // Clear local vector index
-        bool indexCleared = ClearVectorIndex(vectorIndex, logger);
-
         logger.LogInformation(
-            "Cleared all data: {Listings} listings, {Runs} scrape runs, blobs cleared: {BlobsCleared}, index cleared: {IndexCleared}",
-            listingsCount, runsCount, blobsCleared, indexCleared);
+            "Cleared all data: {Listings} listings, {Runs} scrape runs, blobs cleared: {BlobsCleared}",
+            listingsCount, runsCount, blobsCleared);
 
-        return Results.Ok(new ClearDataResponse(listingsCount, runsCount, blobsCleared, indexCleared));
-    }
-
-    private static bool ClearVectorIndex(IVectorIndex vectorIndex, ILogger logger)
-    {
-        try
-        {
-            var count = vectorIndex.Count;
-            vectorIndex.Clear();
-            vectorIndex.Save();
-            logger.LogInformation("Cleared {Count} vectors from local index", count);
-            return true;
-        }
-        catch (Exception ex)
-        {
-            logger.LogWarning(ex, "Failed to clear vector index (non-fatal)");
-            return false;
-        }
+        return Results.Ok(new ClearDataResponse(listingsCount, runsCount, blobsCleared, false));
     }
 
     private static OpportunityListing ToOpportunityListing(

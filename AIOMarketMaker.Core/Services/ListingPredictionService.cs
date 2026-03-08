@@ -197,7 +197,7 @@ public class ListingPredictionService : IListingPredictionService
             INNER JOIN ListingPredictions p ON p.ListingId = l.Id
             WHERE {whereClause}";
 
-        var totalCount = (int)(await ExecuteScalar(countSql))!;
+        var totalCount = (int)(await DbQueryHelper.ExecuteScalar(_db, countSql))!;
 
         if (totalCount == 0)
         {
@@ -234,7 +234,7 @@ public class ListingPredictionService : IListingPredictionService
             ORDER BY {orderClause}
             OFFSET {offset} ROWS FETCH NEXT {pageSize} ROWS ONLY";
 
-        var rows = await ExecuteQuery(sql, ReadPredictionResult);
+        var rows = await DbQueryHelper.ExecuteQuery(_db, sql, ReadPredictionResult);
 
         var orderedIds = rows.Select(r => r.ListingId).ToList();
         var totalPages = (int)Math.Ceiling((double)totalCount / pageSize);
@@ -387,56 +387,12 @@ public class ListingPredictionService : IListingPredictionService
         return new ListingPredictionResult(
             reader.GetInt32(0),
             reader.IsDBNull(1) ? 0 : reader.GetInt32(1),
-            reader.IsDBNull(2) ? 0 : SafeGetDecimal(reader, 2),
-            reader.IsDBNull(3) ? 0 : SafeGetDecimal(reader, 3),
+            reader.IsDBNull(2) ? 0 : DbQueryHelper.SafeGetDecimal(reader, 2),
+            reader.IsDBNull(3) ? 0 : DbQueryHelper.SafeGetDecimal(reader, 3),
             reader.IsDBNull(4) ? null : reader.GetInt32(4),
             reader.IsDBNull(5) ? 0 : reader.GetDouble(5),
             reader.IsDBNull(6) ? 0 : reader.GetInt32(6),
-            reader.IsDBNull(7) ? null : SafeGetDecimal(reader, 7));
-    }
-
-    private static decimal SafeGetDecimal(DbDataReader reader, int ordinal)
-    {
-        var fieldType = reader.GetFieldType(ordinal);
-        if (fieldType == typeof(double))
-        {
-            return (decimal)reader.GetDouble(ordinal);
-        }
-        return reader.GetDecimal(ordinal);
-    }
-
-    private async Task<object?> ExecuteScalar(string sql)
-    {
-        var conn = _db.Database.GetDbConnection();
-        if (conn.State != ConnectionState.Open)
-        {
-            await conn.OpenAsync();
-        }
-
-        await using var cmd = conn.CreateCommand();
-        cmd.CommandText = sql;
-        return await cmd.ExecuteScalarAsync();
-    }
-
-    private async Task<List<T>> ExecuteQuery<T>(string sql, Func<DbDataReader, T> map)
-    {
-        var conn = _db.Database.GetDbConnection();
-        if (conn.State != ConnectionState.Open)
-        {
-            await conn.OpenAsync();
-        }
-
-        await using var cmd = conn.CreateCommand();
-        cmd.CommandText = sql;
-        await using var reader = await cmd.ExecuteReaderAsync();
-
-        var results = new List<T>();
-        while (await reader.ReadAsync())
-        {
-            results.Add(map(reader));
-        }
-
-        return results;
+            reader.IsDBNull(7) ? null : DbQueryHelper.SafeGetDecimal(reader, 7));
     }
 
 }

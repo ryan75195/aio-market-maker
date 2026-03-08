@@ -37,6 +37,7 @@
         <div class="nav-items">
           <button :class="{ active: currentView === 'overview' }" @click="currentView = 'overview'; loadOverview()">Overview</button>
           <button :class="{ active: currentView === 'opportunities' }" @click="currentView = 'opportunities'; loadOpportunities()">Opportunities</button>
+          <button :class="{ active: currentView === 'markets' }" @click="currentView = 'markets'; loadMarkets()">Markets</button>
           <button :class="{ active: currentView === 'index' }" @click="currentView = 'index'; historyMode = 'batches'; showJobsPanel = false; loadHistory()">Index</button>
           <button :class="{ active: currentView === 'settings' }" @click="currentView = 'settings'">Settings</button>
         </div>
@@ -996,6 +997,334 @@
             </table>
             </div>
           </div>
+        </div>
+
+        <!-- MARKETS VIEW -->
+        <div v-if="currentView === 'markets'" class="view">
+
+          <!-- Loading / Error -->
+          <div v-if="marketsLoading" class="loading-state">Loading market data...</div>
+          <div v-else-if="marketsError" class="error-state">{{ marketsError }}</div>
+
+          <!-- Level 1: Job list -->
+          <template v-else-if="!marketsSelected">
+            <div class="view-header">
+              <h2>Markets</h2>
+              <span class="header-stat">
+                <strong>{{ filteredMarkets.length }}</strong> categories &middot;
+                <strong>{{ marketsTotalSold.toLocaleString() }}</strong> sold (180d) &middot;
+                <strong>{{ marketsTotalSalesPerDay.toFixed(0) }}</strong> sales/day
+              </span>
+            </div>
+
+            <div class="toolbar" style="margin-bottom: 12px;">
+              <input type="text" v-model="marketsSearch" class="search-box" placeholder="Filter..." style="width:200px">
+              <div class="group-pills" style="display:flex; gap:4px; flex-wrap:wrap;">
+                <span class="pill" :class="{ active: !marketsGroupFilter }" @click="marketsGroupFilter = ''">All</span>
+                <span v-for="g in (marketsData?.allCategories || [])" :key="g" class="pill"
+                      :class="{ active: marketsGroupFilter === g }"
+                      @click="marketsGroupFilter = marketsGroupFilter === g ? '' : g">{{ g }}</span>
+              </div>
+            </div>
+
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th :class="{ sorted: marketsSortKey === 'searchTerm', asc: marketsSortKey === 'searchTerm' && marketsSortDir === 1 }"
+                        @click="setMarketsSort('searchTerm')" style="min-width:200px">Category</th>
+                    <th class="th-right" :class="{ sorted: marketsSortKey === 'salesPerDay', asc: marketsSortKey === 'salesPerDay' && marketsSortDir === 1 }"
+                        @click="setMarketsSort('salesPerDay')">Sales/Day</th>
+                    <th class="th-right" :class="{ sorted: marketsSortKey === 'soldCount', asc: marketsSortKey === 'soldCount' && marketsSortDir === 1 }"
+                        @click="setMarketsSort('soldCount')">Sold</th>
+                    <th class="th-right" :class="{ sorted: marketsSortKey === 'activeCount', asc: marketsSortKey === 'activeCount' && marketsSortDir === 1 }"
+                        @click="setMarketsSort('activeCount')">Active</th>
+                    <th class="th-right" :class="{ sorted: marketsSortKey === 'sellThrough', asc: marketsSortKey === 'sellThrough' && marketsSortDir === 1 }"
+                        @click="setMarketsSort('sellThrough')">Sell-Thru</th>
+                    <th class="th-right" :class="{ sorted: marketsSortKey === 'avgDaysToSell', asc: marketsSortKey === 'avgDaysToSell' && marketsSortDir === 1 }"
+                        @click="setMarketsSort('avgDaysToSell')">Avg Days to Sell</th>
+                    <th class="th-right" :class="{ sorted: marketsSortKey === 'avgAskPrice', asc: marketsSortKey === 'avgAskPrice' && marketsSortDir === 1 }"
+                        @click="setMarketsSort('avgAskPrice')">Avg Ask</th>
+                    <th class="th-right" :class="{ sorted: marketsSortKey === 'medianSoldPrice', asc: marketsSortKey === 'medianSoldPrice' && marketsSortDir === 1 }"
+                        @click="setMarketsSort('medianSoldPrice')">Med. Sold</th>
+                    <th class="th-right">P25-P75</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="j in filteredMarkets" :key="j.jobId" class="clickable" @click="openMarketJob(j)">
+                    <td>
+                      <span style="font-weight:500; color:#fff">{{ j.searchTerm }}</span>
+                      <span style="font-size:11px; color:var(--text-dim); margin-left:8px">{{ (j.categories || []).join(', ') }}</span>
+                    </td>
+                    <td class="num">
+                      <div style="display:flex; align-items:center; gap:8px; justify-content:flex-end">
+                        <span>{{ j.salesPerDay.toFixed(1) }}</span>
+                        <div style="width:60px; height:4px; background:#2a2a2b; border-radius:2px; overflow:hidden">
+                          <div :style="{ width: (j.salesPerDay / marketsMaxVelocity * 100) + '%', height:'100%', borderRadius:'2px', background: j.salesPerDay >= 10 ? 'var(--cyan, #22d3ee)' : 'var(--accent, #4a9eff)' }"></div>
+                        </div>
+                      </div>
+                    </td>
+                    <td class="num">{{ j.soldCount.toLocaleString() }}</td>
+                    <td class="num" style="color:var(--text-muted)">{{ j.activeCount.toLocaleString() }}</td>
+                    <td class="num" :class="marketsStClass(j.sellThrough)">{{ j.sellThrough }}%</td>
+                    <td class="num" :class="marketsDaysClass(j.avgDaysToSell)">{{ j.avgDaysToSell != null ? j.avgDaysToSell + 'd' : '–' }}</td>
+                    <td class="num" style="color:var(--text-muted)">{{ j.avgAskPrice != null ? '\u00A3' + j.avgAskPrice.toLocaleString() : '–' }}</td>
+                    <td class="num">{{ j.medianSoldPrice != null ? '\u00A3' + j.medianSoldPrice.toLocaleString() : '–' }}</td>
+                    <td class="num" style="color:var(--text-muted)">{{ j.p25SoldPrice != null ? '\u00A3' + j.p25SoldPrice + '–' + j.p75SoldPrice : '–' }}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </template>
+
+          <!-- Level 2: Job listings drill-in -->
+          <template v-else>
+          <div class="markets-drill-layout">
+            <div class="markets-drill-main">
+            <div style="display:flex; align-items:center; gap:12px; margin-bottom:16px">
+              <button class="back-btn" @click="backToMarkets()">&larr; Back</button>
+              <h2 style="font-size:18px; color:#fff">{{ marketsSelected.searchTerm }}</h2>
+              <button class="chat-toggle-btn" :class="{ active: marketsChatOpen }" @click="toggleMarketsChat()" style="margin-left:auto">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z"/>
+                </svg>
+                AI Assistant
+              </button>
+            </div>
+
+            <!-- KPI strip -->
+            <div class="kpi-row" style="margin-bottom:16px">
+              <div class="kpi">
+                <div class="kpi-val">{{ marketsDetailKpis.count }}</div>
+                <div class="kpi-label">Showing</div>
+              </div>
+              <div class="kpi">
+                <div class="kpi-val">{{ marketsDetailKpis.sold }}</div>
+                <div class="kpi-label">Sold</div>
+              </div>
+              <div class="kpi">
+                <div class="kpi-val">{{ marketsDetailKpis.active }}</div>
+                <div class="kpi-label">Active</div>
+              </div>
+              <div class="kpi">
+                <div class="kpi-val" :class="marketsStClass(marketsDetailKpis.sellThrough)">{{ marketsDetailKpis.sellThrough }}%</div>
+                <div class="kpi-label">Sell-Through</div>
+              </div>
+              <div class="kpi">
+                <div class="kpi-val" :class="marketsDaysClass(marketsDetailKpis.avgDays)">{{ marketsDetailKpis.avgDays }}d</div>
+                <div class="kpi-label">Avg Days to Sell</div>
+              </div>
+              <div class="kpi">
+                <div class="kpi-val">£{{ marketsDetailKpis.avgPrice }}</div>
+                <div class="kpi-label">Avg Price</div>
+              </div>
+              <div class="kpi">
+                <div class="kpi-val">£{{ marketsDetailKpis.priceRange }}</div>
+                <div class="kpi-label">Price Range</div>
+              </div>
+              <div class="kpi" v-if="marketsPricingMedianSold">
+                <div class="kpi-val">&pound;{{ marketsPricingMedianSold }}</div>
+                <div class="kpi-label">Med. Sold</div>
+              </div>
+              <div class="kpi" v-if="marketsPricing && marketsPricing.opportunities">
+                <div class="kpi-val">{{ marketsPricing.opportunities.length }}</div>
+                <div class="kpi-label">Opportunities</div>
+              </div>
+            </div>
+
+            <!-- Taxonomy axis filters -->
+            <div v-if="marketsTaxonomy && marketsTaxonomy.axes && marketsTaxonomy.axes.length > 0" class="axis-filters">
+                <div v-for="axis in marketsTaxonomy.axes" :key="axis.name" class="axis-group">
+                    <div class="axis-label">{{ axis.name }}</div>
+                    <div class="axis-pills">
+                        <button
+                            v-for="v in axis.values"
+                            :key="v.label"
+                            class="axis-pill"
+                            :class="{
+                                active: marketsAxisFilters[axis.name] === v.label,
+                                disabled: v.count === 0 && marketsAxisFilters[axis.name] !== v.label
+                            }"
+                            :disabled="v.count === 0 && marketsAxisFilters[axis.name] !== v.label"
+                            @click="toggleAxisFilter(axis.name, v.label)"
+                        >
+                            {{ v.label }}
+                            <span class="axis-pill-count">{{ v.count }}</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Filter toolbar -->
+            <div style="display:flex; gap:8px; align-items:center; margin-bottom:8px; flex-wrap:wrap">
+              <input type="text" v-model="marketsListingSearch" class="search-box" placeholder="Title search..." style="width:180px">
+              <div style="display:flex; gap:4px">
+                <span class="pill" :class="{ active: !marketsStatusFilter }" @click="marketsStatusFilter = ''; marketsListingPage = 1; loadMarketListings()">All</span>
+                <span class="pill" :class="{ active: marketsStatusFilter === 'Active' }" @click="marketsStatusFilter = marketsStatusFilter === 'Active' ? '' : 'Active'; marketsListingPage = 1; loadMarketListings()">Active</span>
+                <span class="pill" :class="{ active: marketsStatusFilter === 'Sold' }" @click="marketsStatusFilter = marketsStatusFilter === 'Sold' ? '' : 'Sold'; marketsListingPage = 1; loadMarketListings()">Sold</span>
+              </div>
+              <button class="pill" :class="{ active: marketsShowFilters }" @click="marketsShowFilters = !marketsShowFilters" style="margin-left:auto">
+                Filters{{ marketsActiveFilterCount > 0 ? ' (' + marketsActiveFilterCount + ')' : '' }}
+              </button>
+              <button v-if="marketsActiveFilterCount > 0" class="pill" @click="clearMarketsFilters()" style="color:#f87171">Clear</button>
+            </div>
+
+            <!-- Expanded filter panel -->
+            <div v-if="marketsShowFilters" class="filter-panel">
+              <div class="filter-row">
+                <div class="filter-group">
+                  <label>Regex</label>
+                  <input type="text" v-model="marketsRegex" class="filter-input" placeholder="e\.g\. 825\s*GB(?!.*bundle)" style="width:260px; font-family:monospace; font-size:12px">
+                  <span v-if="marketsRegexError" style="color:#f87171; font-size:11px">{{ marketsRegexError }}</span>
+                </div>
+                <div class="filter-group">
+                  <label>Condition</label>
+                  <input type="text" v-model="marketsConditionFilter" class="filter-input" placeholder="e.g. New, Used" style="width:120px">
+                </div>
+                <div class="filter-group">
+                  <label>Price</label>
+                  <div style="display:flex; gap:4px; align-items:center">
+                    <input type="number" v-model="marketsMinPrice" class="filter-input" placeholder="Min" style="width:80px" step="1">
+                    <span style="color:var(--text-muted); font-size:11px">&ndash;</span>
+                    <input type="number" v-model="marketsMaxPrice" class="filter-input" placeholder="Max" style="width:80px" step="1">
+                  </div>
+                </div>
+                <div class="filter-group">
+                  <label>Days on Market</label>
+                  <div style="display:flex; gap:4px; align-items:center">
+                    <input type="number" v-model="marketsMinDays" class="filter-input" placeholder="Min" style="width:70px" step="1">
+                    <span style="color:var(--text-muted); font-size:11px">&ndash;</span>
+                    <input type="number" v-model="marketsMaxDays" class="filter-input" placeholder="Max" style="width:70px" step="1">
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div v-if="marketsListingsLoading" class="loading-state">Loading listings...</div>
+            <div class="table-wrap" v-else>
+              <table>
+                <thead>
+                  <tr>
+                    <th style="min-width:300px" @click="setMarketsListingSort('title')">Title</th>
+                    <th class="th-right" @click="setMarketsListingSort('price')">Price</th>
+                    <th @click="setMarketsListingSort('listingStatus')">Status</th>
+                    <th @click="setMarketsListingSort('condition')">Condition</th>
+                    <th class="th-right" @click="setMarketsListingSort('daysOnMarket')">Days on Market</th>
+                    <th class="th-right">Date</th>
+                    <th class="th-right" style="width:80px; cursor:pointer" @click="setMarketsListingSort('opportunity')">Opp.</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="l in marketsListings" :key="l.id">
+                    <td style="max-width:400px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:500; color:#fff" :title="marketsOpportunityMap[l.id] ? marketsOpportunityMap[l.id].cellKey : l.title">{{ l.title }}</td>
+                    <td class="num">{{ l.price != null ? '\u00A3' + l.price.toFixed(2) : '–' }}</td>
+                    <td>
+                      <span class="status-badge" :class="'status-' + (l.listingStatus || '').toLowerCase()">{{ l.listingStatus }}</span>
+                    </td>
+                    <td style="font-size:12px; color:var(--text-muted)">{{ l.condition || '–' }}</td>
+                    <td class="num" :class="marketsDaysClass(l.daysOnMarket)">{{ l.daysOnMarket }}d</td>
+                    <td class="num" style="color:var(--text-muted)">{{ l.endDateUtc ? new Date(l.endDateUtc).toLocaleDateString('en-GB', { day:'numeric', month:'short' }) : new Date(l.createdUtc).toLocaleDateString('en-GB', { day:'numeric', month:'short' }) }}</td>
+                    <td class="num" style="width:80px">
+                      <span v-if="marketsOpportunityMap[l.id]" class="opportunity-badge">
+                        +£{{ marketsOpportunityMap[l.id].estimatedProfit.toFixed(0) }}
+                      </span>
+                      <span v-else class="muted">&ndash;</span>
+                    </td>
+                  </tr>
+                </tbody>
+                <tbody v-if="marketsListings.length === 0">
+                  <tr><td colspan="7" style="text-align:center; padding:40px; color:var(--text-dim)">No listings match the current filter.</td></tr>
+                </tbody>
+              </table>
+            </div>
+
+            <!-- Pagination -->
+            <div v-if="marketsListingTotal > marketsListingPageSize" style="display:flex; justify-content:center; gap:8px; margin-top:12px">
+              <button class="pill" :disabled="marketsListingPage <= 1" @click="marketsListingPage--; loadMarketListings()">Prev</button>
+              <span style="font-size:12px; color:var(--text-muted); line-height:28px">
+                Page {{ marketsListingPage }} of {{ Math.ceil(marketsListingTotal / marketsListingPageSize) }}
+              </span>
+              <button class="pill" :disabled="marketsListingPage >= Math.ceil(marketsListingTotal / marketsListingPageSize)" @click="marketsListingPage++; loadMarketListings()">Next</button>
+            </div>
+            </div><!-- /.markets-drill-main -->
+
+            <!-- AI Chat Panel -->
+            <div v-if="marketsChatOpen" class="chat-panel" :class="{ expanded: marketsChatExpanded }">
+              <div class="chat-header">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#4a9eff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z"/>
+                </svg>
+                <span class="chat-header-title">AI Assistant</span>
+                <button class="chat-expand-btn" @click="marketsChatExpanded = !marketsChatExpanded" :title="marketsChatExpanded ? 'Collapse' : 'Expand'">
+                  <svg v-if="!marketsChatExpanded" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/>
+                  </svg>
+                  <svg v-else width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="4 14 10 14 10 20"/><polyline points="20 10 14 10 14 4"/><line x1="14" y1="10" x2="21" y2="3"/><line x1="3" y1="21" x2="10" y2="14"/>
+                  </svg>
+                </button>
+                <button class="chat-close-btn" @click="marketsChatOpen = false; marketsChatExpanded = false" title="Close">&times;</button>
+              </div>
+
+              <div class="chat-messages">
+                <div v-for="(msg, i) in marketsChatMessages" :key="i" class="chat-msg" :class="msg.role">
+                  <template v-if="msg.role === 'tool'">
+                    <div class="chat-tool-msg" :class="{ done: msg.status === 'done' }">
+                      <svg v-if="msg.status === 'running'" class="chat-tool-spinner" width="12" height="12" viewBox="0 0 24 24">
+                        <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" fill="none" stroke-dasharray="31.4 31.4" stroke-linecap="round"/>
+                      </svg>
+                      <svg v-else width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="20 6 9 17 4 12"/>
+                      </svg>
+                      <span>{{ msg.text }}</span>
+                    </div>
+                  </template>
+                  <template v-else>
+                    <div class="chat-msg-bubble" v-html="formatChatMessage(msg.text)"></div>
+                    <div class="chat-msg-time">{{ chatTimeLabel(msg.time) }}</div>
+                  </template>
+                </div>
+                <div v-if="marketsChatLoading" class="chat-typing">
+                  <template v-if="marketsChatToolStatus">
+                    <div class="chat-tool-status">
+                      <svg class="chat-tool-spinner" width="14" height="14" viewBox="0 0 24 24">
+                        <circle cx="12" cy="12" r="10" stroke="#4a9eff" stroke-width="2" fill="none" stroke-dasharray="31.4 31.4" stroke-linecap="round"/>
+                      </svg>
+                      <span>{{ marketsChatToolStatus }}</span>
+                    </div>
+                  </template>
+                  <template v-else>
+                    <div class="chat-typing-dot"></div>
+                    <div class="chat-typing-dot"></div>
+                    <div class="chat-typing-dot"></div>
+                  </template>
+                </div>
+              </div>
+
+              <div class="chat-input-area">
+                <textarea
+                  class="chat-input"
+                  v-model="marketsChatInput"
+                  placeholder="Describe the variant you want to isolate..."
+                  rows="1"
+                  @keydown="handleChatKeydown($event)"
+                  @input="$event.target.style.height = 'auto'; $event.target.style.height = Math.min($event.target.scrollHeight, 120) + 'px'"
+                ></textarea>
+                <button v-if="marketsChatLoading" class="chat-stop-btn" @click="stopChatMessage()" title="Stop">
+                  <svg viewBox="0 0 24 24" fill="currentColor">
+                    <rect x="6" y="6" width="12" height="12" rx="2"/>
+                  </svg>
+                </button>
+                <button v-else class="chat-send-btn" @click="sendChatMessage()" :disabled="!marketsChatInput.trim()">
+                  <svg viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
+                  </svg>
+                </button>
+              </div>
+            </div>
+            <div v-if="marketsChatOpen && marketsChatExpanded" class="chat-overlay" @click="marketsChatExpanded = false"></div>
+          </div><!-- /.markets-drill-layout -->
+          </template>
         </div>
 
         <!-- Settings View -->

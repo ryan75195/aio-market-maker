@@ -28,6 +28,10 @@ public class EtlDbContext : DbContext
     public DbSet<Category> Categories { get; set; } = null!;
     public DbSet<JobCategory> JobCategories { get; set; } = null!;
     public DbSet<ListingPrediction> ListingPredictions { get; set; } = null!;
+    public DbSet<TaxonomyRun> TaxonomyRuns { get; set; } = null!;
+    public DbSet<TaxonomyAxis> TaxonomyAxes { get; set; } = null!;
+    public DbSet<TaxonomyAxisValue> TaxonomyAxisValues { get; set; } = null!;
+    public DbSet<TaxonomyListingAssignment> TaxonomyListingAssignments { get; set; } = null!;
 
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
     {
@@ -190,6 +194,59 @@ public class EtlDbContext : DbContext
                 .WithOne()
                 .HasForeignKey<ListingPrediction>(e => e.ListingId)
                 .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<TaxonomyRun>(entity =>
+        {
+            entity.ToTable("TaxonomyRuns");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.CreatedUtc).HasDefaultValueSql(dateDefaultSql);
+            entity.HasIndex(e => e.ScrapeJobId);
+            entity.HasOne(e => e.ScrapeJob)
+                .WithMany()
+                .HasForeignKey(e => e.ScrapeJobId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<TaxonomyAxis>(entity =>
+        {
+            entity.ToTable("TaxonomyAxes");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Name).IsRequired().HasMaxLength(100);
+            entity.HasIndex(e => e.TaxonomyRunId);
+            entity.HasOne(e => e.TaxonomyRun)
+                .WithMany(r => r.Axes)
+                .HasForeignKey(e => e.TaxonomyRunId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<TaxonomyAxisValue>(entity =>
+        {
+            entity.ToTable("TaxonomyAxisValues");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Label).IsRequired().HasMaxLength(200);
+            entity.HasIndex(e => e.TaxonomyAxisId);
+            entity.HasOne(e => e.TaxonomyAxis)
+                .WithMany(a => a.Values)
+                .HasForeignKey(e => e.TaxonomyAxisId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<TaxonomyListingAssignment>(entity =>
+        {
+            entity.ToTable("TaxonomyListingAssignments");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.CellJson).IsRequired().HasMaxLength(500);
+            entity.HasIndex(e => e.TaxonomyRunId);
+            entity.HasIndex(e => e.ListingId);
+            entity.HasOne(e => e.TaxonomyRun)
+                .WithMany(r => r.Assignments)
+                .HasForeignKey(e => e.TaxonomyRunId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(e => e.Listing)
+                .WithMany()
+                .HasForeignKey(e => e.ListingId)
+                .OnDelete(DeleteBehavior.NoAction);
         });
 
     }

@@ -6,6 +6,7 @@ using AngleSharp;
 using AIOMarketMaker.Core.Data;
 using AIOMarketMaker.Core.Data.Models;
 using AIOMarketMaker.Core.Parsers;
+using AIOMarketMaker.Core.Services.Pipeline;
 using AIOMarketMaker.Models.Ebay;
 
 namespace AIOMarketMaker.Core.Services;

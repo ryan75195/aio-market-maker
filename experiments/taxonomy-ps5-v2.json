@@ -1,0 +1,2203 @@
+{
+  "jobId": 1,
+  "searchTerm": "PlayStation 5 Console",
+  "generatedAt": "2026-03-05T15:15:58",
+  "totalListings": 6409,
+  "labeledListings": 5300,
+  "unlabeledListings": 1109,
+  "axes": [
+    {
+      "name": "Edition",
+      "description": "Type of PlayStation 5 edition based on drive type",
+      "values": [
+        {
+          "label": "Disc Edition",
+          "ngrams": [
+            "disc"
+          ]
+        },
+        {
+          "label": "Digital Edition",
+          "ngrams": [
+            "digital"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Storage Capacity",
+      "description": "Internal storage capacity of the console",
+      "values": [
+        {
+          "label": "825GB",
+          "ngrams": [
+            "825gb"
+          ]
+        },
+        {
+          "label": "1TB",
+          "ngrams": [
+            "1tb"
+          ]
+        },
+        {
+          "label": "2TB",
+          "ngrams": [
+            "2tb"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Form Factor",
+      "description": "Physical design or size variant of the console",
+      "values": [
+        {
+          "label": "Slim",
+          "ngrams": [
+            "slim"
+          ]
+        },
+        {
+          "label": "Pro",
+          "ngrams": [
+            "pro"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Color",
+      "description": "Color of the console",
+      "values": [
+        {
+          "label": "White",
+          "ngrams": [
+            "white"
+          ]
+        },
+        {
+          "label": "Black",
+          "ngrams": [
+            "black"
+          ]
+        }
+      ]
+    }
+  ],
+  "ngramGroups": {
+    "825gb": {
+      "freq": 1446,
+      "forms": [
+        "825gb",
+        "825 gb"
+      ]
+    },
+    "sony ps5": {
+      "freq": 1699,
+      "forms": [
+        "sony ps5",
+        "sony playstation ps5",
+        "sony ps5 playstation"
+      ]
+    },
+    "1tb white": {
+      "freq": 333,
+      "forms": [
+        "1tb white",
+        "2tb white"
+      ]
+    },
+    "825gb white": {
+      "freq": 448,
+      "forms": [
+        "825gb white",
+        "825 gb white"
+      ]
+    },
+    "game console": {
+      "freq": 343,
+      "forms": [
+        "game console",
+        "games console"
+      ]
+    },
+    "console 2tb": {
+      "freq": 203,
+      "forms": [
+        "console 2tb",
+        "console 2tb storage"
+      ]
+    },
+    "825gb console": {
+      "freq": 164,
+      "forms": [
+        "825gb console",
+        "825gb console only"
+      ]
+    },
+    "playstation 825 gb": {
+      "freq": 382,
+      "forms": [
+        "playstation 825 gb",
+        "playstation 825gb",
+        "sony playstation 825gb"
+      ]
+    },
+    "ps5 handheld": {
+      "freq": 173,
+      "forms": [
+        "ps5 handheld",
+        "ps5 handheld console"
+      ]
+    },
+    "slim ps5": {
+      "freq": 119,
+      "forms": [
+        "slim ps5",
+        "slim ps5 slim"
+      ]
+    },
+    "playstation 1tb": {
+      "freq": 108,
+      "forms": [
+        "playstation 1tb",
+        "sony playstation 1tb"
+      ]
+    },
+    "2tb digital": {
+      "freq": 96,
+      "forms": [
+        "2tb digital",
+        "1tb digital"
+      ]
+    },
+    "2tb brand": {
+      "freq": 98,
+      "forms": [
+        "2tb brand",
+        "2tb storage brand",
+        "1tb brand"
+      ]
+    },
+    "ps5 disc edition": {
+      "freq": 341,
+      "forms": [
+        "ps5 disc edition",
+        "ps5 disk edition"
+      ]
+    },
+    "playstation slim digital": {
+      "freq": 308,
+      "forms": [
+        "playstation slim digital",
+        "playstation digital slim"
+      ]
+    },
+    "playstation ps5 slim": {
+      "freq": 280,
+      "forms": [
+        "playstation ps5 slim",
+        "playstation slim ps5"
+      ]
+    },
+    "playstation portal ps5": {
+      "freq": 208,
+      "forms": [
+        "playstation portal ps5",
+        "playstation ps5 portal"
+      ]
+    },
+    "playstation ps5 disc": {
+      "freq": 248,
+      "forms": [
+        "playstation ps5 disc",
+        "ps5 playstation disc",
+        "ps5 playstation disk"
+      ]
+    },
+    "slim console disc": {
+      "freq": 120,
+      "forms": [
+        "slim console disc",
+        "slim disc console"
+      ]
+    },
+    "slim digital 1tb": {
+      "freq": 53,
+      "forms": [
+        "slim digital 1tb",
+        "slim 1tb digital"
+      ]
+    }
+  },
+  "categories": [
+    {
+      "label": "Pro | White",
+      "axisValues": {
+        "Form Factor": "Pro",
+        "Color": "White"
+      },
+      "total": 4,
+      "active": 3,
+      "sold": 1,
+      "sellThroughPct": 25,
+      "medianPrice": 434.08,
+      "iqr": 375.6,
+      "medianActivePrice": 141.1,
+      "medianSoldPrice": 434.08,
+      "spread": 292.98,
+      "minPrice": 130.0,
+      "maxPrice": 516.7,
+      "sampleTitles": [
+        "PS Portal White Comes With Fitted Screen Protector, Charging Cable, Travel Case",
+        "Sony PlayStation 5 Pro White",
+        "PlayStation Portal White, Case, Cable & Screen Protector. Free & fast delivery",
+        "Sony PlayStation 5 Pro White Console"
+      ]
+    },
+    {
+      "label": "Pro | Black",
+      "axisValues": {
+        "Form Factor": "Pro",
+        "Color": "Black"
+      },
+      "total": 6,
+      "active": 5,
+      "sold": 1,
+      "sellThroughPct": 17,
+      "medianPrice": 375.0,
+      "iqr": 313.3,
+      "medianActivePrice": 241.79,
+      "medianSoldPrice": 470.0,
+      "spread": 228.21,
+      "minPrice": 145.0,
+      "maxPrice": 519.85,
+      "sampleTitles": [
+        "Victrix by TURTLE BEACH Pro BFG Reloaded Black Wireless Controller NEW",
+        "PlayStation 5 Pro PS5 Console with Black DualSense Controller- Good Condition",
+        "PS5 Pro PlayStation Pro W / Black Wireless Controller Bundle",
+        "PlayStation Portal Midnight Black Edition Case, Zip Case And Screen Protector",
+        "PlayStation Portal (Black) PS5 & Venom Hard Case + Fitted Screen Protector"
+      ]
+    },
+    {
+      "label": "Disc Edition | Slim | Black",
+      "axisValues": {
+        "Edition": "Disc Edition",
+        "Form Factor": "Slim",
+        "Color": "Black"
+      },
+      "total": 6,
+      "active": 3,
+      "sold": 3,
+      "sellThroughPct": 50,
+      "medianPrice": 389.2,
+      "iqr": 115.30000000000001,
+      "medianActivePrice": 329.99,
+      "medianSoldPrice": 445.29,
+      "spread": 115.3,
+      "minPrice": 299.99,
+      "maxPrice": 599.99,
+      "sampleTitles": [
+        "Sony PlayStation 5 Slim - Disc Edition Midnight Black Console Controller",
+        "Sony PlayStation 5 Slim Disc Console - Ghost of Yotei Black Limited Edition",
+        "PlayStation 5 Slim Disc Console & Call of Duty: Black Ops 7",
+        "Sony PlayStation 5 Slim - Disc Edition Midnight Black Console and Controller",
+        "Sony PS5 Slim Disc-free Edition with Upgraded Hall Effect Controller - Black"
+      ]
+    },
+    {
+      "label": "1TB | Pro",
+      "axisValues": {
+        "Storage Capacity": "1TB",
+        "Form Factor": "Pro"
+      },
+      "total": 12,
+      "active": 9,
+      "sold": 3,
+      "sellThroughPct": 25,
+      "medianPrice": 167.1,
+      "iqr": 145.60000000000002,
+      "medianActivePrice": 165.21,
+      "medianSoldPrice": 271.1,
+      "spread": 105.89,
+      "minPrice": 104.7,
+      "maxPrice": 567.7,
+      "sampleTitles": [
+        "Sony Playstation 4 Pro 1TB - (CUH-7016B) with 5 Games inc GTA V, Red Dead II",
+        "Playstation 4 Pro Sony Spiderman Console 1TB With Controller Cables and 5 Games",
+        "PS5 1TB Bundle, Tony Hawks pro Skater & Beach Headphones",
+        "PS4 PRO 1TB GAMING BUNDLE – 2 OFFICIAL CONTROLLERS, 5 GAMES, GREAT CONDITION",
+        "Sony PlayStation 4 Pro 1TB Console - 4. 5 Years Warranty Left And Fifa 21 Game"
+      ]
+    },
+    {
+      "label": "Digital Edition | 825GB | Black",
+      "axisValues": {
+        "Edition": "Digital Edition",
+        "Storage Capacity": "825GB",
+        "Color": "Black"
+      },
+      "total": 2,
+      "active": 1,
+      "sold": 1,
+      "sellThroughPct": 50,
+      "medianPrice": 333.1,
+      "iqr": 0,
+      "medianActivePrice": 264.0,
+      "medianSoldPrice": 333.1,
+      "spread": 69.1,
+      "minPrice": 264.0,
+      "maxPrice": 333.1,
+      "sampleTitles": [
+        "Sony PlayStation 5 Digitals Edition Console 825GB Black",
+        "PlayStation 5 Digital Edition - 825GB . In Black + Black & Gold Controller"
+      ]
+    },
+    {
+      "label": "Digital Edition | 2TB | Pro | White",
+      "axisValues": {
+        "Edition": "Digital Edition",
+        "Storage Capacity": "2TB",
+        "Form Factor": "Pro",
+        "Color": "White"
+      },
+      "total": 20,
+      "active": 5,
+      "sold": 15,
+      "sellThroughPct": 75,
+      "medianPrice": 500.01,
+      "iqr": 64.10000000000002,
+      "medianActivePrice": 449.99,
+      "medianSoldPrice": 500.01,
+      "spread": 50.02,
+      "minPrice": 339.99,
+      "maxPrice": 635.99,
+      "sampleTitles": [
+        "Sony PlayStation 5 Pro Console 2TB Digital Storage White Bundle with Accessories",
+        "PS5 Pro Digital Console 2TB White",
+        "PS5 Pro Digital Edition White 2TB",
+        "Sony PlayStation 5 Pro 2TB Digital Console White with Controller and Cables.",
+        "Sony PlayStation 5 Pro Digital Edition - White Colour (2TB Storage, 1x Pad)"
+      ]
+    },
+    {
+      "label": "Pro",
+      "axisValues": {
+        "Form Factor": "Pro"
+      },
+      "total": 123,
+      "active": 70,
+      "sold": 53,
+      "sellThroughPct": 43,
+      "medianPrice": 486.1,
+      "iqr": 438.0400000000001,
+      "medianActivePrice": 450.4,
+      "medianSoldPrice": 493.58,
+      "spread": 43.18,
+      "minPrice": 9.19,
+      "maxPrice": 2760.7,
+      "sampleTitles": [
+        "PS5 PRO BRAND NEW SEALED",
+        "Brand New Ps5 Pro",
+        "Sony PlayStation 5 Pro Console with DualSense Controller",
+        "PlayStation 5 Pro PS5 Console with DualSense Controller- Boxed- VGC",
+        "ALL-IN-ONE PS5 & PSVR MEGA BUNDLE | Silent Hill 2 | 2x Controllers | Pro-Cleaned"
+      ]
+    },
+    {
+      "label": "Disc Edition | 2TB | Pro | White",
+      "axisValues": {
+        "Edition": "Disc Edition",
+        "Storage Capacity": "2TB",
+        "Form Factor": "Pro",
+        "Color": "White"
+      },
+      "total": 11,
+      "active": 5,
+      "sold": 6,
+      "sellThroughPct": 55,
+      "medianPrice": 567.7,
+      "iqr": 67.32999999999993,
+      "medianActivePrice": 556.48,
+      "medianSoldPrice": 583.0,
+      "spread": 26.52,
+      "minPrice": 363.7,
+      "maxPrice": 797.2,
+      "sampleTitles": [
+        "PlayStation 5 Pro Console 2TB, White, Boxed With Disc Drive, + 2 Control",
+        "Playstation 5 Pro (PS5) - 2TB - White Console - Includes Disc Drive - Excellent",
+        "Sony PlayStation 5 Pro 2TB White Console with Disc Drive",
+        "Sony PlayStation 5 Pro 2TB White Console Disc-Free 4K 120 HDR",
+        "PlayStation 5 Pro 2TB White Console + With PS5 Disc drive"
+      ]
+    },
+    {
+      "label": "Digital Edition | 2TB",
+      "axisValues": {
+        "Edition": "Digital Edition",
+        "Storage Capacity": "2TB"
+      },
+      "total": 2,
+      "active": 1,
+      "sold": 1,
+      "sellThroughPct": 50,
+      "medianPrice": 619.0,
+      "iqr": 0,
+      "medianActivePrice": 593.2,
+      "medianSoldPrice": 619.0,
+      "spread": 25.8,
+      "minPrice": 593.2,
+      "maxPrice": 619.0,
+      "sampleTitles": [
+        "PlayStation 5 Pro Console - 2TB Digital Edition Slim",
+        "PlayStation 5 Pro Console - (LOW FIRMWARE) 2TB Digital Edition Slim (SEALED)"
+      ]
+    },
+    {
+      "label": "Disc Edition | 825GB | Slim | White",
+      "axisValues": {
+        "Edition": "Disc Edition",
+        "Storage Capacity": "825GB",
+        "Form Factor": "Slim",
+        "Color": "White"
+      },
+      "total": 8,
+      "active": 3,
+      "sold": 5,
+      "sellThroughPct": 62,
+      "medianPrice": 299.99,
+      "iqr": 22.70999999999998,
+      "medianActivePrice": 289.99,
+      "medianSoldPrice": 299.99,
+      "spread": 10.0,
+      "minPrice": 229.99,
+      "maxPrice": 358.6,
+      "sampleTitles": [
+        "Sony PlayStation 5 slim (PS5) - 825GB - Disc Edition Console - White",
+        "Sony PlayStation 5 slim (PS5) - 825GB - Disc Edition Console - White",
+        "Sony PlayStation 5 slim (PS5) - 825GB - Disc Edition Console - White",
+        "Sony PlayStation 5 Slim 825GB Disc Edition Console, White NEW SEALED",
+        "Sony PlayStation 5 Slim 825GB Disc Edition Console, White"
+      ]
+    },
+    {
+      "label": "Disc Edition | 2TB | Pro",
+      "axisValues": {
+        "Edition": "Disc Edition",
+        "Storage Capacity": "2TB",
+        "Form Factor": "Pro"
+      },
+      "total": 29,
+      "active": 11,
+      "sold": 18,
+      "sellThroughPct": 62,
+      "medianPrice": 569.99,
+      "iqr": 69.00999999999999,
+      "medianActivePrice": 567.7,
+      "medianSoldPrice": 576.88,
+      "spread": 9.18,
+      "minPrice": 506.5,
+      "maxPrice": 783.85,
+      "sampleTitles": [
+        "PlayStation 5 Pro 2TB + Disc Drive + 8 Games + Accessories Bundle",
+        "PlayStation 5 Pro 2TB Bundle | 2 DualSense Controllers, Disc Drive, 3 Games,Dock",
+        "PlayStation 5 Pro With Disc Drive & 2TB SSD *no Controller*",
+        "Sony PlayStation 5 Pro 2TB Console + Disc Drive - Fantastic Condition with Box",
+        "Playstation PS5 Pro 2TB with Disc Drive and extra controller - Brand New"
+      ]
+    },
+    {
+      "label": "Disc Edition | 825GB | Black",
+      "axisValues": {
+        "Edition": "Disc Edition",
+        "Storage Capacity": "825GB",
+        "Color": "Black"
+      },
+      "total": 11,
+      "active": 7,
+      "sold": 4,
+      "sellThroughPct": 36,
+      "medianPrice": 283.86,
+      "iqr": 33.69,
+      "medianActivePrice": 283.25,
+      "medianSoldPrice": 291.9,
+      "spread": 8.65,
+      "minPrice": 250.0,
+      "maxPrice": 363.7,
+      "sampleTitles": [
+        "Sony PlayStation 5 (PS5) - 825GB - Disc Edition Console Black #2150371",
+        "Sony PlayStation 5 Disc - 825GB - Black Model With Controller",
+        "Sony PlayStation 5 825 GB Black Disc Console",
+        "Sony PS5 825GB Blu-Ray Disc Edition Console Custom Black – Console Only tested",
+        "Sony PlayStation 5 Disc Console + Dualsense Controller - 825GB - Black"
+      ]
+    },
+    {
+      "label": "Unlabeled",
+      "axisValues": {},
+      "total": 1109,
+      "active": 819,
+      "sold": 290,
+      "sellThroughPct": 26,
+      "medianPrice": 135.9,
+      "iqr": 221.51,
+      "medianActivePrice": 135.9,
+      "medianSoldPrice": 138.98,
+      "spread": 3.08,
+      "minPrice": 2.0,
+      "maxPrice": 1444.17,
+      "sampleTitles": [
+        "PlayStation 5 PS5 Gaming Console 1x Controller & Headset Excellent Condition",
+        "Sony PlayStation 5  Consoles",
+        "PlayStation Portal for PS5 Handheld Console with Carry Case",
+        "ps 5 console",
+        "PlayStation Portal PS5 Handheld Console"
+      ]
+    },
+    {
+      "label": "Slim | White",
+      "axisValues": {
+        "Form Factor": "Slim",
+        "Color": "White"
+      },
+      "total": 9,
+      "active": 6,
+      "sold": 3,
+      "sellThroughPct": 33,
+      "medianPrice": 289.95,
+      "iqr": 10.009999999999991,
+      "medianActivePrice": 289.95,
+      "medianSoldPrice": 290.0,
+      "spread": 0.05,
+      "minPrice": 156.75,
+      "maxPrice": 404.5,
+      "sampleTitles": [
+        "Sony PlayStation 5 Slim DualSense Console Wireless Controller White",
+        "Sony PlayStation 5 PS5 Slim Edition Console  White With Camo Controller",
+        "Sony PlayStation 5 Slim 848GB White, Disc-Free Digital Version",
+        "Sony PlayStation 5 Slim White Console",
+        "Sony PlayStation 5 Slim Console 500GB White console"
+      ]
+    },
+    {
+      "label": "Black",
+      "axisValues": {
+        "Color": "Black"
+      },
+      "total": 197,
+      "active": 150,
+      "sold": 47,
+      "sellThroughPct": 24,
+      "medianPrice": 141.1,
+      "iqr": 50.420000000000016,
+      "medianActivePrice": 141.1,
+      "medianSoldPrice": 141.1,
+      "spread": 0.0,
+      "minPrice": 6.5,
+      "maxPrice": 499.99,
+      "sampleTitles": [
+        "Fully boxed PlayStation Portal - Midnight Black PS5 Remote Player",
+        "Sony PlayStation Portal Remote Player for PS5 Midnight Black Edition",
+        "PlayStation Portal for PS5 Midnight Black Boxed And Complete Uk Console (NEW)",
+        "PlayStation 5 Console - Ghost of Yoteim Black Limited Edition Bundle PS5",
+        "Playstation Portal - Black - With Carry Case"
+      ]
+    },
+    {
+      "label": "Disc Edition | Pro",
+      "axisValues": {
+        "Edition": "Disc Edition",
+        "Form Factor": "Pro"
+      },
+      "total": 21,
+      "active": 5,
+      "sold": 16,
+      "sellThroughPct": 76,
+      "medianPrice": 567.7,
+      "iqr": 78.0,
+      "medianActivePrice": 567.7,
+      "medianSoldPrice": 567.7,
+      "spread": 0.0,
+      "minPrice": 42.43,
+      "maxPrice": 720.7,
+      "sampleTitles": [
+        "PlayStation 5 825GB Disc Edition boxed with controller + Samsung 980 Pro 1tb M.2",
+        "PS5 Pro With Disc Drive And Controller Charging Dock - Hardly Used, Fully Boxed",
+        "PlayStation 5 Pro (PS5 Pro) Console With Disc Drive & wires only - Mint cond.",
+        "PlayStation 5 Pro with disc drive",
+        "Sony PlayStation 5 Pro Brand New Sealed With Disc Drive New & Sealed"
+      ]
+    },
+    {
+      "label": "Digital Edition | Pro",
+      "axisValues": {
+        "Edition": "Digital Edition",
+        "Form Factor": "Pro"
+      },
+      "total": 15,
+      "active": 9,
+      "sold": 6,
+      "sellThroughPct": 40,
+      "medianPrice": 495.72,
+      "iqr": 111.0,
+      "medianActivePrice": 495.72,
+      "medianSoldPrice": 495.72,
+      "spread": 0.0,
+      "minPrice": 49.99,
+      "maxPrice": 720.7,
+      "sampleTitles": [
+        "PlayStation 5 Pro Digital Edition",
+        "Sony PlayStation 5 Pro Digital Console Brand New",
+        "Sony PlayStation 5 Pro Digital Edition NO CONTROLLER PS5",
+        "PS5 Pro digital edition. 🔥 Only 2 weeks old 🔥 In mint condition. Long warranty",
+        "PS5 PlayStation 5 Pro Console Digital 4K"
+      ]
+    },
+    {
+      "label": "825GB | Slim | White",
+      "axisValues": {
+        "Storage Capacity": "825GB",
+        "Form Factor": "Slim",
+        "Color": "White"
+      },
+      "total": 8,
+      "active": 8,
+      "sold": 0,
+      "sellThroughPct": 0,
+      "medianPrice": 325.0,
+      "iqr": 49.89000000000004,
+      "medianActivePrice": 325.0,
+      "medianSoldPrice": 0,
+      "spread": 0,
+      "minPrice": 299.99,
+      "maxPrice": 363.7,
+      "sampleTitles": [
+        "Sony PlayStation 5 Slim 825GB White Console With 5 Games Included Gta5",
+        "Sony PS5 Slim Edition 825GB White Video Game Console CFI-2116",
+        "Sony PS5 Slim Edition 825GB White Video Game Console CFI-2116",
+        "Sony PlayStation 5 Slim 825GB White with additional internal storage and games",
+        "Sony PS5 Slim Edition 825GB White Video Game Console CFI-2116"
+      ]
+    },
+    {
+      "label": "Disc Edition | 1TB | Black",
+      "axisValues": {
+        "Edition": "Disc Edition",
+        "Storage Capacity": "1TB",
+        "Color": "Black"
+      },
+      "total": 6,
+      "active": 6,
+      "sold": 0,
+      "sellThroughPct": 0,
+      "medianPrice": 389.2,
+      "iqr": 38.77000000000004,
+      "medianActivePrice": 389.2,
+      "medianSoldPrice": 0,
+      "spread": 0,
+      "minPrice": 324.95,
+      "maxPrice": 475.0,
+      "sampleTitles": [
+        "Sony PlayStation 5 Disc Edition + 1TB FX991 NVMe SSD + Cooling Led Black Plates",
+        "Sony PS5 Disc Edition + 1TB WD_BLACK SN770 SSD. Boxed. Exceptional Condition.",
+        "Sony PS5 Disc Edition Console - Black Facia & Controller - 1TB M.2 SSD - 2 Games",
+        "Sony PlayStation 5 Disc Edition Bundle + 1TB NVMe SSD + Black Plates + 2 Games",
+        "PS5 Disc Edition Console 1TB Black Ghost of Yotei Limited Edition- New & Sealed"
+      ]
+    },
+    {
+      "label": "Digital Edition | Slim | Black",
+      "axisValues": {
+        "Edition": "Digital Edition",
+        "Form Factor": "Slim",
+        "Color": "Black"
+      },
+      "total": 5,
+      "active": 5,
+      "sold": 0,
+      "sellThroughPct": 0,
+      "medianPrice": 351.04,
+      "iqr": 80.0,
+      "medianActivePrice": 351.04,
+      "medianSoldPrice": 0,
+      "spread": 0,
+      "minPrice": 250.0,
+      "maxPrice": 449.99,
+      "sampleTitles": [
+        "PS5 5 Slim Digital Edition Call of Duty: Black Ops 6 Bundle",
+        "SONY PlayStation 5 Digital Edition Slim Console Call of Duty: Black Ops 6 Bundle",
+        "SONY PlayStation 5 Digital Edition Slim Console Call of Duty: Black Ops 6 Bundle",
+        "Sony PlayStation 5 PS5 Slim Digital Edition - Black Controller",
+        "Black PlayStation 5 Slim Digital Console Only FREE POSTAGE"
+      ]
+    },
+    {
+      "label": "1TB | Black",
+      "axisValues": {
+        "Storage Capacity": "1TB",
+        "Color": "Black"
+      },
+      "total": 3,
+      "active": 3,
+      "sold": 0,
+      "sellThroughPct": 0,
+      "medianPrice": 474.05,
+      "iqr": 0,
+      "medianActivePrice": 474.05,
+      "medianSoldPrice": 0,
+      "spread": 0,
+      "minPrice": 99.99,
+      "maxPrice": 499.0,
+      "sampleTitles": [
+        "Steam Deck LCD Gaming Handheld Console 1TB 7.0'' Steam OS Black",
+        "Steam Deck LCD Gaming Handheld Console 1TB 7.0'' Steam OS Black",
+        "Sony PlayStation 4 1TB Console with Controller - Black"
+      ]
+    },
+    {
+      "label": "1TB | Slim | Black",
+      "axisValues": {
+        "Storage Capacity": "1TB",
+        "Form Factor": "Slim",
+        "Color": "Black"
+      },
+      "total": 3,
+      "active": 3,
+      "sold": 0,
+      "sellThroughPct": 0,
+      "medianPrice": 120.3,
+      "iqr": 0,
+      "medianActivePrice": 120.3,
+      "medianSoldPrice": 0,
+      "spread": 0,
+      "minPrice": 120.3,
+      "maxPrice": 379.99,
+      "sampleTitles": [
+        "30Th Anniversary Slim Ps5 Digi Black Pad 1Tb",
+        "Sony PlayStation 4 Slim 1TB Black Console with 5 Games Controller. Tested",
+        "Sony PlayStation 4 Slim 1TB Black Console with 5 Games Controller. Tested"
+      ]
+    },
+    {
+      "label": "Digital Edition | 1TB | Black",
+      "axisValues": {
+        "Edition": "Digital Edition",
+        "Storage Capacity": "1TB",
+        "Color": "Black"
+      },
+      "total": 2,
+      "active": 0,
+      "sold": 2,
+      "sellThroughPct": 100,
+      "medianPrice": 412.99,
+      "iqr": 0,
+      "medianActivePrice": 0,
+      "medianSoldPrice": 412.99,
+      "spread": 0,
+      "minPrice": 289.99,
+      "maxPrice": 412.99,
+      "sampleTitles": [
+        "Sony PS5  Digital Edition 1TB Video Game Console - & Black Controller",
+        "PS5 Digital Edition 1TB 30th Anniversary Limited Edition **BLACK CONTROLLER**"
+      ]
+    },
+    {
+      "label": "Disc Edition | Pro | White",
+      "axisValues": {
+        "Edition": "Disc Edition",
+        "Form Factor": "Pro",
+        "Color": "White"
+      },
+      "total": 2,
+      "active": 2,
+      "sold": 0,
+      "sellThroughPct": 0,
+      "medianPrice": 21.49,
+      "iqr": 0,
+      "medianActivePrice": 21.49,
+      "medianSoldPrice": 0,
+      "spread": 0,
+      "minPrice": 21.49,
+      "maxPrice": 21.49,
+      "sampleTitles": [
+        "Offical Sony Playstation 5 pro White Disc plate",
+        "Offical Sony Playstation 5 pro White Disc plate"
+      ]
+    },
+    {
+      "label": "Disc Edition | 2TB | Slim",
+      "axisValues": {
+        "Edition": "Disc Edition",
+        "Storage Capacity": "2TB",
+        "Form Factor": "Slim"
+      },
+      "total": 1,
+      "active": 1,
+      "sold": 0,
+      "sellThroughPct": 0,
+      "medianPrice": 499.99,
+      "iqr": 0,
+      "medianActivePrice": 499.99,
+      "medianSoldPrice": 0,
+      "spread": 0,
+      "minPrice": 499.99,
+      "maxPrice": 499.99,
+      "sampleTitles": [
+        "PS5 Slim Disc Console + 2TB Hard Drive + SteelSeries Arctis 7+ Headset & 6 Games"
+      ]
+    },
+    {
+      "label": "Disc Edition | 825GB | Pro",
+      "axisValues": {
+        "Edition": "Disc Edition",
+        "Storage Capacity": "825GB",
+        "Form Factor": "Pro"
+      },
+      "total": 1,
+      "active": 1,
+      "sold": 0,
+      "sellThroughPct": 0,
+      "medianPrice": 328.0,
+      "iqr": 0,
+      "medianActivePrice": 328.0,
+      "medianSoldPrice": 0,
+      "spread": 0,
+      "minPrice": 328.0,
+      "maxPrice": 328.0,
+      "sampleTitles": [
+        "Boxed VCG Sony PlayStation PS5 825GB Disc Drive Edition CFI-1116A Project Cars 2"
+      ]
+    },
+    {
+      "label": "Digital Edition | Pro | Black",
+      "axisValues": {
+        "Edition": "Digital Edition",
+        "Form Factor": "Pro",
+        "Color": "Black"
+      },
+      "total": 1,
+      "active": 0,
+      "sold": 1,
+      "sellThroughPct": 100,
+      "medianPrice": 599.0,
+      "iqr": 0,
+      "medianActivePrice": 0,
+      "medianSoldPrice": 599.0,
+      "spread": 0,
+      "minPrice": 599.0,
+      "maxPrice": 599.0,
+      "sampleTitles": [
+        "Sony PlayStation 5- PS5 Digital PRO Edition - Black- Excellent"
+      ]
+    },
+    {
+      "label": "2TB | Slim | White",
+      "axisValues": {
+        "Storage Capacity": "2TB",
+        "Form Factor": "Slim",
+        "Color": "White"
+      },
+      "total": 1,
+      "active": 1,
+      "sold": 0,
+      "sellThroughPct": 0,
+      "medianPrice": 309.99,
+      "iqr": 0,
+      "medianActivePrice": 309.99,
+      "medianSoldPrice": 0,
+      "spread": 0,
+      "minPrice": 309.99,
+      "maxPrice": 309.99,
+      "sampleTitles": [
+        "Sony PlayStation 5 Slim White Console 2TB"
+      ]
+    },
+    {
+      "label": "Disc Edition | 2TB | Pro | Black",
+      "axisValues": {
+        "Edition": "Disc Edition",
+        "Storage Capacity": "2TB",
+        "Form Factor": "Pro",
+        "Color": "Black"
+      },
+      "total": 1,
+      "active": 1,
+      "sold": 0,
+      "sellThroughPct": 0,
+      "medianPrice": 783.85,
+      "iqr": 0,
+      "medianActivePrice": 783.85,
+      "medianSoldPrice": 0,
+      "spread": 0,
+      "minPrice": 783.85,
+      "maxPrice": 783.85,
+      "sampleTitles": [
+        "PlayStation 5 Pro Console - 2TB  (NO DISC)  + Extra  DualSense Midnight Black"
+      ]
+    },
+    {
+      "label": "Digital Edition | 1TB | Pro",
+      "axisValues": {
+        "Edition": "Digital Edition",
+        "Storage Capacity": "1TB",
+        "Form Factor": "Pro"
+      },
+      "total": 1,
+      "active": 1,
+      "sold": 0,
+      "sellThroughPct": 0,
+      "medianPrice": 312.7,
+      "iqr": 0,
+      "medianActivePrice": 312.7,
+      "medianSoldPrice": 0,
+      "spread": 0,
+      "minPrice": 312.7,
+      "maxPrice": 312.7,
+      "sampleTitles": [
+        "PS5 Pro Digital Edition 1TB With Controller And Fan Cooler"
+      ]
+    },
+    {
+      "label": "Disc Edition | 825GB | Slim",
+      "axisValues": {
+        "Edition": "Disc Edition",
+        "Storage Capacity": "825GB",
+        "Form Factor": "Slim"
+      },
+      "total": 1,
+      "active": 0,
+      "sold": 1,
+      "sellThroughPct": 100,
+      "medianPrice": 312.7,
+      "iqr": 0,
+      "medianActivePrice": 0,
+      "medianSoldPrice": 312.7,
+      "spread": 0,
+      "minPrice": 312.7,
+      "maxPrice": 312.7,
+      "sampleTitles": [
+        "Sony PlayStation 5 Slim 825GB - DISC - READ DESC"
+      ]
+    },
+    {
+      "label": "Disc Edition | 1TB | Pro",
+      "axisValues": {
+        "Edition": "Disc Edition",
+        "Storage Capacity": "1TB",
+        "Form Factor": "Pro"
+      },
+      "total": 1,
+      "active": 1,
+      "sold": 0,
+      "sellThroughPct": 0,
+      "medianPrice": 649.3,
+      "iqr": 0,
+      "medianActivePrice": 649.3,
+      "medianSoldPrice": 0,
+      "spread": 0,
+      "minPrice": 649.3,
+      "maxPrice": 649.3,
+      "sampleTitles": [
+        "PS5 Disc Edition (2020) + 1TB Samsung 980 Pro SSD + Official Accessories & Games"
+      ]
+    },
+    {
+      "label": "Disc Edition | 825GB | Pro | White",
+      "axisValues": {
+        "Edition": "Disc Edition",
+        "Storage Capacity": "825GB",
+        "Form Factor": "Pro",
+        "Color": "White"
+      },
+      "total": 1,
+      "active": 1,
+      "sold": 0,
+      "sellThroughPct": 0,
+      "medianPrice": 537.1,
+      "iqr": 0,
+      "medianActivePrice": 537.1,
+      "medianSoldPrice": 0,
+      "spread": 0,
+      "minPrice": 537.1,
+      "maxPrice": 537.1,
+      "sampleTitles": [
+        "Sony PlayStation 5 Pro White 825GB Disc Edition 2 controllers"
+      ]
+    },
+    {
+      "label": "1TB | Pro | White",
+      "axisValues": {
+        "Storage Capacity": "1TB",
+        "Form Factor": "Pro",
+        "Color": "White"
+      },
+      "total": 1,
+      "active": 0,
+      "sold": 1,
+      "sellThroughPct": 100,
+      "medianPrice": 499.36,
+      "iqr": 0,
+      "medianActivePrice": 0,
+      "medianSoldPrice": 499.36,
+      "spread": 0,
+      "minPrice": 499.36,
+      "maxPrice": 499.36,
+      "sampleTitles": [
+        "Sony PlayStation 5 PRO 1TB Home Console with Controller White"
+      ]
+    },
+    {
+      "label": "Disc Edition | 825GB | Slim | Black",
+      "axisValues": {
+        "Edition": "Disc Edition",
+        "Storage Capacity": "825GB",
+        "Form Factor": "Slim",
+        "Color": "Black"
+      },
+      "total": 1,
+      "active": 0,
+      "sold": 1,
+      "sellThroughPct": 100,
+      "medianPrice": 307.5,
+      "iqr": 0,
+      "medianActivePrice": 0,
+      "medianSoldPrice": 307.5,
+      "spread": 0,
+      "minPrice": 307.5,
+      "maxPrice": 307.5,
+      "sampleTitles": [
+        "Sony Playstation 5 PS5 - Slim with Disc drive 825GB with COD Black Ops 7 Game"
+      ]
+    },
+    {
+      "label": "Digital Edition | 2TB | Slim",
+      "axisValues": {
+        "Edition": "Digital Edition",
+        "Storage Capacity": "2TB",
+        "Form Factor": "Slim"
+      },
+      "total": 1,
+      "active": 1,
+      "sold": 0,
+      "sellThroughPct": 0,
+      "medianPrice": 700.3,
+      "iqr": 0,
+      "medianActivePrice": 700.3,
+      "medianSoldPrice": 0,
+      "spread": 0,
+      "minPrice": 700.3,
+      "maxPrice": 700.3,
+      "sampleTitles": [
+        "Ps5 Slim Digital Edition Bundle/2tb/2 Controller/headphones/18\" Qled Monitor"
+      ]
+    },
+    {
+      "label": "Digital Edition | 2TB | Pro",
+      "axisValues": {
+        "Edition": "Digital Edition",
+        "Storage Capacity": "2TB",
+        "Form Factor": "Pro"
+      },
+      "total": 69,
+      "active": 41,
+      "sold": 28,
+      "sellThroughPct": 41,
+      "medianPrice": 516.7,
+      "iqr": 86.69000000000005,
+      "medianActivePrice": 516.7,
+      "medianSoldPrice": 516.69,
+      "spread": -0.01,
+      "minPrice": 373.9,
+      "maxPrice": 729.02,
+      "sampleTitles": [
+        "PlayStation 5 Pro (PS5 Pro) 2TB Digital - Boxed - Mint Condition",
+        "Sony PlayStation 5 Pro Console 2TB Digital Storage New Sealed",
+        "Sony Playstation 5 Pro Digital Edition 2TB Console NEW",
+        "PlayStation 5 Pro 2TB Digital Console",
+        "Brand New PS5 Pro Digital with 2TB Storage"
+      ]
+    },
+    {
+      "label": "Disc Edition | 1TB | Slim",
+      "axisValues": {
+        "Edition": "Disc Edition",
+        "Storage Capacity": "1TB",
+        "Form Factor": "Slim"
+      },
+      "total": 231,
+      "active": 128,
+      "sold": 103,
+      "sellThroughPct": 45,
+      "medianPrice": 363.7,
+      "iqr": 71.67000000000002,
+      "medianActivePrice": 367.88,
+      "medianSoldPrice": 363.7,
+      "spread": -4.18,
+      "minPrice": 208.7,
+      "maxPrice": 618.7,
+      "sampleTitles": [
+        "Sony PlayStation 5 PS5 Slim Blu-Ray Disc Edition 1TB",
+        "Sony PlayStation 5 Slim Console Disc Ed. 1TB *CONSOLE ONLY - READ DESCRIPTION*",
+        "Sony PlayStation 5 Slim (PS5 Slim) - 1TB - Disc Edition Console - Open Box",
+        "Sony PlayStation 5 Slim 1TB Console with Disc Drive New and Sealed",
+        "PlayStation 5 Slim Disc Edition 1TB – Fortnite Cobalt Star Bundle – SEALED ✅"
+      ]
+    },
+    {
+      "label": "1TB | White",
+      "axisValues": {
+        "Storage Capacity": "1TB",
+        "Color": "White"
+      },
+      "total": 4,
+      "active": 3,
+      "sold": 1,
+      "sellThroughPct": 25,
+      "medianPrice": 394.3,
+      "iqr": 35.89999999999998,
+      "medianActivePrice": 394.3,
+      "medianSoldPrice": 389.0,
+      "spread": -5.3,
+      "minPrice": 360.99,
+      "maxPrice": 424.9,
+      "sampleTitles": [
+        "Sony PlayStation 5 Disk Edition 1TB  White (New/Sealed)",
+        "Sony Playstation 5 PS5 Blu-Ray Edition 1TB Video Game Console - White",
+        "Official Sony PlayStation 5 PS5 1TB Disk Console - White - SWAP Stock - NO Co...",
+        "Sony PlayStation 5 PS5 Console & NBA 2K26 Video Game 1TB White CFI-2016"
+      ]
+    },
+    {
+      "label": "Digital Edition | Pro | White",
+      "axisValues": {
+        "Edition": "Digital Edition",
+        "Form Factor": "Pro",
+        "Color": "White"
+      },
+      "total": 8,
+      "active": 3,
+      "sold": 5,
+      "sellThroughPct": 62,
+      "medianPrice": 499.99,
+      "iqr": 58.79000000000002,
+      "medianActivePrice": 499.99,
+      "medianSoldPrice": 491.2,
+      "spread": -8.79,
+      "minPrice": 445.3,
+      "maxPrice": 549.99,
+      "sampleTitles": [
+        "Sony PlayStation 5 Pro Digital Edition Console with DualSense Controller White",
+        "Sony PlayStation 5 Pro Digital Edition Console with DualSense Controller White",
+        "Sony PlayStation 5 Pro Digital Edition Console with DualSense Controller White",
+        "Sony PlayStation 5 Pro Digital Edition Console with DualSense Controller White",
+        "Sony PlayStation 5 Pro Digital Edition Console with DualSense Controller White"
+      ]
+    },
+    {
+      "label": "Digital Edition | Slim | White",
+      "axisValues": {
+        "Edition": "Digital Edition",
+        "Form Factor": "Slim",
+        "Color": "White"
+      },
+      "total": 38,
+      "active": 20,
+      "sold": 18,
+      "sellThroughPct": 47,
+      "medianPrice": 299.0,
+      "iqr": 70.00999999999999,
+      "medianActivePrice": 299.99,
+      "medianSoldPrice": 289.99,
+      "spread": -10.0,
+      "minPrice": 144.22,
+      "maxPrice": 481.0,
+      "sampleTitles": [
+        "Sony PlayStation 5 Slim White Console Digital",
+        "Sony PlayStation 5 Slim Digital Edition White & Controller",
+        "Sony PS5 Slim Digital Edition Video Game Console - White",
+        "Sony PlayStation 5 Slim Digital Edition Console with DualSense Controller White",
+        "Sony PS5 Slim Digital Console – 1x White Official Controller -Pristine Condition"
+      ]
+    },
+    {
+      "label": "1TB | Slim | White",
+      "axisValues": {
+        "Storage Capacity": "1TB",
+        "Form Factor": "Slim",
+        "Color": "White"
+      },
+      "total": 61,
+      "active": 42,
+      "sold": 19,
+      "sellThroughPct": 31,
+      "medianPrice": 320.46,
+      "iqr": 84.11000000000001,
+      "medianActivePrice": 322.9,
+      "medianSoldPrice": 312.7,
+      "spread": -10.2,
+      "minPrice": 200.0,
+      "maxPrice": 479.99,
+      "sampleTitles": [
+        "Sony PlayStation 5 Slim 1TB White Game Console Disc-Free Digital Version",
+        "Sony PS5 Slim Blu-Ray Edition 1TB Video Game Console - White.  The box is damage",
+        "Playstation 5 Slim Console, 1TB, White",
+        "Sony PlayStation 5 Slim 1TB White",
+        "Sony PlayStation 5 Slim 1TB White, Disc-Free Digital Version with box"
+      ]
+    },
+    {
+      "label": "Disc Edition | Black",
+      "axisValues": {
+        "Edition": "Disc Edition",
+        "Color": "Black"
+      },
+      "total": 18,
+      "active": 11,
+      "sold": 7,
+      "sellThroughPct": 39,
+      "medianPrice": 333.1,
+      "iqr": 62.50999999999999,
+      "medianActivePrice": 343.3,
+      "medianSoldPrice": 333.1,
+      "spread": -10.2,
+      "minPrice": 284.99,
+      "maxPrice": 618.7,
+      "sampleTitles": [
+        "PlayStation 5 Disc Console – Ghost of Yotei Black Limited Edition Bundle | NEW ✅",
+        "Sony PS5 Console Blu-Ray Disc Edition  - BLACK - Deep Cleaned!",
+        "🔥 Sony PS5 Disc Edition Console with Black Controller and Faceplates 🔥",
+        "Sony PS5 Disc Edition Console with Black Controller and Faceplates",
+        "Sony PS5 Disc Edition Console - black"
+      ]
+    },
+    {
+      "label": "Digital Edition | 825GB",
+      "axisValues": {
+        "Edition": "Digital Edition",
+        "Storage Capacity": "825GB"
+      },
+      "total": 168,
+      "active": 117,
+      "sold": 51,
+      "sellThroughPct": 30,
+      "medianPrice": 312.7,
+      "iqr": 91.65999999999997,
+      "medianActivePrice": 312.7,
+      "medianSoldPrice": 299.99,
+      "spread": -12.71,
+      "minPrice": 16.15,
+      "maxPrice": 516.7,
+      "sampleTitles": [
+        "Sony PlayStation 5 PS5 Digital Edition 825GB Console - Boxed with Cables",
+        "Sony PlayStation 5 (PS5) Digital Edition Console 825GB – Fully Working – Used",
+        "🔥  Sony PS5 - Digital Edition - Fortnite Bundle - 825Gb - Brand New/Sealed 🔥",
+        "PlayStation PS5 Digital Edtion 825GB - Fortnite Bundle.",
+        "Sony PS5 Digital Edition Console - 825GB"
+      ]
+    },
+    {
+      "label": "Slim | Black",
+      "axisValues": {
+        "Form Factor": "Slim",
+        "Color": "Black"
+      },
+      "total": 22,
+      "active": 15,
+      "sold": 7,
+      "sellThroughPct": 32,
+      "medianPrice": 94.3,
+      "iqr": 76.92999999999999,
+      "medianActivePrice": 99.5,
+      "medianSoldPrice": 85.76,
+      "spread": -13.74,
+      "minPrice": 9.99,
+      "maxPrice": 430.61,
+      "sampleTitles": [
+        "Sony PlayStation 3 - Slim 250GB Black, all cables, 5 games and two controllers.",
+        "Sony PlayStation 4 Ps4 Slim 500gb Console -black lovely piece of kit",
+        "PlayStation 3 Slim Black Console Faulty Bundle With 5x Games - Sony",
+        "Sony PlayStation 2 Slim Black Console Bundle W/ 5 Games, Controller, Leads etc.",
+        "Sony PlayStation 4 Slim 500GB Black With Far Cry 5"
+      ]
+    },
+    {
+      "label": "Digital Edition | 1TB | Slim | White",
+      "axisValues": {
+        "Edition": "Digital Edition",
+        "Storage Capacity": "1TB",
+        "Form Factor": "Slim",
+        "Color": "White"
+      },
+      "total": 96,
+      "active": 69,
+      "sold": 27,
+      "sellThroughPct": 28,
+      "medianPrice": 289.99,
+      "iqr": 52.0,
+      "medianActivePrice": 294.01,
+      "medianSoldPrice": 279.99,
+      "spread": -14.02,
+      "minPrice": 149.99,
+      "maxPrice": 408.85,
+      "sampleTitles": [
+        "Sony PS5 Slim Digital Edition 1TB Video Game Console - White",
+        "Sony PlayStation 5 PS5 Slim Console - Digital Edition - 1TB – White- Used",
+        "Sony PlayStation 5 Slim  (PS5 Slim) Digital Edition - 1TB - White - No Pad",
+        "Sony PlayStation 5 PS5 Slim Console - Digital Edition - 1TB – White- New",
+        "Sony PlayStation 5 PS5 Slim Console - Digital Edition - 1TB – White"
+      ]
+    },
+    {
+      "label": "825GB | Black",
+      "axisValues": {
+        "Storage Capacity": "825GB",
+        "Color": "Black"
+      },
+      "total": 3,
+      "active": 2,
+      "sold": 1,
+      "sellThroughPct": 33,
+      "medianPrice": 291.9,
+      "iqr": 0,
+      "medianActivePrice": 294.99,
+      "medianSoldPrice": 279.99,
+      "spread": -15.0,
+      "minPrice": 279.99,
+      "maxPrice": 294.99,
+      "sampleTitles": [
+        "Sony PlayStation 5 Blu-ray Edition 825GB Console with black ops 6",
+        "Sony PlayStation 5 Blu-ray Edition 825GB Console with black ops 6",
+        "Sony Playstation 5 Blu Ray Edition 825GB with Black Ops 6"
+      ]
+    },
+    {
+      "label": "2TB | Pro | White",
+      "axisValues": {
+        "Storage Capacity": "2TB",
+        "Form Factor": "Pro",
+        "Color": "White"
+      },
+      "total": 68,
+      "active": 30,
+      "sold": 38,
+      "sellThroughPct": 56,
+      "medianPrice": 526.9,
+      "iqr": 71.40000000000003,
+      "medianActivePrice": 542.2,
+      "medianSoldPrice": 526.9,
+      "spread": -15.3,
+      "minPrice": 292.93,
+      "maxPrice": 709.99,
+      "sampleTitles": [
+        "Sony PlayStation 5 PS5 Pro 2TB White - EA Sports FC26 Bundle | Brand New ✅",
+        "Sony PS5 Pro 2TB White With Turtle Beach Headset & Extra Controller",
+        "Ps5 Pro 2TB White Brand New And Boxed",
+        "Sony PlayStation 5 Pro White Boxed 2TB Console  brand new",
+        "Sony PlayStation 5 Pro Console 2TB, 4K HDR, White"
+      ]
+    },
+    {
+      "label": "825GB",
+      "axisValues": {
+        "Storage Capacity": "825GB"
+      },
+      "total": 122,
+      "active": 68,
+      "sold": 54,
+      "sellThroughPct": 44,
+      "medianPrice": 312.7,
+      "iqr": 49.27000000000004,
+      "medianActivePrice": 315.0,
+      "medianSoldPrice": 299.18,
+      "spread": -15.82,
+      "minPrice": 134.99,
+      "maxPrice": 650.0,
+      "sampleTitles": [
+        "Sony PlayStation 5 825GB Used In Perfect Working Order with Controller",
+        "Sony PlayStation 5 Blu-ray Edition 825GB Console + 2 Controllers + Charging Dock",
+        "Sony PlayStation 5 (PS5) FC 24 Edition – New in Box – Box Damage - 825 Gb",
+        "Sony PS5 - PlayStation  5 - 825GB Console Only (Disk Version) Low Firmware 06.50",
+        "Sony PS5 - PlayStation  5 - 825GB Console Only (Disk Version)"
+      ]
+    },
+    {
+      "label": "Digital Edition | 1TB | White",
+      "axisValues": {
+        "Edition": "Digital Edition",
+        "Storage Capacity": "1TB",
+        "Color": "White"
+      },
+      "total": 21,
+      "active": 15,
+      "sold": 6,
+      "sellThroughPct": 29,
+      "medianPrice": 291.9,
+      "iqr": 41.39999999999998,
+      "medianActivePrice": 303.33,
+      "medianSoldPrice": 286.7,
+      "spread": -16.63,
+      "minPrice": 239.9,
+      "maxPrice": 430.0,
+      "sampleTitles": [
+        "Sony PlayStation 5 Digital Edition Console - White 1TB",
+        "Sony PlayStation 5 Digital 1TB White Video Game Console",
+        "Sony PS5 Digital Edition Console 1tb - White",
+        "Sony PlayStation 5 Digital Edition - 1TB - White - Cables & Controller",
+        "Sony PlayStation 5 Digital Edition 1TB White Game Console"
+      ]
+    },
+    {
+      "label": "Disc Edition | 1TB | Slim | White",
+      "axisValues": {
+        "Edition": "Disc Edition",
+        "Storage Capacity": "1TB",
+        "Form Factor": "Slim",
+        "Color": "White"
+      },
+      "total": 213,
+      "active": 103,
+      "sold": 110,
+      "sellThroughPct": 52,
+      "medianPrice": 363.7,
+      "iqr": 79.99000000000001,
+      "medianActivePrice": 373.9,
+      "medianSoldPrice": 353.5,
+      "spread": -20.4,
+      "minPrice": 209.95,
+      "maxPrice": 516.7,
+      "sampleTitles": [
+        "Sony PlayStation 5 PS5 Slim (Disc)  1TB -  White -  HDMI Fault - See Description",
+        "Sony PlayStation 5 Slim Disc Edition 1TB White New Sealed",
+        "Sony PlayStation 5 Slim Disc Console 1TB, 4K Blu-ray, White With Ghost Of Yotei",
+        "Sony PlayStation 5 PS5 Slim Console - Disc Edition - 1TB - White- Used",
+        "Brand New Sony PlayStation PS5 Slim Disc Edition 1TB White Game Console Sealed"
+      ]
+    },
+    {
+      "label": "Disc Edition | 1TB",
+      "axisValues": {
+        "Edition": "Disc Edition",
+        "Storage Capacity": "1TB"
+      },
+      "total": 80,
+      "active": 53,
+      "sold": 27,
+      "sellThroughPct": 34,
+      "medianPrice": 363.7,
+      "iqr": 94.70999999999998,
+      "medianActivePrice": 373.9,
+      "medianSoldPrice": 353.5,
+      "spread": -20.4,
+      "minPrice": 200.0,
+      "maxPrice": 610.85,
+      "sampleTitles": [
+        "Sony PlayStation 5 1TB Disc Console",
+        "Sony Playstation 5 Console Disc Editon - 1TB - USED",
+        "PlayStation 5 - PS5 Disc Edition 1TB Console + 24 Months Premium Plus Membership",
+        "PlayStation 5 Disc Console 1TB & EA Sports FC26 Bundle (UNOPENED)",
+        "PlayStation 5 Astro bot 1tb and  Controller Disc Version with Spider-Man 2 game"
+      ]
+    },
+    {
+      "label": "Digital Edition | 825GB | Slim | White",
+      "axisValues": {
+        "Edition": "Digital Edition",
+        "Storage Capacity": "825GB",
+        "Form Factor": "Slim",
+        "Color": "White"
+      },
+      "total": 88,
+      "active": 49,
+      "sold": 39,
+      "sellThroughPct": 44,
+      "medianPrice": 312.7,
+      "iqr": 78.79999999999995,
+      "medianActivePrice": 322.9,
+      "medianSoldPrice": 302.3,
+      "spread": -20.6,
+      "minPrice": 209.74,
+      "maxPrice": 489.99,
+      "sampleTitles": [
+        "PS5 Slim Digital Edition Console 825GB White Boxed All accessories",
+        "Sony PlayStation 5 Slim  (PS5 Slim) Digital Edition - 825GB - White - Good",
+        "PS5 PlayStation 5 Digital Slim Edition 825GB White - Brand New! SEALED!",
+        "Sony PS5 Slim Digital Edition Console - 825GB SSD - White - ECO BOX - Excellent",
+        "Sony PlayStation 5 Slim Digital Edition PS5 825GB White Matte Console CFI-2116"
+      ]
+    },
+    {
+      "label": "Disc Edition | 825GB",
+      "axisValues": {
+        "Edition": "Disc Edition",
+        "Storage Capacity": "825GB"
+      },
+      "total": 310,
+      "active": 185,
+      "sold": 125,
+      "sellThroughPct": 40,
+      "medianPrice": 302.3,
+      "iqr": 69.17000000000002,
+      "medianActivePrice": 312.7,
+      "medianSoldPrice": 291.9,
+      "spread": -20.8,
+      "minPrice": 19.36,
+      "maxPrice": 873.7,
+      "sampleTitles": [
+        "Sony PlayStation 5 Disc Edition 825GB with controller and wires fully workingPS5",
+        "Sony PlayStation 5 Disc Edition / 825GB / SAME DAY DISPATCH 📦✅",
+        "Sony PlayStation 5 PS5 Disc Edition Console 825GB CFI-1016A Controller Leads T&W",
+        "Sony PlayStation 5 (PS5) Disc Edition - 825GB - Boxed - Very Good Condition",
+        "Sony Playstation 5 PS5 825GB Disc Edition Console & Controllers & Dock Excellent"
+      ]
+    },
+    {
+      "label": "Digital Edition | 825GB | Slim",
+      "axisValues": {
+        "Edition": "Digital Edition",
+        "Storage Capacity": "825GB",
+        "Form Factor": "Slim"
+      },
+      "total": 110,
+      "active": 77,
+      "sold": 33,
+      "sellThroughPct": 30,
+      "medianPrice": 340.67,
+      "iqr": 61.39999999999998,
+      "medianActivePrice": 346.32,
+      "medianSoldPrice": 324.99,
+      "spread": -21.33,
+      "minPrice": 175.0,
+      "maxPrice": 579.99,
+      "sampleTitles": [
+        "Sony PlayStation 5 825GB Slim Digital Edition-With controller and wires Boxed Ex",
+        "Sony PlayStation 5 Digital Edition ( Model Group Slim) 825GB",
+        "Sony PlayStation 5 Digital Edition ( Model Group Slim) 825GB",
+        "PlayStation 5 Console Digital Edition Slim 825GB/NEW SEALED",
+        "PlayStation 5 Slim Digital - Matte finish - 825GB"
+      ]
+    },
+    {
+      "label": "Disc Edition | 825GB | White",
+      "axisValues": {
+        "Edition": "Disc Edition",
+        "Storage Capacity": "825GB",
+        "Color": "White"
+      },
+      "total": 335,
+      "active": 187,
+      "sold": 148,
+      "sellThroughPct": 44,
+      "medianPrice": 299.99,
+      "iqr": 43.69999999999999,
+      "medianActivePrice": 311.66,
+      "medianSoldPrice": 289.99,
+      "spread": -21.67,
+      "minPrice": 16.15,
+      "maxPrice": 566.68,
+      "sampleTitles": [
+        "Sony PS5 PlayStation 5 Disc Edition Console White, 825GB",
+        "Sony PlayStation 5 825 GB White Disc Console with Controller Boxed",
+        "Sony PlayStation 5 825 GB White Disc Console with Controller and Wires",
+        "Sony PlayStation 5 (PS5) Disc Edition Console 4K 825GB Wireless Controller White",
+        "Sony PlayStation 5 Blu-ray Edition Console White, 825GB, Disc Drive + Controller"
+      ]
+    },
+    {
+      "label": "Disc Edition | Slim",
+      "axisValues": {
+        "Edition": "Disc Edition",
+        "Form Factor": "Slim"
+      },
+      "total": 165,
+      "active": 86,
+      "sold": 79,
+      "sellThroughPct": 48,
+      "medianPrice": 348.4,
+      "iqr": 81.60000000000002,
+      "medianActivePrice": 363.68,
+      "medianSoldPrice": 339.99,
+      "spread": -23.69,
+      "minPrice": 43.6,
+      "maxPrice": 925.0,
+      "sampleTitles": [
+        "Boxed Sony PlayStation 5 Ps5 Slim Disc Edition Console Perfect Condition",
+        "Sony PlayStation 5 Slim Disc Brand New Sealed CHEAPEST ATM!!1",
+        "Sony PlayStation 5 Slim Disc Edition – Brand New, Boxed & Factory Sealed",
+        "Sony PlayStation 5 Slim Disc Edition – Brand New, Boxed & Factory Sealed",
+        "PS5 Slim disc edition console  bundle"
+      ]
+    },
+    {
+      "label": "Disc Edition | White",
+      "axisValues": {
+        "Edition": "Disc Edition",
+        "Color": "White"
+      },
+      "total": 135,
+      "active": 71,
+      "sold": 64,
+      "sellThroughPct": 47,
+      "medianPrice": 291.9,
+      "iqr": 56.139999999999986,
+      "medianActivePrice": 299.99,
+      "medianSoldPrice": 274.36,
+      "spread": -25.63,
+      "minPrice": 14.01,
+      "maxPrice": 479.99,
+      "sampleTitles": [
+        "Sony PS5 Disc Edition Console - White",
+        "Sony PS5  disc Edition Console - White",
+        "Sony PlayStation 5 White Disc Console Massive Bundle",
+        "Sony PS5 Disc-free Edition Console w/Hall Effect Controller and Cables - White",
+        "Genuine PlayStation 5 Disc Edition PS5 Side Panels Cover Faceplate only (White)"
+      ]
+    },
+    {
+      "label": "Digital Edition | Slim",
+      "axisValues": {
+        "Edition": "Digital Edition",
+        "Form Factor": "Slim"
+      },
+      "total": 227,
+      "active": 153,
+      "sold": 74,
+      "sellThroughPct": 33,
+      "medianPrice": 297.1,
+      "iqr": 66.18,
+      "medianActivePrice": 307.5,
+      "medianSoldPrice": 280.0,
+      "spread": -27.5,
+      "minPrice": 11.08,
+      "maxPrice": 1022.25,
+      "sampleTitles": [
+        "Sony PlayStation 5 Slim – Digital Edition | Immaculate Condition 🎮✨",
+        "Sony PlayStation 5 Slim Digital Latest Edition Boxed with Controller and Cables",
+        "Sony PlayStation 5 Slim Digital Edition (PS5) - Excellent Condition",
+        "Sony PlayStation 5 Slim Digital Edition PS5 | Boxed | TESTED Controller included",
+        "PS5 Slim Digital Gaming Console with Controller and Power Cable"
+      ]
+    },
+    {
+      "label": "2TB | Pro",
+      "axisValues": {
+        "Storage Capacity": "2TB",
+        "Form Factor": "Pro"
+      },
+      "total": 212,
+      "active": 77,
+      "sold": 135,
+      "sellThroughPct": 64,
+      "medianPrice": 529.99,
+      "iqr": 59.0,
+      "medianActivePrice": 547.3,
+      "medianSoldPrice": 516.7,
+      "spread": -30.6,
+      "minPrice": 229.5,
+      "maxPrice": 3563.92,
+      "sampleTitles": [
+        "Sony PlayStation 5 Pro 2TB PS5 Pro Gaming Console with Controller",
+        "PlayStation 5 Pro 2TB Console",
+        "PlayStation 5 Pro 2TB  Brand New Sealed",
+        "PlayStation 5 Pro Console 2TB SSD with DualSense Controller 4K 120Hz WiFi 7",
+        "Sony PlayStation 5 Pro 2TB Console without controller"
+      ]
+    },
+    {
+      "label": "Disc Edition",
+      "axisValues": {
+        "Edition": "Disc Edition"
+      },
+      "total": 357,
+      "active": 212,
+      "sold": 145,
+      "sellThroughPct": 41,
+      "medianPrice": 309.99,
+      "iqr": 108.90999999999997,
+      "medianActivePrice": 322.9,
+      "medianSoldPrice": 291.9,
+      "spread": -31.0,
+      "minPrice": 8.99,
+      "maxPrice": 1077.7,
+      "sampleTitles": [
+        "PlayStation 5 Disc Console & EA Sports FC26 Bundle (UNOPENED)",
+        "PS5 Disc Edition *NO CONTROLLER*",
+        "🔥 Boxed PS5 Disc Edition Console + Controller + Leads | Good Condition 🔥",
+        "Sony PS5 Disc Edition Console",
+        "Ps5 Spiderman 2 LIMITED EDITION Console controller box (DISC EDITION)"
+      ]
+    },
+    {
+      "label": "Digital Edition | White",
+      "axisValues": {
+        "Edition": "Digital Edition",
+        "Color": "White"
+      },
+      "total": 206,
+      "active": 149,
+      "sold": 57,
+      "sellThroughPct": 28,
+      "medianPrice": 281.5,
+      "iqr": 75.57999999999998,
+      "medianActivePrice": 291.9,
+      "medianSoldPrice": 260.7,
+      "spread": -31.2,
+      "minPrice": 3.0,
+      "maxPrice": 465.7,
+      "sampleTitles": [
+        "Sony PS5 Digital Edition Console - White",
+        "PlayStation 5 Digital Console Sony PS5 Digital Edition Console - White",
+        "Sony PS5 Digital Edition Console - White",
+        "Sony PS5 Digital Edition Console - White",
+        "Sony PS5 Digital Edition Console - White"
+      ]
+    },
+    {
+      "label": "Digital Edition | 1TB | Slim",
+      "axisValues": {
+        "Edition": "Digital Edition",
+        "Storage Capacity": "1TB",
+        "Form Factor": "Slim"
+      },
+      "total": 148,
+      "active": 94,
+      "sold": 54,
+      "sellThroughPct": 36,
+      "medianPrice": 295.99,
+      "iqr": 72.19999999999999,
+      "medianActivePrice": 312.7,
+      "medianSoldPrice": 280.0,
+      "spread": -32.7,
+      "minPrice": 167.1,
+      "maxPrice": 578.8,
+      "sampleTitles": [
+        "PS5 Slim Digital Edition 1TB",
+        "Sony PS5 Slim Digital Edition Console 1TB",
+        "PlayStation 5 Ps5 slim digital - 1tb - 1 controller",
+        "Sony PlayStation 5 Slim 1TB Digital Edition - PS5 Bundle",
+        "Sony PS5 Slim Digital Console 1TB x2 Controllers"
+      ]
+    },
+    {
+      "label": "Disc Edition | Slim | White",
+      "axisValues": {
+        "Edition": "Disc Edition",
+        "Form Factor": "Slim",
+        "Color": "White"
+      },
+      "total": 9,
+      "active": 6,
+      "sold": 3,
+      "sellThroughPct": 33,
+      "medianPrice": 322.9,
+      "iqr": 32.879999999999995,
+      "medianActivePrice": 333.1,
+      "medianSoldPrice": 300.22,
+      "spread": -32.88,
+      "minPrice": 291.9,
+      "maxPrice": 343.3,
+      "sampleTitles": [
+        "Sony PlayStation 5 (PS5) Slim Disc Edition - White",
+        "Sony PlayStation 5 Slim Disc Video Game Console with Controller White",
+        "Sony PS5 Slim Disc-free Edition Game Console with Hall Effect Controller - White",
+        "SONY PlayStation 5 PS5 SLIM DISC Edition + Controller - White AND 2 Games",
+        "Sony PlayStation PS5 Slim Disc Edition Console White with Games & dust cover"
+      ]
+    },
+    {
+      "label": "Digital Edition | 825GB | White",
+      "axisValues": {
+        "Edition": "Digital Edition",
+        "Storage Capacity": "825GB",
+        "Color": "White"
+      },
+      "total": 168,
+      "active": 115,
+      "sold": 53,
+      "sellThroughPct": 32,
+      "medianPrice": 291.9,
+      "iqr": 72.40000000000003,
+      "medianActivePrice": 299.99,
+      "medianSoldPrice": 265.9,
+      "spread": -34.09,
+      "minPrice": 15.0,
+      "maxPrice": 525.88,
+      "sampleTitles": [
+        "Sony PlayStation 5 Digital Edition 825GB White Console. Brand new",
+        "New Sony PlayStation PS5 Digital Edition Console with Controller White, 825GB",
+        "Sony PlayStation 5 825 GB White Digital Console",
+        "Sony PlayStation 5 Digital Console 825GB White",
+        "Sony PlayStation 5 825 GB White Console Digital Edition - Fresh Liquid Metal"
+      ]
+    },
+    {
+      "label": "825GB | White",
+      "axisValues": {
+        "Storage Capacity": "825GB",
+        "Color": "White"
+      },
+      "total": 80,
+      "active": 49,
+      "sold": 31,
+      "sellThroughPct": 39,
+      "medianPrice": 298.0,
+      "iqr": 58.889999999999986,
+      "medianActivePrice": 312.7,
+      "medianSoldPrice": 274.99,
+      "spread": -37.71,
+      "minPrice": 21.5,
+      "maxPrice": 646.08,
+      "sampleTitles": [
+        "Sony PlayStation Disk Edition 825GB White PS5 Console fully functional",
+        "Sony PlayStation Disk Edition 825GB White PS5 Console",
+        "SONY PlayStation 5 PS5 825GB White * 100% Fully Working * FREE Next Day",
+        "Sony PlayStation 5 825 GB White Console with 2 Controllers",
+        "Sony PlayStation 5 825 GB White Console with Controller"
+      ]
+    },
+    {
+      "label": "Digital Edition | 1TB",
+      "axisValues": {
+        "Edition": "Digital Edition",
+        "Storage Capacity": "1TB"
+      },
+      "total": 38,
+      "active": 23,
+      "sold": 15,
+      "sellThroughPct": 39,
+      "medianPrice": 291.9,
+      "iqr": 57.81,
+      "medianActivePrice": 302.3,
+      "medianSoldPrice": 260.93,
+      "spread": -41.37,
+      "minPrice": 120.3,
+      "maxPrice": 449.99,
+      "sampleTitles": [
+        "Official Sony PlayStation 5 PS5 1TB Digital Console Only - CFI-1016B-Grade C",
+        "Sony PS5 Digital Edition 1TB Console Only",
+        "SONY PlayStation 5 PS5 Digital Edition 1TB & Fortnite Flowering Chaos Bundle NEW",
+        "Working PS5 Digital console  With All Cables And Extra 1TB SSD",
+        "Sony PS5 PlayStation 5 Console 1TB Digital edition + 512GB M.2 SSD"
+      ]
+    },
+    {
+      "label": "Digital Edition",
+      "axisValues": {
+        "Edition": "Digital Edition"
+      },
+      "total": 277,
+      "active": 195,
+      "sold": 82,
+      "sellThroughPct": 30,
+      "medianPrice": 299.0,
+      "iqr": 123.88999999999999,
+      "medianActivePrice": 302.3,
+      "medianSoldPrice": 260.7,
+      "spread": -41.6,
+      "minPrice": 9.5,
+      "maxPrice": 920.58,
+      "sampleTitles": [
+        "Sony PlayStation 5 Digital Edition Console with Gulikit TMR Controller and Stand",
+        "PlayStation 5 30th Anniversary Digital Console - Limited Edition - New - Sealed",
+        "Sony PS5 Digital Edition Console - BRAND NEW SEALED!",
+        "PS5 PlayStation 5 - Digital Edition Boxed & Sealed",
+        "SONY PlayStation 5 Digital and Fortnite Flowering Chaos Bundle - BOX DAMAGE"
+      ]
+    },
+    {
+      "label": "825GB | Slim",
+      "axisValues": {
+        "Storage Capacity": "825GB",
+        "Form Factor": "Slim"
+      },
+      "total": 12,
+      "active": 6,
+      "sold": 6,
+      "sellThroughPct": 50,
+      "medianPrice": 309.99,
+      "iqr": 56.0,
+      "medianActivePrice": 349.99,
+      "medianSoldPrice": 304.0,
+      "spread": -45.99,
+      "minPrice": 286.7,
+      "maxPrice": 394.3,
+      "sampleTitles": [
+        "Sony PlayStation 5 Slim 825gb, Good condition. Comes with controller, leads",
+        "PlayStation 5 Slim 825GB w/ Controller Boxed",
+        "Boxed PlayStation 5 PS5 825GB Slim ** Very Good Condition ** FREE Next Day",
+        "SONY PlayStation 5 PS5 825GB Slim ** 100% Fully Working ** FREE Next Day",
+        "Sony PlayStation 5 slim 825GB with internal storage device + games"
+      ]
+    },
+    {
+      "label": "1TB | Pro | Black",
+      "axisValues": {
+        "Storage Capacity": "1TB",
+        "Form Factor": "Pro",
+        "Color": "Black"
+      },
+      "total": 2,
+      "active": 1,
+      "sold": 1,
+      "sellThroughPct": 50,
+      "medianPrice": 151.5,
+      "iqr": 0,
+      "medianActivePrice": 151.5,
+      "medianSoldPrice": 100.02,
+      "spread": -51.48,
+      "minPrice": 100.02,
+      "maxPrice": 151.5,
+      "sampleTitles": [
+        "Sony PlayStation PS4 Pro 1TB Black Console with Controller + 5 Games",
+        "Sony PlayStation 4 Pro 1TB Jet Black Console CUH-7116B Low Firmware 10.5 PS4 Pro"
+      ]
+    },
+    {
+      "label": "Disc Edition | 1TB | White",
+      "axisValues": {
+        "Edition": "Disc Edition",
+        "Storage Capacity": "1TB",
+        "Color": "White"
+      },
+      "total": 59,
+      "active": 31,
+      "sold": 28,
+      "sellThroughPct": 47,
+      "medianPrice": 363.41,
+      "iqr": 86.69999999999999,
+      "medianActivePrice": 394.3,
+      "medianSoldPrice": 340.0,
+      "spread": -54.3,
+      "minPrice": 224.3,
+      "maxPrice": 516.7,
+      "sampleTitles": [
+        "Sony PS5 Blu-Ray Edition Console - White 1TB Disc Edition",
+        "Playstation 5 Disc Edition (1TB) - White - Controller, Wires + FC 25",
+        "Sony PlayStation 5 PS5 Disc Edition 1TB White + EA Sports FC26 Bundle💥NEW💥",
+        "Sony PlayStation 5 Disc Console 1TB White",
+        "Sony PlayStation 5 White Disc Console 1TB with Games"
+      ]
+    },
+    {
+      "label": "Disc Edition | 2TB",
+      "axisValues": {
+        "Edition": "Disc Edition",
+        "Storage Capacity": "2TB"
+      },
+      "total": 7,
+      "active": 6,
+      "sold": 1,
+      "sellThroughPct": 14,
+      "medianPrice": 339.35,
+      "iqr": 232.0,
+      "medianActivePrice": 395.0,
+      "medianSoldPrice": 339.35,
+      "spread": -55.65,
+      "minPrice": 182.7,
+      "maxPrice": 771.7,
+      "sampleTitles": [
+        "Sony PS5 Disc Edition – 2TB SSD – Boxed – Excellent Condition! Controller + Dock",
+        "PS5 disc edition 2tb + game and headset",
+        "Play Station 5 Disc Edition, external 2TB  drive,  Accessories and Games Bundle",
+        "BUNDLE PACK Disc Drive For PS5 Slim/Pro + 2TB Seagate Playstation HDD",
+        "BUNDLE PACK Disc Drive For PS5 Slim/Pro + 2TB Seagate Playstation HDD"
+      ]
+    },
+    {
+      "label": "1TB | Slim",
+      "axisValues": {
+        "Storage Capacity": "1TB",
+        "Form Factor": "Slim"
+      },
+      "total": 49,
+      "active": 31,
+      "sold": 18,
+      "sellThroughPct": 37,
+      "medianPrice": 353.5,
+      "iqr": 104.0,
+      "medianActivePrice": 384.1,
+      "medianSoldPrice": 325.0,
+      "spread": -59.1,
+      "minPrice": 89.1,
+      "maxPrice": 751.3,
+      "sampleTitles": [
+        "Official Sony PlayStation 5 PS5 Slim Disk 1TB Console Only - CFI-2016 - Grade C",
+        "PlayStation 5 PS5 1TB Slim ** MINT Used Twice ** FREE Next Day",
+        "Sony PlayStation 5 PS5 Slim 1TB Fortnite Cobalt Star Bundle Console",
+        "PlayStation 5 Slim Standard (Bluray Version) 1TB SSD Console",
+        "PlayStation 5 Slim (Bluray) 1TB SSD + The Last of Us Remake Console: Part I"
+      ]
+    },
+    {
+      "label": "White",
+      "axisValues": {
+        "Color": "White"
+      },
+      "total": 313,
+      "active": 192,
+      "sold": 121,
+      "sellThroughPct": 39,
+      "medianPrice": 199.0,
+      "iqr": 169.29000000000002,
+      "medianActivePrice": 265.9,
+      "medianSoldPrice": 139.99,
+      "spread": -125.91,
+      "minPrice": 15.0,
+      "maxPrice": 4362.3,
+      "sampleTitles": [
+        "Sony PlayStation Portal PS5 Remote Player Console, White",
+        "PlayStation Portal Handheld Remote Player PS5 White Boxed",
+        "PlayStation Portal White PS5 Ps Sony Play Station Uk Console White",
+        "PlayStation Portal PS5 Handheld Console White The Right Analogue Isn’t The Best",
+        "Sony PS5 Blu-Ray Edition Console - White"
+      ]
+    },
+    {
+      "label": "Slim",
+      "axisValues": {
+        "Form Factor": "Slim"
+      },
+      "total": 196,
+      "active": 133,
+      "sold": 63,
+      "sellThroughPct": 32,
+      "medianPrice": 259.78,
+      "iqr": 283.75,
+      "medianActivePrice": 276.82,
+      "medianSoldPrice": 147.56,
+      "spread": -129.26,
+      "minPrice": 4.35,
+      "maxPrice": 1739.87,
+      "sampleTitles": [
+        "Sony PlayStation 5 Slim Edition FC26 Bundle In hand",
+        "🔥OPENED🔥PlayStation 5 (Slim) Console with Controller, Fortnite Flowering Chaos",
+        "Playstation 4 Slim Console 500GB Firmware 5.03 + Game + 1 Controller PS4 Bundle",
+        "Sony PlayStation 3 Slim 250GB Console Bundle with 5 Games - Near Mint Console",
+        "PlayStation 5 Slim Fortnite Cobalt Star Bundle (PS5)"
+      ]
+    },
+    {
+      "label": "Disc Edition | 1TB | Slim | Black",
+      "axisValues": {
+        "Edition": "Disc Edition",
+        "Storage Capacity": "1TB",
+        "Form Factor": "Slim",
+        "Color": "Black"
+      },
+      "total": 6,
+      "active": 2,
+      "sold": 4,
+      "sellThroughPct": 67,
+      "medianPrice": 423.99,
+      "iqr": 168.3,
+      "medianActivePrice": 530.0,
+      "medianSoldPrice": 394.3,
+      "spread": -135.7,
+      "minPrice": 312.7,
+      "maxPrice": 530.0,
+      "sampleTitles": [
+        "Sony PlayStation 5 Slim Disc Console - Ghost of Yotei Black Limited Edition 1TB",
+        "Sony PlayStation 5 Slim (PS5 Slim) Disc Edition Console - 1TB - Black - Good",
+        "Sony PlayStation 5 Slim (PS5 Slim) 1TB Disc Edition Console - Black - Very Good",
+        "Playstation 5 Slim Disc Edition (1TB) - Boxed - Controller + Wires & Black ops 6",
+        "Playstation 5 Slim Disc Edition (1TB)  + extra controller, black...-never opened"
+      ]
+    },
+    {
+      "label": "1TB",
+      "axisValues": {
+        "Storage Capacity": "1TB"
+      },
+      "total": 41,
+      "active": 18,
+      "sold": 23,
+      "sellThroughPct": 56,
+      "medianPrice": 312.7,
+      "iqr": 242.24,
+      "medianActivePrice": 389.2,
+      "medianSoldPrice": 250.0,
+      "spread": -139.2,
+      "minPrice": 78.7,
+      "maxPrice": 1499.99,
+      "sampleTitles": [
+        "PlayStation 5 (PS5) Console 1TB – EA SPORTS FC 26 Bundle. New & Sealed!",
+        "SONY CFI-1115A, #AK440648015; SONY PS5 1TB CONSOLE (B33000675)",
+        "Sony PlayStation 5 PS5 1TB Disk Console Only - CFI-1216A - Grade C",
+        "Sony PlayStation 5 PS5 1TB CFI-1116A Disk Console Only - CFI-1116A-Grade C",
+        "Sony Playstation 4 Console PS4 1TB & Controller CUH-1216B Firmware 12.5"
+      ]
+    },
+    {
+      "label": "2TB",
+      "axisValues": {
+        "Storage Capacity": "2TB"
+      },
+      "total": 4,
+      "active": 2,
+      "sold": 2,
+      "sellThroughPct": 50,
+      "medianPrice": 455.5,
+      "iqr": 216.99000000000007,
+      "medianActivePrice": 580.69,
+      "medianSoldPrice": 363.7,
+      "spread": -216.99,
+      "minPrice": 149.99,
+      "maxPrice": 580.69,
+      "sampleTitles": [
+        "2TB Playstation 5 With Games.",
+        "Sony PlayStation 5 plus 6 x games, 1 x 4k UHD bluray and 2tb M2 SSD",
+        "Sony PS4 PlayStation 4 Console 2TB - Very Low Firmware 5.03 - Console Only",
+        "Sony PlayStation 5 PS5 Pro Slim Video Game Console 2TB | Brand New Sealed ✅"
+      ]
+    },
+    {
+      "label": "Digital Edition | Black",
+      "axisValues": {
+        "Edition": "Digital Edition",
+        "Color": "Black"
+      },
+      "total": 5,
+      "active": 4,
+      "sold": 1,
+      "sellThroughPct": 20,
+      "medianPrice": 250.3,
+      "iqr": 30.99000000000001,
+      "medianActivePrice": 269.99,
+      "medianSoldPrice": 22.02,
+      "spread": -247.97,
+      "minPrice": 22.02,
+      "maxPrice": 414.7,
+      "sampleTitles": [
+        "Sony PlayStation 5 Digital Edition (Fat) – Midnight Black Covers – Fully Working",
+        "Sony PS5 Digital Edition Console - painted black",
+        "original  PS5 Console Covers Digital Edition -Black",
+        "Sony PlayStation 5 Digital Edition Console Black",
+        "Sony PlayStation PS5 Digital Edition Console with Controller - Black"
+      ]
+    },
+    {
+      "label": "Disc Edition | 2TB | White",
+      "axisValues": {
+        "Edition": "Disc Edition",
+        "Storage Capacity": "2TB",
+        "Color": "White"
+      },
+      "total": 2,
+      "active": 1,
+      "sold": 1,
+      "sellThroughPct": 50,
+      "medianPrice": 822.7,
+      "iqr": 0,
+      "medianActivePrice": 822.7,
+      "medianSoldPrice": 430.0,
+      "spread": -392.7,
+      "minPrice": 430.0,
+      "maxPrice": 822.7,
+      "sampleTitles": [
+        "Sony PS5 3TB Disc Edition Console - White - 2TB SSD Storage Installed",
+        "Sony PS5 Blu-Ray Disc Edition Console - White + 11 Games & 2TB SSD"
+      ]
+    }
+  ]
+}

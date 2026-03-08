@@ -1,0 +1,605 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Market Maker — Markets</title>
+  <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+  <style>
+    :root {
+      --bg-base: #1e1e1e;
+      --bg-card: #252526;
+      --bg-hover: #2a2a2b;
+      --border: #3c3c3c;
+      --text: #e0e0e0;
+      --text-muted: #808080;
+      --text-dim: #5a5a5a;
+      --accent: #4a9eff;
+      --cyan: #22d3ee;
+      --green: #22c55e;
+      --amber: #fbbf24;
+      --red: #f87171;
+      --nav-active: #0e639c;
+      --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      --mono: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: var(--font);
+      background: var(--bg-base);
+      color: var(--text);
+      font-size: 13px;
+    }
+
+    .layout { display: flex; height: 100vh; }
+
+    /* Sidebar */
+    .sidebar {
+      width: 200px;
+      background: var(--bg-card);
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      border-right: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    .logo { font-size: 16px; font-weight: 600; margin-bottom: 24px; color: #fff; }
+    .logo svg { display: block; }
+    .nav-items { display: flex; flex-direction: column; gap: 2px; flex: 1; }
+    .nav-items button {
+      background: transparent; border: none; color: var(--text-muted);
+      padding: 8px 12px; text-align: left; cursor: pointer;
+      border-radius: 4px; font-size: 13px; font-family: var(--font);
+      transition: all 0.1s;
+    }
+    .nav-items button:hover { background: var(--bg-hover); color: var(--text); }
+    .nav-items button.active { background: var(--nav-active); color: #fff; }
+    .config-status { font-size: 11px; color: var(--text-muted); display: flex; align-items: center; gap: 6px; }
+    .status-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); }
+
+    /* Content */
+    .content {
+      flex: 1; padding: 20px; overflow: hidden;
+      display: flex; flex-direction: column;
+    }
+
+    /* Header */
+    .view-header {
+      display: flex; justify-content: space-between; align-items: center;
+      margin-bottom: 12px;
+    }
+    .view-header h1 { font-size: 18px; font-weight: 600; color: #fff; }
+    .header-stat { font-size: 12px; color: var(--text-muted); }
+    .header-stat strong { color: var(--text); }
+
+    /* Toolbar */
+    .toolbar {
+      display: flex; gap: 8px; align-items: center;
+      margin-bottom: 12px;
+    }
+    .search-box {
+      background: var(--bg-card); border: 1px solid var(--border);
+      color: var(--text); padding: 6px 10px; border-radius: 4px;
+      font-size: 12px; font-family: var(--font); width: 200px;
+    }
+    .search-box:focus { outline: none; border-color: var(--accent); }
+    .search-box::placeholder { color: var(--text-dim); }
+    .group-pills { display: flex; gap: 4px; flex-wrap: wrap; }
+    .pill {
+      background: transparent; border: 1px solid var(--border);
+      color: var(--text-muted); padding: 4px 10px; border-radius: 3px;
+      font-size: 11px; cursor: pointer; font-family: var(--font);
+      transition: all 0.1s;
+    }
+    .pill:hover { border-color: var(--text-muted); color: var(--text); }
+    .pill.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+    /* Detail toolbar */
+    .detail-toolbar {
+      display: flex; gap: 8px; align-items: center; margin-bottom: 12px;
+    }
+    .status-pills { display: flex; gap: 4px; }
+
+    /* Table */
+    .table-wrap {
+      flex: 1; overflow-y: auto; border: 1px solid var(--border); border-radius: 4px;
+    }
+    .table-wrap::-webkit-scrollbar { width: 6px; }
+    .table-wrap::-webkit-scrollbar-track { background: var(--bg-base); }
+    .table-wrap::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+    table { width: 100%; border-collapse: collapse; }
+
+    thead th {
+      position: sticky; top: 0; z-index: 1;
+      background: var(--bg-card); border-bottom: 1px solid var(--border);
+      padding: 8px 12px; text-align: left;
+      font-size: 11px; font-weight: 500; color: var(--text-muted);
+      text-transform: uppercase; letter-spacing: 0.5px;
+      cursor: pointer; user-select: none; white-space: nowrap;
+    }
+    thead th:hover { color: var(--text); }
+    thead th.sorted { color: var(--accent); }
+    thead th.sorted::after { content: ' \25BE'; font-size: 10px; }
+    thead th.sorted.asc::after { content: ' \25B4'; }
+    thead th.no-sort { cursor: default; }
+    thead th.no-sort:hover { color: var(--text-muted); }
+    .th-right { text-align: right; }
+
+    tbody tr {
+      border-bottom: 1px solid var(--border);
+      transition: background 0.1s;
+    }
+    tbody tr.clickable { cursor: pointer; }
+    tbody tr:hover { background: var(--bg-hover); }
+    tbody tr:last-child { border-bottom: none; }
+
+    td {
+      padding: 7px 12px; white-space: nowrap;
+    }
+    .cat-name { font-weight: 500; color: #fff; }
+    .cat-group { font-size: 11px; color: var(--text-dim); margin-left: 8px; }
+    .num { font-family: var(--mono); font-size: 12px; text-align: right; }
+    .num-muted { color: var(--text-muted); }
+
+    /* Inline velocity bar */
+    .vel-cell { display: flex; align-items: center; gap: 8px; justify-content: flex-end; }
+    .vel-bar {
+      width: 60px; height: 4px; background: #2a2a2b; border-radius: 2px;
+      overflow: hidden; flex-shrink: 0;
+    }
+    .vel-fill { height: 100%; border-radius: 2px; background: var(--accent); }
+    .vel-fast .vel-fill { background: var(--cyan); }
+
+    /* Sell-through color coding */
+    .st-high { color: var(--green); }
+    .st-mid { color: var(--text); }
+    .st-low { color: var(--text-muted); }
+
+    /* Status badge */
+    .badge {
+      display: inline-block; padding: 2px 8px; border-radius: 3px;
+      font-size: 11px; font-weight: 500;
+    }
+    .badge-active { background: #0e639c33; color: var(--accent); }
+    .badge-sold { background: #22c55e22; color: var(--green); }
+    .badge-ended { background: #80808022; color: var(--text-muted); }
+
+    /* Back button + detail view */
+    .back-row {
+      display: flex; align-items: center; gap: 12px; margin-bottom: 16px;
+    }
+    .back-btn {
+      background: none; border: 1px solid var(--border); color: var(--text-muted);
+      cursor: pointer; font-size: 12px; padding: 4px 10px; border-radius: 4px;
+      font-family: var(--font);
+    }
+    .back-btn:hover { border-color: var(--accent); color: var(--accent); }
+    .detail-name { font-size: 18px; font-weight: 600; color: #fff; }
+
+    /* KPI row */
+    .kpi-row {
+      display: flex; gap: 1px; margin-bottom: 16px;
+      border-radius: 4px; overflow: hidden; background: var(--border);
+    }
+    .kpi {
+      flex: 1; background: var(--bg-card); padding: 10px 14px; text-align: center;
+    }
+    .kpi-val {
+      font-family: var(--mono); font-size: 18px; font-weight: 600; color: #fff;
+    }
+    .kpi-val.highlight { color: var(--cyan); }
+    .kpi-label { font-size: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-top: 2px; }
+
+    /* Listing title truncation */
+    .listing-title {
+      max-width: 400px; overflow: hidden; text-overflow: ellipsis;
+      white-space: nowrap; font-weight: 500; color: #fff;
+    }
+
+    /* Empty state */
+    .empty { text-align: center; padding: 40px; color: var(--text-dim); font-size: 13px; }
+  </style>
+</head>
+<body>
+<div id="app">
+  <div class="layout">
+    <nav class="sidebar">
+      <div class="logo">
+        <svg width="100%" viewBox="0 4 200 72" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <linearGradient id="mm-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stop-color="#48cae4"/>
+              <stop offset="100%" stop-color="#0077b6"/>
+            </linearGradient>
+          </defs>
+          <line x1="8" y1="24" x2="24" y2="40" stroke="#0077b6" stroke-width="1.5" opacity="0.4"/>
+          <line x1="8" y1="56" x2="24" y2="40" stroke="#0077b6" stroke-width="1.5" opacity="0.4"/>
+          <line x1="24" y1="40" x2="44" y2="28" stroke="#00b4d8" stroke-width="1.5" opacity="0.6"/>
+          <line x1="24" y1="40" x2="44" y2="52" stroke="#00b4d8" stroke-width="1.5" opacity="0.6"/>
+          <circle cx="8" cy="24" r="4" fill="#0077b6" opacity="0.5"/>
+          <circle cx="8" cy="56" r="4" fill="#0077b6" opacity="0.5"/>
+          <circle cx="24" cy="40" r="6" fill="url(#mm-grad)"/>
+          <circle cx="44" cy="28" r="4" fill="#48cae4" opacity="0.7"/>
+          <circle cx="44" cy="52" r="4" fill="#48cae4" opacity="0.7"/>
+          <text x="58" y="48" fill="#e0e0e0" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="22" font-weight="600">Market Maker</text>
+        </svg>
+      </div>
+      <div class="nav-items">
+        <button>Overview</button>
+        <button>Opportunities</button>
+        <button class="active">Markets</button>
+        <button>Index</button>
+        <button>Settings</button>
+      </div>
+      <div class="config-status">
+        <span class="status-dot"></span>
+        Connected
+      </div>
+    </nav>
+
+    <div class="content">
+
+      <!-- LEVEL 1: Category table -->
+      <template v-if="!selected">
+        <div class="view-header">
+          <h1>Markets</h1>
+          <span class="header-stat">
+            <strong>{{ filtered.length }}</strong> categories &middot;
+            <strong>{{ totalSold.toLocaleString() }}</strong> sold (180d) &middot;
+            <strong>{{ totalSalesPerDay.toFixed(0) }}</strong> sales/day
+          </span>
+        </div>
+
+        <div class="toolbar">
+          <input type="text" v-model="search" class="search-box" placeholder="Filter...">
+          <div class="group-pills">
+            <span class="pill" :class="{ active: !groupFilter }" @click="groupFilter = ''">All</span>
+            <span v-for="g in groups" :key="g" class="pill"
+                  :class="{ active: groupFilter === g }" @click="groupFilter = groupFilter === g ? '' : g">{{ g }}</span>
+          </div>
+        </div>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th :class="sortClass('name')" @click="setSort('name')" style="min-width:200px">Category</th>
+                <th :class="['th-right', sortClass('salesPerDay')]" @click="setSort('salesPerDay')">Sales/Day</th>
+                <th :class="['th-right', sortClass('sold')]" @click="setSort('sold')">Sold</th>
+                <th :class="['th-right', sortClass('active')]" @click="setSort('active')">Active</th>
+                <th :class="['th-right', sortClass('sellThrough')]" @click="setSort('sellThrough')">Sell-Thru</th>
+                <th :class="['th-right', sortClass('avgDaysToSell')]" @click="setSort('avgDaysToSell')">Avg Days to Sell</th>
+                <th :class="['th-right', sortClass('avgAsk')]" @click="setSort('avgAsk')">Avg Ask</th>
+                <th :class="['th-right', sortClass('medianSold')]" @click="setSort('medianSold')">Med. Sold</th>
+                <th class="th-right no-sort">P25–P75</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="c in filtered" :key="c.name" class="clickable" @click="selected = c">
+                <td>
+                  <span class="cat-name">{{ c.name }}</span>
+                  <span class="cat-group">{{ c.group }}</span>
+                </td>
+                <td class="num">
+                  <div class="vel-cell" :class="{ 'vel-fast': c.salesPerDay >= 10 }">
+                    <span>{{ c.salesPerDay.toFixed(1) }}</span>
+                    <div class="vel-bar">
+                      <div class="vel-fill" :style="{ width: (c.salesPerDay / maxVelocity * 100) + '%' }"></div>
+                    </div>
+                  </div>
+                </td>
+                <td class="num">{{ c.sold.toLocaleString() }}</td>
+                <td class="num num-muted">{{ c.active.toLocaleString() }}</td>
+                <td class="num" :class="stClass(c.sellThrough)">{{ c.sellThrough }}%</td>
+                <td class="num" :class="daysClass(c.avgDaysToSell)">{{ c.avgDaysToSell }}d</td>
+                <td class="num num-muted">&pound;{{ c.avgAsk.toLocaleString() }}</td>
+                <td class="num">&pound;{{ c.medianSold.toLocaleString() }}</td>
+                <td class="num num-muted">&pound;{{ c.spreadLow }}–{{ c.spreadHigh }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </template>
+
+      <!-- LEVEL 2: Individual listings -->
+      <template v-else>
+        <div class="back-row">
+          <button class="back-btn" @click="selected = null">&larr; Back</button>
+          <div class="detail-name">{{ selected.name }}</div>
+        </div>
+
+        <div class="kpi-row">
+          <div class="kpi">
+            <div class="kpi-val">{{ detailKpis.count }}</div>
+            <div class="kpi-label">Showing</div>
+          </div>
+          <div class="kpi">
+            <div class="kpi-val">{{ detailKpis.sold }}</div>
+            <div class="kpi-label">Sold</div>
+          </div>
+          <div class="kpi">
+            <div class="kpi-val">{{ detailKpis.active }}</div>
+            <div class="kpi-label">Active</div>
+          </div>
+          <div class="kpi">
+            <div class="kpi-val" :class="stClass(detailKpis.sellThrough)">{{ detailKpis.sellThrough }}%</div>
+            <div class="kpi-label">Sell-Through</div>
+          </div>
+          <div class="kpi">
+            <div class="kpi-val" :class="daysClass(detailKpis.avgDays)">{{ detailKpis.avgDays }}d</div>
+            <div class="kpi-label">Avg Days to Sell</div>
+          </div>
+          <div class="kpi">
+            <div class="kpi-val">&pound;{{ detailKpis.avgPrice }}</div>
+            <div class="kpi-label">Avg Price</div>
+          </div>
+          <div class="kpi">
+            <div class="kpi-val">&pound;{{ detailKpis.priceRange }}</div>
+            <div class="kpi-label">Price Range</div>
+          </div>
+        </div>
+
+        <!-- Filter by status -->
+        <div class="detail-toolbar">
+          <input type="text" v-model="listingSearch" class="search-box" placeholder="Filter listings...">
+          <div class="status-pills">
+            <span class="pill" :class="{ active: !statusFilter }" @click="statusFilter = ''">All</span>
+            <span class="pill" :class="{ active: statusFilter === 'Active' }" @click="statusFilter = statusFilter === 'Active' ? '' : 'Active'">Active</span>
+            <span class="pill" :class="{ active: statusFilter === 'Sold' }" @click="statusFilter = statusFilter === 'Sold' ? '' : 'Sold'">Sold</span>
+          </div>
+        </div>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th :class="sortClass2('title')" @click="setSort2('title')" style="min-width:300px">Title</th>
+                <th :class="['th-right', sortClass2('price')]" @click="setSort2('price')">Price</th>
+                <th :class="sortClass2('status')" @click="setSort2('status')">Status</th>
+                <th :class="sortClass2('condition')" @click="setSort2('condition')">Condition</th>
+                <th :class="['th-right', sortClass2('daysOnMarket')]" @click="setSort2('daysOnMarket')">Days on Market</th>
+                <th class="th-right no-sort">Date</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="l in filteredListings" :key="l.id">
+                <td><div class="listing-title" :title="l.title">{{ l.title }}</div></td>
+                <td class="num">&pound;{{ l.price.toFixed(2) }}</td>
+                <td>
+                  <span class="badge" :class="'badge-' + l.status.toLowerCase()">{{ l.status }}</span>
+                </td>
+                <td style="font-size:12px; color: var(--text-muted)">{{ l.condition }}</td>
+                <td class="num" :class="daysClass(l.daysOnMarket)">{{ l.daysOnMarket }}d</td>
+                <td class="num num-muted">{{ l.date }}</td>
+              </tr>
+            </tbody>
+            <tbody v-if="filteredListings.length === 0">
+              <tr><td colspan="6" class="empty">No listings match the current filter.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </template>
+
+    </div>
+  </div>
+</div>
+
+<script>
+const { createApp } = Vue;
+
+createApp({
+  data() {
+    return {
+      search: '',
+      sortKey: 'salesPerDay',
+      sortDir: -1,
+      groupFilter: '',
+      selected: null,
+
+      // Detail view state
+      listingSearch: '',
+      statusFilter: '',
+      sortKey2: 'daysOnMarket',
+      sortDir2: 1,
+
+      groups: ['Electronics', 'Gaming', 'Luxury', 'Fashion', 'Home', 'Collectibles', 'Audio', 'Tools', 'Auto'],
+
+      categories: [
+        { name: 'iPad Pro', group: 'Electronics', active: 2536, sold: 1750, salesPerDay: 9.7, sellThrough: 41, avgDaysToSell: 12, avgAsk: 485, medianSold: 420, spreadLow: 340, spreadHigh: 720,
+          listings: [
+            { id: 1, title: 'Apple iPad Pro 11" M2 256GB WiFi Space Gray - Excellent', price: 419.99, status: 'Active', condition: 'Used', daysOnMarket: 3, date: '27 Feb' },
+            { id: 2, title: 'iPad Pro 11 inch M1 128GB WiFi Silver + Apple Pencil 2', price: 349.00, status: 'Active', condition: 'Used', daysOnMarket: 7, date: '21 Feb' },
+            { id: 3, title: 'Apple iPad Pro 13" M2 512GB WiFi+Cellular Space Black', price: 729.99, status: 'Active', condition: 'Used', daysOnMarket: 14, date: '14 Feb' },
+            { id: 4, title: 'iPad Pro 11" M4 256GB WiFi - SEALED', price: 649.00, status: 'Active', condition: 'New', daysOnMarket: 1, date: '1 Mar' },
+            { id: 5, title: 'Apple iPad Pro 11" M1 256GB WiFi Only Silver', price: 299.99, status: 'Sold', condition: 'Used', daysOnMarket: 5, date: '23 Feb' },
+            { id: 6, title: 'iPad Pro 13" M2 256GB WiFi Space Gray - Grade B', price: 520.00, status: 'Sold', condition: 'Refurbished', daysOnMarket: 8, date: '20 Feb' },
+            { id: 7, title: 'Apple iPad Pro 11 M2 256GB WiFi+Cell Unlocked', price: 459.00, status: 'Sold', condition: 'Used', daysOnMarket: 11, date: '17 Feb' },
+            { id: 8, title: 'iPad Pro 11" M1 128GB WiFi - Cracked Screen', price: 189.99, status: 'Sold', condition: 'For Parts', daysOnMarket: 2, date: '26 Feb' },
+            { id: 9, title: 'Apple iPad Pro 13" M4 256GB WiFi Silver BNIB', price: 839.00, status: 'Active', condition: 'New', daysOnMarket: 22, date: '6 Feb' },
+            { id: 10, title: 'iPad Pro 11" M2 128GB WiFi - 91% Battery', price: 379.00, status: 'Sold', condition: 'Used', daysOnMarket: 15, date: '13 Feb' },
+            { id: 11, title: 'Apple iPad Pro 11" M1 256GB Cellular - Grade C', price: 269.99, status: 'Sold', condition: 'Refurbished', daysOnMarket: 6, date: '22 Feb' },
+            { id: 12, title: 'iPad Pro 13 M1 256GB WiFi Space Gray + Keyboard', price: 489.00, status: 'Active', condition: 'Used', daysOnMarket: 9, date: '19 Feb' },
+          ]
+        },
+        { name: 'iPhone 15 Pro Max', group: 'Electronics', active: 3389, sold: 1511, salesPerDay: 8.4, sellThrough: 31, avgDaysToSell: 16, avgAsk: 393, medianSold: 440, spreadLow: 380, spreadHigh: 580,
+          listings: [
+            { id: 20, title: 'Apple iPhone 15 Pro Max 256GB Natural Titanium Unlocked', price: 389.99, status: 'Active', condition: 'Used', daysOnMarket: 5, date: '23 Feb' },
+            { id: 21, title: 'iPhone 15 Pro Max 512GB Blue Titanium - Mint', price: 529.00, status: 'Active', condition: 'Used', daysOnMarket: 12, date: '16 Feb' },
+            { id: 22, title: 'Apple iPhone 15 Pro Max 256GB Black Titanium Cracked Back', price: 279.99, status: 'Sold', condition: 'Used', daysOnMarket: 3, date: '25 Feb' },
+            { id: 23, title: 'iPhone 15 Pro Max 1TB White Titanium - SEALED', price: 749.00, status: 'Active', condition: 'New', daysOnMarket: 28, date: '30 Jan' },
+            { id: 24, title: 'Apple iPhone 15 Pro Max 256GB Blue Titanium 96% Battery', price: 419.00, status: 'Sold', condition: 'Used', daysOnMarket: 9, date: '19 Feb' },
+            { id: 25, title: 'iPhone 15 Pro Max 256GB Natural - Grade A Refurb', price: 459.00, status: 'Sold', condition: 'Refurbished', daysOnMarket: 14, date: '14 Feb' },
+            { id: 26, title: 'Apple iPhone 15 Pro Max 512GB Natural Titanium', price: 489.99, status: 'Active', condition: 'Used', daysOnMarket: 18, date: '10 Feb' },
+            { id: 27, title: 'iPhone 15 Pro Max 256GB Blue - No Face ID', price: 199.99, status: 'Sold', condition: 'For Parts', daysOnMarket: 1, date: '27 Feb' },
+          ]
+        },
+        { name: 'PlayStation 5 Console', group: 'Gaming', active: 3874, sold: 2387, salesPerDay: 13.3, sellThrough: 38, avgDaysToSell: 8, avgAsk: 301, medianSold: 314, spreadLow: 250, spreadHigh: 420,
+          listings: [
+            { id: 30, title: 'Sony PlayStation 5 Disc Edition 825GB White', price: 299.99, status: 'Active', condition: 'Used', daysOnMarket: 2, date: '26 Feb' },
+            { id: 31, title: 'PS5 Digital Edition - Boxed with Controller', price: 239.00, status: 'Sold', condition: 'Used', daysOnMarket: 4, date: '24 Feb' },
+            { id: 32, title: 'PlayStation 5 Slim Disc Edition 1TB + 2 Controllers', price: 369.99, status: 'Active', condition: 'Used', daysOnMarket: 6, date: '22 Feb' },
+            { id: 33, title: 'PS5 Pro 2TB - SEALED', price: 589.00, status: 'Active', condition: 'New', daysOnMarket: 15, date: '13 Feb' },
+            { id: 34, title: 'Sony PS5 Disc Edition - Faulty Disc Drive', price: 169.99, status: 'Sold', condition: 'For Parts', daysOnMarket: 1, date: '27 Feb' },
+            { id: 35, title: 'PlayStation 5 Digital Edition White 825GB', price: 229.00, status: 'Sold', condition: 'Used', daysOnMarket: 7, date: '21 Feb' },
+            { id: 36, title: 'PS5 Slim Digital Edition 1TB Black', price: 279.99, status: 'Active', condition: 'Used', daysOnMarket: 3, date: '25 Feb' },
+            { id: 37, title: 'Sony PlayStation 5 Disc 825GB + Spider-Man 2 Bundle', price: 339.00, status: 'Sold', condition: 'Used', daysOnMarket: 5, date: '23 Feb' },
+            { id: 38, title: 'PS5 Disc Edition Refurbished by Sony - 1 Year Warranty', price: 319.00, status: 'Sold', condition: 'Refurbished', daysOnMarket: 10, date: '18 Feb' },
+          ]
+        },
+        { name: 'Louis Vuitton Neverfull', group: 'Luxury', active: 3459, sold: 812, salesPerDay: 4.5, sellThrough: 19, avgDaysToSell: 31, avgAsk: 939, medianSold: 850, spreadLow: 620, spreadHigh: 980,
+          listings: [
+            { id: 40, title: 'Louis Vuitton Neverfull MM Monogram Canvas Brown', price: 879.00, status: 'Active', condition: 'Used', daysOnMarket: 14, date: '14 Feb' },
+            { id: 41, title: 'LV Neverfull GM Damier Ebene - Excellent Condition', price: 989.00, status: 'Active', condition: 'Used', daysOnMarket: 35, date: '24 Jan' },
+            { id: 42, title: 'Louis Vuitton Neverfull PM Monogram + Pouch', price: 720.00, status: 'Sold', condition: 'Used', daysOnMarket: 22, date: '6 Feb' },
+            { id: 43, title: 'Neverfull MM Damier Azur Rose Ballerine Lining', price: 830.00, status: 'Active', condition: 'Used', daysOnMarket: 41, date: '18 Jan' },
+            { id: 44, title: 'Louis Vuitton Neverfull MM Monogram - New Model', price: 1149.00, status: 'Active', condition: 'New', daysOnMarket: 19, date: '9 Feb' },
+            { id: 45, title: 'LV Neverfull GM Monogram - Worn Handles', price: 650.00, status: 'Sold', condition: 'Used', daysOnMarket: 28, date: '31 Jan' },
+          ]
+        },
+        { name: 'Pokemon Booster Box Sealed', group: 'Collectibles', active: 7842, sold: 2156, salesPerDay: 12.0, sellThrough: 22, avgDaysToSell: 11, avgAsk: 255, medianSold: 210, spreadLow: 110, spreadHigh: 340,
+          listings: [
+            { id: 50, title: 'Pokemon Scarlet & Violet Base Set Booster Box SEALED', price: 134.99, status: 'Active', condition: 'New', daysOnMarket: 4, date: '24 Feb' },
+            { id: 51, title: 'Pokemon 151 English Booster Box - Sealed', price: 289.00, status: 'Sold', condition: 'New', daysOnMarket: 6, date: '22 Feb' },
+            { id: 52, title: 'Obsidian Flames Booster Box x1 Factory Sealed', price: 149.99, status: 'Active', condition: 'New', daysOnMarket: 8, date: '20 Feb' },
+            { id: 53, title: 'Pokemon Paldea Evolved Booster Box Sealed', price: 139.00, status: 'Sold', condition: 'New', daysOnMarket: 10, date: '18 Feb' },
+            { id: 54, title: 'Destined Rivals Booster Box - Brand New Sealed', price: 99.99, status: 'Active', condition: 'New', daysOnMarket: 1, date: '1 Mar' },
+            { id: 55, title: 'Pokemon 151 Japanese Booster Box Sealed sv2a', price: 79.99, status: 'Sold', condition: 'New', daysOnMarket: 3, date: '25 Feb' },
+            { id: 56, title: 'Phantasmal Flames Booster Box SEALED Pokemon', price: 245.00, status: 'Active', condition: 'New', daysOnMarket: 12, date: '16 Feb' },
+            { id: 57, title: 'Pokemon Temporal Forces Booster Box Factory Sealed', price: 168.00, status: 'Sold', condition: 'New', daysOnMarket: 15, date: '13 Feb' },
+            { id: 58, title: 'Scarlet & Violet Paldean Fates Booster Box', price: 195.00, status: 'Active', condition: 'New', daysOnMarket: 7, date: '21 Feb' },
+          ]
+        },
+        { name: 'Omega Seamaster Watch', group: 'Luxury', active: 2566, sold: 890, salesPerDay: 4.9, sellThrough: 26, avgDaysToSell: 27, avgAsk: 2143, medianSold: 1875, spreadLow: 1400, spreadHigh: 2800, listings: [] },
+        { name: 'Canon RF 50mm Lens', group: 'Electronics', active: 1729, sold: 1165, salesPerDay: 6.5, sellThrough: 40, avgDaysToSell: 10, avgAsk: 269, medianSold: 320, spreadLow: 250, spreadHigh: 420, listings: [] },
+        { name: 'Fender Stratocaster Guitar', group: 'Audio', active: 3221, sold: 1245, salesPerDay: 6.9, sellThrough: 28, avgDaysToSell: 21, avgAsk: 914, medianSold: 802, spreadLow: 550, spreadHigh: 1200, listings: [] },
+        { name: 'Canada Goose Parka', group: 'Fashion', active: 2555, sold: 987, salesPerDay: 5.5, sellThrough: 28, avgDaysToSell: 19, avgAsk: 400, medianSold: 390, spreadLow: 280, spreadHigh: 520, listings: [] },
+        { name: 'Dell Ultrasharp Monitor', group: 'Electronics', active: 888, sold: 813, salesPerDay: 4.5, sellThrough: 48, avgDaysToSell: 9, avgAsk: 267, medianSold: 256, spreadLow: 180, spreadHigh: 350, listings: [] },
+        { name: 'Synology NAS', group: 'Electronics', active: 730, sold: 653, salesPerDay: 3.6, sellThrough: 47, avgDaysToSell: 13, avgAsk: 514, medianSold: 318, spreadLow: 200, spreadHigh: 480, listings: [] },
+        { name: 'ASUS ROG Strix Motherboard', group: 'Electronics', active: 1117, sold: 1381, salesPerDay: 7.7, sellThrough: 55, avgDaysToSell: 7, avgAsk: 228, medianSold: 285, spreadLow: 190, spreadHigh: 380, listings: [] },
+        { name: 'Samsung Galaxy S24', group: 'Electronics', active: 1552, sold: 1183, salesPerDay: 6.6, sellThrough: 43, avgDaysToSell: 11, avgAsk: 385, medianSold: 374, spreadLow: 280, spreadHigh: 480, listings: [] },
+        { name: 'Nintendo Switch OLED', group: 'Gaming', active: 1833, sold: 1359, salesPerDay: 7.6, sellThrough: 43, avgDaysToSell: 9, avgAsk: 215, medianSold: 230, spreadLow: 190, spreadHigh: 280, listings: [] },
+        { name: 'Bose QuietComfort Headphones', group: 'Audio', active: 1595, sold: 1407, salesPerDay: 7.8, sellThrough: 47, avgDaysToSell: 8, avgAsk: 125, medianSold: 162, spreadLow: 110, spreadHigh: 210, listings: [] },
+        { name: 'Nike Air Jordan 1', group: 'Fashion', active: 4521, sold: 2345, salesPerDay: 13.0, sellThrough: 34, avgDaysToSell: 10, avgAsk: 156, medianSold: 142, spreadLow: 90, spreadHigh: 220, listings: [] },
+        { name: 'Funko Pop Chase', group: 'Collectibles', active: 2890, sold: 1567, salesPerDay: 8.7, sellThrough: 35, avgDaysToSell: 13, avgAsk: 45, medianSold: 38, spreadLow: 20, spreadHigh: 65, listings: [] },
+        { name: 'DJI Mini Drone', group: 'Electronics', active: 1981, sold: 1283, salesPerDay: 7.1, sellThrough: 39, avgDaysToSell: 12, avgAsk: 359, medianSold: 324, spreadLow: 240, spreadHigh: 440, listings: [] },
+        { name: 'Rolex Submariner', group: 'Luxury', active: 2035, sold: 456, salesPerDay: 2.5, sellThrough: 18, avgDaysToSell: 42, avgAsk: 11222, medianSold: 9257, spreadLow: 7500, spreadHigh: 12500, listings: [] },
+        { name: 'MacBook Pro M3', group: 'Electronics', active: 577, sold: 626, salesPerDay: 3.5, sellThrough: 52, avgDaysToSell: 8, avgAsk: 1240, medianSold: 1180, spreadLow: 950, spreadHigh: 1500, listings: [] },
+        { name: 'Ring Video Doorbell', group: 'Home', active: 2588, sold: 2040, salesPerDay: 11.3, sellThrough: 44, avgDaysToSell: 6, avgAsk: 68, medianSold: 69, spreadLow: 40, spreadHigh: 95, listings: [] },
+        { name: 'Ninja Foodi Air Fryer', group: 'Home', active: 2210, sold: 1657, salesPerDay: 9.2, sellThrough: 43, avgDaysToSell: 7, avgAsk: 79, medianSold: 98, spreadLow: 60, spreadHigh: 140, listings: [] },
+        { name: 'DeWalt Cordless Drill', group: 'Tools', active: 1690, sold: 1234, salesPerDay: 6.9, sellThrough: 42, avgDaysToSell: 10, avgAsk: 110, medianSold: 102, spreadLow: 65, spreadHigh: 150, listings: [] },
+        { name: 'Brembo Brake Caliper', group: 'Auto', active: 2442, sold: 987, salesPerDay: 5.5, sellThrough: 29, avgDaysToSell: 20, avgAsk: 163, medianSold: 211, spreadLow: 140, spreadHigh: 300, listings: [] },
+        { name: 'Dyson Airwrap', group: 'Home', active: 1691, sold: 1273, salesPerDay: 7.1, sellThrough: 43, avgDaysToSell: 9, avgAsk: 232, medianSold: 143, spreadLow: 90, spreadHigh: 210, listings: [] },
+        { name: 'Herman Miller Aeron Chair', group: 'Home', active: 559, sold: 445, salesPerDay: 2.5, sellThrough: 44, avgDaysToSell: 14, avgAsk: 240, medianSold: 512, spreadLow: 350, spreadHigh: 650, listings: [] },
+        { name: 'Birkenstock Arizona', group: 'Fashion', active: 3456, sold: 1890, salesPerDay: 10.5, sellThrough: 35, avgDaysToSell: 11, avgAsk: 78, medianSold: 65, spreadLow: 40, spreadHigh: 95, listings: [] },
+        { name: 'Vintage Levis 501', group: 'Fashion', active: 2890, sold: 1456, salesPerDay: 8.1, sellThrough: 33, avgDaysToSell: 15, avgAsk: 95, medianSold: 82, spreadLow: 50, spreadHigh: 130, listings: [] },
+      ]
+    };
+  },
+
+  computed: {
+    filtered() {
+      let list = this.categories;
+      if (this.search) {
+        const q = this.search.toLowerCase();
+        list = list.filter(c => c.name.toLowerCase().includes(q));
+      }
+      if (this.groupFilter) {
+        list = list.filter(c => c.group === this.groupFilter);
+      }
+      const key = this.sortKey;
+      const dir = this.sortDir;
+      if (key === 'name') {
+        return [...list].sort((a, b) => a.name.localeCompare(b.name) * dir);
+      }
+      return [...list].sort((a, b) => (a[key] - b[key]) * dir);
+    },
+    maxVelocity() {
+      return Math.max(...this.categories.map(c => c.salesPerDay), 1);
+    },
+    totalSold() {
+      return this.categories.reduce((s, c) => s + c.sold, 0);
+    },
+    totalSalesPerDay() {
+      return this.categories.reduce((s, c) => s + c.salesPerDay, 0);
+    },
+    filteredListings() {
+      if (!this.selected) return [];
+      let list = this.selected.listings;
+      if (this.statusFilter) {
+        list = list.filter(l => l.status === this.statusFilter);
+      }
+      if (this.listingSearch) {
+        const q = this.listingSearch.toLowerCase();
+        list = list.filter(l => l.title.toLowerCase().includes(q));
+      }
+      const key = this.sortKey2;
+      const dir = this.sortDir2;
+      if (key === 'title' || key === 'status' || key === 'condition') {
+        return [...list].sort((a, b) => a[key].localeCompare(b[key]) * dir);
+      }
+      return [...list].sort((a, b) => (a[key] - b[key]) * dir);
+    },
+    detailKpis() {
+      const list = this.filteredListings;
+      if (!list.length) return { count: 0, sold: 0, active: 0, sellThrough: 0, avgDays: 0, avgPrice: '0', priceRange: '0–0' };
+      const sold = list.filter(l => l.status === 'Sold');
+      const active = list.filter(l => l.status === 'Active');
+      const soldCount = sold.length;
+      const activeCount = active.length;
+      const total = soldCount + activeCount;
+      const sellThrough = total > 0 ? Math.round(soldCount / total * 100) : 0;
+      const avgDays = sold.length > 0
+        ? Math.round(sold.reduce((s, l) => s + l.daysOnMarket, 0) / sold.length)
+        : (active.length > 0 ? Math.round(active.reduce((s, l) => s + l.daysOnMarket, 0) / active.length) : 0);
+      const prices = list.map(l => l.price).sort((a, b) => a - b);
+      const avgPrice = (prices.reduce((s, p) => s + p, 0) / prices.length).toFixed(0);
+      const priceRange = prices.length > 1
+        ? prices[0].toFixed(0) + '–' + prices[prices.length - 1].toFixed(0)
+        : prices[0].toFixed(0);
+      return { count: list.length, sold: soldCount, active: activeCount, sellThrough, avgDays, avgPrice, priceRange };
+    },
+  },
+
+  methods: {
+    setSort(key) {
+      if (this.sortKey === key) {
+        this.sortDir *= -1;
+      } else {
+        this.sortKey = key;
+        this.sortDir = key === 'name' ? 1 : -1;
+      }
+    },
+    sortClass(key) {
+      if (this.sortKey !== key) return '';
+      return this.sortDir === 1 ? 'sorted asc' : 'sorted';
+    },
+    setSort2(key) {
+      if (this.sortKey2 === key) {
+        this.sortDir2 *= -1;
+      } else {
+        this.sortKey2 = key;
+        this.sortDir2 = (key === 'title' || key === 'status' || key === 'condition') ? 1 : -1;
+      }
+    },
+    sortClass2(key) {
+      if (this.sortKey2 !== key) return '';
+      return this.sortDir2 === 1 ? 'sorted asc' : 'sorted';
+    },
+    stClass(val) {
+      if (val >= 40) return 'st-high';
+      if (val >= 25) return 'st-mid';
+      return 'st-low';
+    },
+    daysClass(val) {
+      if (val <= 7) return 'st-high';
+      if (val <= 21) return 'st-mid';
+      return 'st-low';
+    },
+  }
+}).mount('#app');
+</script>
+</body>
+</html>

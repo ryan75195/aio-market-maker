@@ -163,7 +163,7 @@ public static class OverviewEndpoints
             GROUP BY {dateCast}
             ORDER BY ListingDate";
 
-        var dailyCounts = await ExecuteQuery(db, sql, reader => new DailyCount(
+        var dailyCounts = await DbQueryHelper.ExecuteQuery(db, sql, reader => new DailyCount(
             isSqlite ? reader.GetString(0) : reader.GetDateTime(0).ToString("yyyy-MM-dd"),
             reader.GetInt32(1)));
 
@@ -202,32 +202,9 @@ public static class OverviewEndpoints
             GROUP BY {dateCast}
             ORDER BY OpDate";
 
-        return await ExecuteQuery(db, sql, reader => new OpportunitiesByDayEntry(
+        return await DbQueryHelper.ExecuteQuery(db, sql, reader => new OpportunitiesByDayEntry(
             isSqlite ? reader.GetString(0) : reader.GetDateTime(0).ToString("yyyy-MM-dd"),
             reader.GetInt32(1)));
     }
 
-    // -- SQL helper (used by raw SQL queries for cross-database date grouping) --
-
-    private static async Task<List<T>> ExecuteQuery<T>(
-        EtlDbContext db, string sql, Func<DbDataReader, T> map)
-    {
-        var conn = db.Database.GetDbConnection();
-        if (conn.State != ConnectionState.Open)
-        {
-            await conn.OpenAsync();
-        }
-
-        await using var cmd = conn.CreateCommand();
-        cmd.CommandText = sql;
-        await using var reader = await cmd.ExecuteReaderAsync();
-
-        var results = new List<T>();
-        while (await reader.ReadAsync())
-        {
-            results.Add(map(reader));
-        }
-
-        return results;
-    }
 }
