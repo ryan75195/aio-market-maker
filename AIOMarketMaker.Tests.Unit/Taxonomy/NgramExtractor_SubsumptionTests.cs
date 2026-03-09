@@ -19,9 +19,10 @@ public class NgramExtractor_SubsumptionTests
     }
 
     [Test]
-    public async Task Should_subsume_longer_ngram_into_shorter_when_tokens_overlap_and_similar()
+    public async Task Should_not_subsume_bigram_into_unigram_when_tokens_overlap_and_similar()
     {
-        // "disc edition" contains all tokens of "disc" and they're semantically similar
+        // "disc edition" contains all tokens of "disc" and they're semantically similar,
+        // but bigrams should not be subsumed into unigrams — they are different categories
         var ngrams = new List<Ngram>
         {
             new("disc", new[] { "disc" }, 100),
@@ -40,10 +41,10 @@ public class NgramExtractor_SubsumptionTests
 
         var result = (await _extractor.SubsumeByTokenOverlap(ngrams)).ToList();
 
-        Assert.That(result.Count, Is.EqualTo(1), "Longer ngram should be subsumed into shorter");
-        Assert.That(result[0].Canonical, Is.EqualTo("disc"));
-        Assert.That(result[0].Forms, Does.Contain("disc edition"));
-        Assert.That(result[0].Frequency, Is.EqualTo(150));
+        Assert.That(result.Count, Is.EqualTo(2),
+            "Bigram should NOT be subsumed into unigram — they are different categories");
+        Assert.That(result.Any(n => n.Canonical == "disc"), Is.True);
+        Assert.That(result.Any(n => n.Canonical == "disc edition"), Is.True);
     }
 
     [Test]
@@ -95,9 +96,10 @@ public class NgramExtractor_SubsumptionTests
     }
 
     [Test]
-    public async Task Should_subsume_chain_of_longer_ngrams_into_root()
+    public async Task Should_not_subsume_chain_of_bigrams_into_unigram()
     {
-        // "disc" subsumes "disc edition" and "disc console" (both contain "disc")
+        // "disc edition" and "disc console" contain all tokens of "disc" but they are
+        // bigrams — they should not be subsumed into the unigram "disc"
         var ngrams = new List<Ngram>
         {
             new("disc", new[] { "disc" }, 100),
@@ -117,11 +119,8 @@ public class NgramExtractor_SubsumptionTests
 
         var result = (await _extractor.SubsumeByTokenOverlap(ngrams)).ToList();
 
-        Assert.That(result.Count, Is.EqualTo(1));
-        Assert.That(result[0].Canonical, Is.EqualTo("disc"));
-        Assert.That(result[0].Forms, Does.Contain("disc edition"));
-        Assert.That(result[0].Forms, Does.Contain("disc console"));
-        Assert.That(result[0].Frequency, Is.EqualTo(190));
+        Assert.That(result.Count, Is.EqualTo(3),
+            "Bigrams should NOT be subsumed into unigram — all three survive");
     }
 
     [Test]
@@ -160,5 +159,57 @@ public class NgramExtractor_SubsumptionTests
 
         Assert.That(result.Count, Is.EqualTo(1));
         Assert.That(result[0].Canonical, Is.EqualTo("disc"));
+    }
+
+    [Test]
+    public async Task Should_not_subsume_bigram_into_unigram_even_when_similar()
+    {
+        var ngrams = new List<Ngram>
+        {
+            new("gold", new[] { "gold" }, 100),
+            new("gold plated", new[] { "gold plated" }, 50),
+        };
+
+        _embeddingMock
+            .Setup(e => e.GetEmbeddings(
+                It.IsAny<IEnumerable<string>>(), It.IsAny<CancellationToken>(), EmbeddingModel.Small))
+            .ReturnsAsync(new[]
+            {
+                new[] { 1.0f, 0.0f, 0.0f },
+                new[] { 0.95f, 0.05f, 0.0f },
+            });
+
+        var result = (await _extractor.SubsumeByTokenOverlap(ngrams)).ToList();
+
+        Assert.That(result.Count, Is.EqualTo(2),
+            "Bigram should NOT be subsumed into unigram — they are different categories");
+        Assert.That(result.Any(n => n.Canonical == "gold"), Is.True);
+        Assert.That(result.Any(n => n.Canonical == "gold plated"), Is.True);
+    }
+
+    [Test]
+    public async Task Should_subsume_trigram_into_bigram_when_tokens_overlap_and_similar()
+    {
+        var ngrams = new List<Ngram>
+        {
+            new("gold plated", new[] { "gold plated" }, 100),
+            new("gold plated ring", new[] { "gold plated ring" }, 30),
+        };
+
+        _embeddingMock
+            .Setup(e => e.GetEmbeddings(
+                It.IsAny<IEnumerable<string>>(), It.IsAny<CancellationToken>(), EmbeddingModel.Small))
+            .ReturnsAsync(new[]
+            {
+                new[] { 1.0f, 0.0f, 0.0f },
+                new[] { 0.95f, 0.05f, 0.0f },
+            });
+
+        var result = (await _extractor.SubsumeByTokenOverlap(ngrams)).ToList();
+
+        Assert.That(result.Count, Is.EqualTo(1),
+            "Trigram should be subsumed into bigram — same multi-word level");
+        Assert.That(result[0].Canonical, Is.EqualTo("gold plated"));
+        Assert.That(result[0].Forms, Does.Contain("gold plated ring"));
     }
 }

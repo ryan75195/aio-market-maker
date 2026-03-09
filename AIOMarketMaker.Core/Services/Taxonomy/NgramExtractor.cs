@@ -90,6 +90,14 @@ public partial class NgramExtractor : INgramExtractor
                     continue;
                 }
 
+                // Don't let single-word ngrams subsume multi-word ngrams.
+                // Compound phrases like "gold plated" represent distinct
+                // categories from their component unigrams like "gold".
+                if (tokensI.Count == 1 && tokensJ.Count >= 2)
+                {
+                    continue;
+                }
+
                 if (!tokensI.All(t => tokensJ.Contains(t)))
                 {
                     continue;
