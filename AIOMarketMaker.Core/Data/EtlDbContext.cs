@@ -32,6 +32,7 @@ public class EtlDbContext : DbContext
     public DbSet<TaxonomyAxis> TaxonomyAxes { get; set; } = null!;
     public DbSet<TaxonomyAxisValue> TaxonomyAxisValues { get; set; } = null!;
     public DbSet<TaxonomyListingAssignment> TaxonomyListingAssignments { get; set; } = null!;
+    public DbSet<TaxonomyOpportunity> TaxonomyOpportunities { get; set; } = null!;
 
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
     {
@@ -247,6 +248,22 @@ public class EtlDbContext : DbContext
                 .WithMany()
                 .HasForeignKey(e => e.ListingId)
                 .OnDelete(DeleteBehavior.NoAction);
+        });
+
+        modelBuilder.Entity<TaxonomyOpportunity>(entity =>
+        {
+            entity.ToTable("TaxonomyOpportunities");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.CellKey).IsRequired().HasMaxLength(500);
+            entity.Property(e => e.AskPrice).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.MedianSoldPrice).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.EstimatedProfit).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.ComputedUtc).HasDefaultValueSql(dateDefaultSql);
+            entity.HasIndex(e => e.ScrapeJobId);
+            entity.HasIndex(e => e.ListingId).IsUnique();
+            entity.HasIndex(e => e.EstimatedProfit).IsDescending();
+            entity.HasOne(e => e.ScrapeJob).WithMany().HasForeignKey(e => e.ScrapeJobId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(e => e.Listing).WithMany().HasForeignKey(e => e.ListingId).OnDelete(DeleteBehavior.Cascade);
         });
 
     }
