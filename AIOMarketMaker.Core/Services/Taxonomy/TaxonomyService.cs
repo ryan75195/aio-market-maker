@@ -55,7 +55,7 @@ public class TaxonomyService : ITaxonomyService
     {
         var titleList = titles.ToList();
 
-        var rawNgrams = _extractor.Extract(titleList);
+        var rawNgrams = _extractor.Extract(titleList, productName);
         var synonymsMerged = await _extractor.MergeSynonyms(rawNgrams, ct);
         var ngrams = (await _extractor.SubsumeByTokenOverlap(synonymsMerged, ct)).ToList();
 

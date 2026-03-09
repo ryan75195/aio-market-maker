@@ -170,6 +170,58 @@ public class NgramExtractorTests
     }
 
     // ======================================================================
+    // SEARCH TERM FILTERING TESTS
+    // ======================================================================
+
+    [Test]
+    public void Should_exclude_search_term_tokens_from_extraction()
+    {
+        // Search term is "PlayStation 5 Console" — those tokens should be filtered out
+        var titles = Enumerable.Repeat("PlayStation 5 Console Digital Edition White", 25);
+        var result = _extractor.Extract(titles, searchTerm: "PlayStation 5 Console").ToList();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.Any(n => n.Term == "playstation"), Is.False,
+                "Search term token 'playstation' should be excluded");
+            Assert.That(result.Any(n => n.Term == "console"), Is.False,
+                "Search term token 'console' should be excluded");
+            Assert.That(result.Any(n => n.Term == "digital"), Is.True,
+                "Non-search-term token 'digital' should still be extracted");
+            Assert.That(result.Any(n => n.Term == "white"), Is.True,
+                "Non-search-term token 'white' should still be extracted");
+        });
+    }
+
+    [Test]
+    public void Should_extract_all_ngrams_when_no_search_term_provided()
+    {
+        var titles = Enumerable.Repeat("PlayStation Console Digital", 25);
+        var result = _extractor.Extract(titles).ToList();
+
+        Assert.That(result.Any(n => n.Term == "playstation"), Is.True,
+            "Without search term, all tokens should be extracted");
+        Assert.That(result.Any(n => n.Term == "console"), Is.True);
+    }
+
+    [Test]
+    public void Should_exclude_search_term_tokens_from_bigrams()
+    {
+        // "rolex submariner" search term — bigrams containing those tokens should be affected
+        var titles = Enumerable.Repeat("Rolex Submariner Date Gold Dial", 25);
+        var result = _extractor.Extract(titles, searchTerm: "Rolex Submariner").ToList();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.Any(n => n.Term == "rolex"), Is.False);
+            Assert.That(result.Any(n => n.Term == "submariner"), Is.False);
+            // Bigrams formed from remaining tokens should still work
+            Assert.That(result.Any(n => n.Term == "gold dial"), Is.True,
+                "Bigram from non-search tokens should be extracted");
+        });
+    }
+
+    // ======================================================================
     // BUG TESTS — discovered from backfill data analysis (2026-03-07)
     // ======================================================================
 

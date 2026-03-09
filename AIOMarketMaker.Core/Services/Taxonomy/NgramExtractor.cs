@@ -26,11 +26,32 @@ public partial class NgramExtractor : INgramExtractor
         _nlpToolkit = nlpToolkit ?? new NlpToolkit();
     }
 
-    public IEnumerable<RawNgram> Extract(IEnumerable<string> titles)
+    public IEnumerable<RawNgram> Extract(IEnumerable<string> titles, string? searchTerm = null)
     {
         var titleList = titles.ToList();
-        var frequencies = CountNgramFrequencies(titleList);
+        var searchTokens = BuildSearchTokens(searchTerm);
+        var frequencies = CountNgramFrequencies(titleList, searchTokens);
         return FilterByFrequency(frequencies, titleList.Count);
+    }
+
+    private HashSet<string> BuildSearchTokens(string? searchTerm)
+    {
+        var tokens = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (searchTerm == null)
+        {
+            return tokens;
+        }
+
+        foreach (var word in searchTerm.Split(' ', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var lower = word.ToLowerInvariant();
+            if (lower.Length > 1 && !StopWords.Contains(lower))
+            {
+                tokens.Add(_nlpToolkit.Singularize(lower));
+            }
+        }
+
+        return tokens;
     }
 
     public async Task<IEnumerable<Ngram>> MergeSynonyms(
@@ -166,13 +187,13 @@ public partial class NgramExtractor : INgramExtractor
         return !digitsA.SequenceEqual(digitsB);
     }
 
-    private Dictionary<string, int> CountNgramFrequencies(List<string> titles)
+    private Dictionary<string, int> CountNgramFrequencies(List<string> titles, HashSet<string> searchTokens)
     {
         var frequencies = new Dictionary<string, int>(StringComparer.Ordinal);
 
         foreach (var title in titles)
         {
-            var words = Tokenize(title);
+            var words = Tokenize(title, searchTokens);
             if (words.Count == 0)
             {
                 continue;
@@ -278,12 +299,13 @@ public partial class NgramExtractor : INgramExtractor
         });
     }
 
-    private List<string> Tokenize(string title)
+    private List<string> Tokenize(string title, HashSet<string>? searchTokens = null)
     {
         return WordPattern().Matches(title.ToLowerInvariant())
             .Select(m => m.Value)
             .Where(w => w.Length > 1 && !StopWords.Contains(w))
             .Select(w => _nlpToolkit.Singularize(w))
+            .Where(w => searchTokens == null || searchTokens.Count == 0 || !searchTokens.Contains(w))
             .ToList();
     }
 

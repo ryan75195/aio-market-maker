@@ -65,6 +65,11 @@ public class CellPricingService : ICellPricingService
 
             foreach (var listing in group.Where(l => !l.IsSold))
             {
+                if (medianSold.Value > 0 && listing.Price / medianSold.Value < 0.15m)
+                {
+                    continue;
+                }
+
                 var fees = medianSold.Value * feeFraction;
                 var profit = medianSold.Value - listing.Price - fees;
                 if (profit <= 0)

@@ -244,6 +244,63 @@ public class CellPricingService_UnitTests
         Assert.That(result.Cells.Count(), Is.EqualTo(2));
     }
 
+    [Test]
+    public void Should_exclude_listings_with_ask_price_far_below_cell_median()
+    {
+        // Rain cover at £30 in a cell with £10,000 median — clearly not the same product
+        var taxonomy = BuildTaxonomy(
+            axes: new[] { ("size", new[] { "25", "30" }) },
+            assignments: new[]
+            {
+                (0, new Dictionary<string, string> { ["size"] = "25" }),
+                (1, new Dictionary<string, string> { ["size"] = "25" }),
+                (2, new Dictionary<string, string> { ["size"] = "25" }),
+                (3, new Dictionary<string, string> { ["size"] = "25" }),
+            });
+
+        var listings = new[]
+        {
+            new PricedListing(1, "Birkin 25 Togo", 10000m, IsSold: true, ListingIndex: 0),
+            new PricedListing(2, "Birkin 25 Epsom", 11000m, IsSold: true, ListingIndex: 1),
+            new PricedListing(3, "Birkin 25 Swift", 12000m, IsSold: true, ListingIndex: 2),
+            new PricedListing(4, "Rain Cover for Birkin 25", 30m, IsSold: false, ListingIndex: 3),
+        };
+
+        var result = _service.Compute(taxonomy, listings, feePercent: 13.25, minComps: 3);
+
+        // £30 / £11000 = 0.27% — way below 15% threshold, should be excluded
+        Assert.That(result.Opportunities.Count(), Is.EqualTo(0),
+            "Listing priced at <15% of cell median should be excluded as likely misclassified");
+    }
+
+    [Test]
+    public void Should_include_listings_with_reasonable_discount()
+    {
+        // Listing at £7000 in a cell with £10000 median — 70% ratio, legitimate deal
+        var taxonomy = BuildTaxonomy(
+            axes: new[] { ("size", new[] { "25", "30" }) },
+            assignments: new[]
+            {
+                (0, new Dictionary<string, string> { ["size"] = "25" }),
+                (1, new Dictionary<string, string> { ["size"] = "25" }),
+                (2, new Dictionary<string, string> { ["size"] = "25" }),
+                (3, new Dictionary<string, string> { ["size"] = "25" }),
+            });
+
+        var listings = new[]
+        {
+            new PricedListing(1, "Birkin 25 Sold 1", 9000m, IsSold: true, ListingIndex: 0),
+            new PricedListing(2, "Birkin 25 Sold 2", 10000m, IsSold: true, ListingIndex: 1),
+            new PricedListing(3, "Birkin 25 Sold 3", 11000m, IsSold: true, ListingIndex: 2),
+            new PricedListing(4, "Birkin 25 Good Deal", 7000m, IsSold: false, ListingIndex: 3),
+        };
+
+        var result = _service.Compute(taxonomy, listings, feePercent: 13.25, minComps: 3);
+
+        Assert.That(result.Opportunities.Count(), Is.EqualTo(1),
+            "Listing at 70% of cell median is a legitimate opportunity");
+    }
+
     // -- Helpers --
 
     private static TaxonomyResult BuildTaxonomy(
