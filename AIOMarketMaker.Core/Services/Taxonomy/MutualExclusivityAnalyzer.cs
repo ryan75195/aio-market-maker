@@ -8,7 +8,8 @@ public class MutualExclusivityAnalyzer : IMutualExclusivityAnalyzer
         var titleList = titles.Select(t => t.ToLowerInvariant()).ToList();
         var ngramList = ngrams.ToList();
 
-        return ngramList.Select(ngram =>
+        // Phase 1: Compute raw match sets
+        var mutableSets = ngramList.Select(ngram =>
         {
             var indices = new HashSet<int>();
             for (var i = 0; i < titleList.Count; i++)
@@ -18,8 +19,49 @@ public class MutualExclusivityAnalyzer : IMutualExclusivityAnalyzer
                     indices.Add(i);
                 }
             }
-            return new MatchSet(ngram, indices);
-        });
+            return (ngram, indices);
+        }).ToList();
+
+        // Phase 2: Longest-match — remove title from shorter ngram's set
+        // when it also matches a longer ngram whose tokens are a superset
+        ApplyLongestMatch(mutableSets);
+
+        return mutableSets.Select(ms => new MatchSet(ms.ngram, ms.indices));
+    }
+
+    private static void ApplyLongestMatch(
+        List<(Ngram ngram, HashSet<int> indices)> matchSets)
+    {
+        var tokenSets = matchSets.Select(ms =>
+            new HashSet<string>(
+                ms.ngram.Canonical.Split(' ', StringSplitOptions.RemoveEmptyEntries),
+                StringComparer.OrdinalIgnoreCase))
+            .ToList();
+
+        for (var shorter = 0; shorter < matchSets.Count; shorter++)
+        {
+            for (var longer = 0; longer < matchSets.Count; longer++)
+            {
+                if (shorter == longer)
+                {
+                    continue;
+                }
+
+                if (tokenSets[shorter].Count >= tokenSets[longer].Count)
+                {
+                    continue;
+                }
+
+                if (!tokenSets[shorter].IsSubsetOf(tokenSets[longer]))
+                {
+                    continue;
+                }
+
+                // shorter's tokens are a subset of longer's tokens
+                // Remove any title that also appears in the longer match set
+                matchSets[shorter].indices.ExceptWith(matchSets[longer].indices);
+            }
+        }
     }
 
     public IEnumerable<MutuallyExclusivePair> FindExclusivePairs(

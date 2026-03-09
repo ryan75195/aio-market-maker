@@ -153,4 +153,93 @@ public class MutualExclusivityAnalyzerTests
         var result = _analyzer.FindExclusivePairs(matchSets).ToList();
         Assert.That(result, Is.Empty);
     }
+
+    [Test]
+    public void Should_exclude_title_from_shorter_ngram_when_longer_ngram_also_matches()
+    {
+        var titles = new[]
+        {
+            "gold plated ring",      // matches both "gold" and "gold plated"
+            "14k gold ring",         // matches only "gold"
+            "silver plated ring",    // matches neither
+        };
+        var ngrams = new[]
+        {
+            new Ngram("gold", new[] { "gold" }, 100),
+            new Ngram("gold plated", new[] { "gold plated" }, 50),
+        };
+
+        var result = _analyzer.ComputeMatchSets(titles, ngrams).ToList();
+
+        var gold = result.First(m => m.Ngram.Canonical == "gold");
+        var goldPlated = result.First(m => m.Ngram.Canonical == "gold plated");
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(goldPlated.ListingIndices, Is.EquivalentTo(new[] { 0 }));
+            Assert.That(gold.ListingIndices, Is.EquivalentTo(new[] { 1 }),
+                "Title with 'gold plated' should be excluded from 'gold' match set");
+        });
+    }
+
+    [Test]
+    public void Should_assign_to_most_specific_ngram_in_chain()
+    {
+        var titles = new[]
+        {
+            "gold plated ring set",       // matches "gold", "gold plated", "gold plated ring"
+            "gold plated bracelet",       // matches "gold", "gold plated"
+            "gold chain",                 // matches only "gold"
+        };
+        var ngrams = new[]
+        {
+            new Ngram("gold", new[] { "gold" }, 100),
+            new Ngram("gold plated", new[] { "gold plated" }, 50),
+            new Ngram("gold plated ring", new[] { "gold plated ring" }, 20),
+        };
+
+        var result = _analyzer.ComputeMatchSets(titles, ngrams).ToList();
+
+        var gold = result.First(m => m.Ngram.Canonical == "gold");
+        var goldPlated = result.First(m => m.Ngram.Canonical == "gold plated");
+        var goldPlatedRing = result.First(m => m.Ngram.Canonical == "gold plated ring");
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(goldPlatedRing.ListingIndices, Is.EquivalentTo(new[] { 0 }));
+            Assert.That(goldPlated.ListingIndices, Is.EquivalentTo(new[] { 1 }),
+                "Should exclude title 0 (matched more specific 'gold plated ring')");
+            Assert.That(gold.ListingIndices, Is.EquivalentTo(new[] { 2 }),
+                "Should exclude titles 0 and 1 (matched more specific ngrams)");
+        });
+    }
+
+    [Test]
+    public void Should_not_apply_longest_match_for_non_overlapping_ngrams()
+    {
+        var titles = new[]
+        {
+            "gold plated ring",   // matches "gold" and "ring" independently
+            "silver ring",        // matches "silver" and "ring"
+        };
+        var ngrams = new[]
+        {
+            new Ngram("gold", new[] { "gold" }, 100),
+            new Ngram("silver", new[] { "silver" }, 80),
+            new Ngram("ring", new[] { "ring" }, 60),
+        };
+
+        var result = _analyzer.ComputeMatchSets(titles, ngrams).ToList();
+
+        var gold = result.First(m => m.Ngram.Canonical == "gold");
+        var silver = result.First(m => m.Ngram.Canonical == "silver");
+        var ring = result.First(m => m.Ngram.Canonical == "ring");
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(gold.ListingIndices, Is.EquivalentTo(new[] { 0 }));
+            Assert.That(silver.ListingIndices, Is.EquivalentTo(new[] { 1 }));
+            Assert.That(ring.ListingIndices, Is.EquivalentTo(new[] { 0, 1 }));
+        });
+    }
 }
