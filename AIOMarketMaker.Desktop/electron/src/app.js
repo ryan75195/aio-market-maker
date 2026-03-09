@@ -13,7 +13,7 @@ createApp({
       jobs: [],
       opportunities: [],
       opportunityPage: 1,
-      opportunitySortBy: 'potentialProfit',
+      opportunitySortBy: 'estimatedProfit',
       opportunitySortDir: 'desc',
       opportunityJobFilter: [],
       opportunityCategoryFilter: [],
@@ -638,12 +638,6 @@ createApp({
         if (opp.minComps > 0) {
           params.set('minComps', opp.minComps);
         }
-        if (opp.feePercent > 0) {
-          params.set('feePercent', opp.feePercent);
-        }
-        if (opp.matchCondition) {
-          params.set('matchCondition', 'true');
-        }
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), 15000);
         try {
@@ -901,7 +895,7 @@ createApp({
         type: 'scatter',
         data: {
           datasets: [{
-            data: data.map(d => ({ x: d.price, y: d.potentialProfit })),
+            data: data.map(d => ({ x: d.price, y: d.estimatedProfit })),
             backgroundColor: data.map(d => conditionColors[d.condition] || '#a855f7'),
             pointRadius: 2,
             pointHoverRadius: 5
@@ -916,7 +910,7 @@ createApp({
               callbacks: {
                 label: (ctx) => {
                   const item = data[ctx.dataIndex];
-                  return `${item.condition || 'Unknown'}: Buy ${this.formatPrice(item.price, 'GBP')}, Profit ${this.formatPrice(item.potentialProfit, 'GBP')}`;
+                  return `${item.condition || 'Unknown'}: Buy ${this.formatPrice(item.price, 'GBP')}, Profit ${this.formatPrice(item.estimatedProfit, 'GBP')}`;
                 }
               }
             }
@@ -1232,7 +1226,6 @@ createApp({
     async loadOpportunities() {
       this.opportunitiesLoading = true;
       try {
-        const opp = this.settings?.opportunities || this.config?.opportunities || {};
         const params = new URLSearchParams({
           page: this.opportunityPage,
           pageSize: this.opportunityPageSize,
@@ -1248,26 +1241,17 @@ createApp({
         if (effectiveJobIds.length > 0) {
           params.set('jobIds', effectiveJobIds.join(','));
         }
-        if (opp.minComps > 0) {
-          params.set('minComps', opp.minComps);
-        }
-        if (opp.priceBandMultiplier > 0) {
-          params.set('priceBand', opp.priceBandMultiplier);
-        }
-        if (opp.feePercent > 0) {
-          params.set('feePercent', opp.feePercent);
-        }
-        if (opp.matchCondition) {
-          params.set('matchCondition', 'true');
+        if (this.opportunityCategoryFilter.length > 0) {
+          params.set('categoryIds', this.opportunityCategoryFilter.join(','));
         }
         if (this.opportunityBudget > 0) {
           params.set('maxPrice', this.opportunityBudget);
         }
         if (this.opportunitySearchQuery.trim()) {
-          params.set('searchQuery', this.opportunitySearchQuery.trim());
+          params.set('search', this.opportunitySearchQuery.trim());
           this.opportunitySearchLoading = true;
         }
-        const data = await this.apiCall(`/listings/active?${params.toString()}`);
+        const data = await this.apiCall(`/opportunities?${params.toString()}`);
         const result = this.toCamelCase(data);
         this.opportunities = result.items;
         this.opportunityTotalCount = result.totalCount;

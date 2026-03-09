@@ -183,7 +183,7 @@
             </div>
           </div>
 
-          <!-- Semantic Search -->
+          <!-- Text Search -->
           <div class="search-filter">
             <input type="text" v-model="opportunitySearchQuery" placeholder="Search listings..."
                    @keyup.enter="searchOpportunities()" :disabled="opportunitySearchLoading">
@@ -209,15 +209,16 @@
           <table class="data-table">
             <colgroup>
               <col style="width: 7%">
-              <col style="width: 22%">
-              <col style="width: 10%">
-              <col style="width: 8%">
-              <col style="width: 8%">
-              <col style="width: 5%">
-              <col style="width: 8%">
+              <col style="width: 20%">
+              <col style="width: 9%">
+              <col style="width: 7%">
+              <col style="width: 7%">
               <col style="width: 5%">
               <col style="width: 7%">
+              <col style="width: 5%">
+              <col style="width: 6%">
               <col style="width: 10%">
+              <col style="width: 9%">
               <col style="width: 5%">
             </colgroup>
             <thead>
@@ -225,12 +226,13 @@
                 <th>ID</th>
                 <th class="sortable" @click="sortOpportunities('title')">Title{{ sortIndicator('title') }}</th>
                 <th class="sortable" @click="sortOpportunities('searchTerm')">Job{{ sortIndicator('searchTerm') }}</th>
-                <th class="sortable" @click="sortOpportunities('price')">Price{{ sortIndicator('price') }}</th>
-                <th class="sortable" @click="sortOpportunities('averageSoldPrice')">Avg Sold{{ sortIndicator('averageSoldPrice') }}</th>
-                <th class="sortable" @click="sortOpportunities('similarSoldCount')">Comps{{ sortIndicator('similarSoldCount') }}</th>
-                <th class="sortable" @click="sortOpportunities('potentialProfit')">Profit{{ sortIndicator('potentialProfit') }}</th>
-                <th class="sortable" @click="sortOpportunities('estimatedDaysToSell')">Days{{ sortIndicator('estimatedDaysToSell') }}</th>
+                <th class="sortable" @click="sortOpportunities('askPrice')">Price{{ sortIndicator('askPrice') }}</th>
+                <th class="sortable" @click="sortOpportunities('medianSoldPrice')">Med Sold{{ sortIndicator('medianSoldPrice') }}</th>
+                <th class="sortable" @click="sortOpportunities('soldComps')">Comps{{ sortIndicator('soldComps') }}</th>
+                <th class="sortable" @click="sortOpportunities('estimatedProfit')">Profit{{ sortIndicator('estimatedProfit') }}</th>
+                <th class="sortable" @click="sortOpportunities('avgDaysToSell')">Days{{ sortIndicator('avgDaysToSell') }}</th>
                 <th class="sortable" @click="sortOpportunities('condition')">Cond{{ sortIndicator('condition') }}</th>
+                <th>Cell</th>
                 <th class="sortable" @click="sortOpportunities('createdUtc')">Discovered{{ sortIndicator('createdUtc') }}</th>
                 <th>Link</th>
               </tr>
@@ -240,33 +242,34 @@
                 <td>{{ listing.listingId || '-' }}</td>
                 <td class="title-cell" :title="listing.title">{{ truncate(listing.title, 50) }}</td>
                 <td>{{ listing.searchTerm || '-' }}</td>
-                <td class="price-cell">{{ formatPrice(listing.price, listing.currency) }}</td>
+                <td class="price-cell">{{ formatPrice(listing.askPrice, listing.currency) }}</td>
                 <td class="price-cell">
-                  <span v-if="listing.averageSoldPrice != null">
-                    {{ formatPrice(listing.averageSoldPrice, listing.currency) }}
+                  <span v-if="listing.medianSoldPrice != null">
+                    {{ formatPrice(listing.medianSoldPrice, listing.currency) }}
                   </span>
                   <span v-else>-</span>
                 </td>
-                <td class="number">{{ listing.similarSoldCount || '-' }}</td>
+                <td class="number">{{ listing.soldComps || '-' }}</td>
                 <td class="price-cell">
-                  <span v-if="listing.potentialProfit != null"
-                        :style="{ color: listing.potentialProfit >= 0 ? '#22c55e' : '#ef4444' }">
-                    {{ listing.potentialProfit >= 0 ? '+' : '' }}{{ formatPrice(listing.potentialProfit, listing.currency) }}
+                  <span v-if="listing.estimatedProfit != null"
+                        :style="{ color: listing.estimatedProfit >= 0 ? '#22c55e' : '#ef4444' }">
+                    {{ listing.estimatedProfit >= 0 ? '+' : '' }}{{ formatPrice(listing.estimatedProfit, listing.currency) }}
                   </span>
                   <span v-else>-</span>
                 </td>
                 <td>
-                  <span v-if="listing.estimatedDaysToSell != null">{{ listing.estimatedDaysToSell }}d</span>
+                  <span v-if="listing.avgDaysToSell != null">{{ listing.avgDaysToSell }}d</span>
                   <span v-else>-</span>
                 </td>
                 <td>{{ listing.condition || '-' }}</td>
+                <td :title="listing.cellKey">{{ listing.cellKey ? listing.cellKey.substring(0, 30) : '' }}</td>
                 <td class="date-cell">{{ formatShortDate(listing.createdUtc) }}</td>
                 <td>
                   <a v-if="listing.url" :href="listing.url" target="_blank" class="btn small" @click.stop>eBay</a>
                 </td>
               </tr>
               <tr v-if="opportunities.length === 0 && !opportunitiesLoading">
-                <td colspan="11" class="empty">No active listings found</td>
+                <td colspan="12" class="empty">No opportunities found</td>
               </tr>
             </tbody>
           </table>
