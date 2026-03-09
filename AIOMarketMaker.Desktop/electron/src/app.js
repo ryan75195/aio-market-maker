@@ -132,6 +132,7 @@ createApp({
       marketsListingSearch: '',
       marketsStatusFilter: '',
       marketsConditionFilter: '',
+      marketsConditions: [],
       marketsMinPrice: '',
       marketsMaxPrice: '',
       marketsMinDays: '',
@@ -1895,9 +1896,20 @@ createApp({
       this.marketsTaxonomy = null;
       this.marketsPricing = null;
       this.marketsOpportunityMap = {};
+      this.loadConditions();
       await this.loadMarketListings();
       this.loadTaxonomy();
       this.loadPricing();
+    },
+
+    async loadConditions() {
+      try {
+        this.marketsConditions = await this.apiCall(
+          `/markets/${this.marketsSelected.jobId}/conditions`
+        );
+      } catch {
+        this.marketsConditions = [];
+      }
     },
 
     async loadMarketListings() {
@@ -2018,6 +2030,7 @@ createApp({
       this.marketsPricing = null;
       this.marketsOpportunityMap = {};
       this.marketsAxisFilters = {};
+      this.marketsConditions = [];
     },
 
     setMarketsSort(key) {

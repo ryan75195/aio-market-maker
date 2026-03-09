@@ -1179,7 +1179,10 @@
                 </div>
                 <div class="filter-group">
                   <label>Condition</label>
-                  <input type="text" v-model="marketsConditionFilter" class="filter-input" placeholder="e.g. New, Used" style="width:120px">
+                  <select v-model="marketsConditionFilter" class="filter-input" style="width:140px">
+                    <option value="">All</option>
+                    <option v-for="c in marketsConditions" :key="c" :value="c">{{ c }}</option>
+                  </select>
                 </div>
                 <div class="filter-group">
                   <label>Price</label>

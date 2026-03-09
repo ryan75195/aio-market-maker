@@ -78,6 +78,7 @@ public static class MarketsEndpoints
         app.MapGet("/api/markets/{jobId:int}/listings", GetJobListings);
         app.MapGet("/api/markets/{jobId:int}/taxonomy", GetTaxonomy);
         app.MapGet("/api/markets/{jobId:int}/pricing", GetPricing);
+        app.MapGet("/api/markets/{jobId:int}/conditions", GetConditions);
     }
 
     private static async Task<IResult> GetMarkets(
@@ -256,7 +257,7 @@ public static class MarketsEndpoints
         var listings = await db.Listings
             .AsNoTracking()
             .Where(l => l.ScrapeJobId == jobId && filteredListingIds.Contains(l.Id))
-            .Select(l => new { l.Id, l.Title, l.Price, l.ListingStatus })
+            .Select(l => new { l.Id, l.Title, l.Price, l.ListingStatus, l.Condition })
             .ToListAsync(ct);
 
         // Build inputs for CellPricingService using ListingId as index
@@ -295,6 +296,22 @@ public static class MarketsEndpoints
                 o.EstimatedProfit, o.MarginPercent, o.SoldComps, o.CellKey)),
             pricing.TotalListings,
             pricing.CoveredListings));
+    }
+
+    private static async Task<IResult> GetConditions(
+        int jobId,
+        EtlDbContext db,
+        CancellationToken ct)
+    {
+        var conditions = await db.Listings
+            .AsNoTracking()
+            .Where(l => l.ScrapeJobId == jobId && l.Condition != null)
+            .Select(l => l.Condition!)
+            .Distinct()
+            .OrderBy(c => c)
+            .ToListAsync(ct);
+
+        return Results.Ok(conditions);
     }
 
     private static Dictionary<string, string> ParseAxisFilters(IQueryCollection query)
