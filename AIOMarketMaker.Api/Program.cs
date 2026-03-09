@@ -160,6 +160,8 @@ builder.Services.AddScoped<ITaxonomyPersistenceService, TaxonomyPersistenceServi
 builder.Services.AddSingleton<IPostJobStage, TaxonomyPostJobStage>();
 builder.Services.AddSingleton<ICellPricingService, CellPricingService>();
 builder.Services.AddScoped<ITaxonomyQueryService, TaxonomyQueryService>();
+builder.Services.AddScoped<ITaxonomyOpportunityService, TaxonomyOpportunityService>();
+builder.Services.AddSingleton<IPostJobStage, OpportunityPostJobStage>();
 
 // Scraping concurrency config
 var scrapingConfig = new ScrapingConfig(

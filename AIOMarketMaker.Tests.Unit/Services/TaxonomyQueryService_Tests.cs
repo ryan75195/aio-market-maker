@@ -1,4 +1,4 @@
-using AIOMarketMaker.Api.Services;
+using AIOMarketMaker.Core.Services.Taxonomy;
 
 namespace AIOMarketMaker.Tests.Unit.Services;
 

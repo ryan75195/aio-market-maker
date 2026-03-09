@@ -1,4 +1,4 @@
-namespace AIOMarketMaker.Api.Services;
+namespace AIOMarketMaker.Core.Services.Taxonomy;
 
 public interface ITaxonomyOpportunityService
 {

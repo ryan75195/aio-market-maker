@@ -182,6 +182,11 @@ public static class HostHelper
                     return new LlmTaxonomyRefiner(client, logger);
                 });
                 services.AddSingleton<ICellPricingService, CellPricingService>();
+                services.AddScoped<ITaxonomyQueryService, TaxonomyQueryService>();
+                services.AddScoped<ITaxonomyOpportunityService, TaxonomyOpportunityService>();
+
+                // Pricing options
+                services.Configure<PricingOptions>(configuration.GetSection("Pricing"));
 
                 // Task system
                 services.AddTaskRunner();
@@ -192,6 +197,7 @@ public static class HostHelper
                 services.AddTask<BackfillTaxonomyTask>();
                 services.AddTask<ViewTaxonomyTask>();
                 services.AddTask<ArbitrageTask>();
+                services.AddTask<BackfillOpportunitiesTask>();
             })
             .Build();
     }

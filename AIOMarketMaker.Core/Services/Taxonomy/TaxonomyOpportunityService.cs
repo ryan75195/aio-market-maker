@@ -1,9 +1,8 @@
 using AIOMarketMaker.Core.Data;
 using AIOMarketMaker.Core.Data.Models;
-using AIOMarketMaker.Core.Services.Taxonomy;
 using Microsoft.EntityFrameworkCore;
 
-namespace AIOMarketMaker.Api.Services;
+namespace AIOMarketMaker.Core.Services.Taxonomy;
 
 record ListingProjection(
     int Id, string? Title, decimal? Price, string? ListingStatus,
