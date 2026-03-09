@@ -194,6 +194,7 @@ app.MapScrapeEndpoints();
 app.MapOverviewEndpoints();
 app.MapMarketsEndpoints();
 app.MapChatEndpoints();
+app.MapOpportunityEndpoints();
 
 app.Run();
 
