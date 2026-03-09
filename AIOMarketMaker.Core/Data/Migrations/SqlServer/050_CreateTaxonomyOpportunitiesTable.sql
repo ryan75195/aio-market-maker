@@ -17,7 +17,7 @@ BEGIN
         AvgDaysToSell INT NULL,
         ComputedUtc DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
         CONSTRAINT FK_TaxonomyOpportunities_Jobs FOREIGN KEY (ScrapeJobId) REFERENCES ScrapeJobs(Id) ON DELETE CASCADE,
-        CONSTRAINT FK_TaxonomyOpportunities_Listings FOREIGN KEY (ListingId) REFERENCES Listings(Id) ON DELETE CASCADE
+        CONSTRAINT FK_TaxonomyOpportunities_Listings FOREIGN KEY (ListingId) REFERENCES Listings(Id) ON DELETE NO ACTION
     );
 END
 

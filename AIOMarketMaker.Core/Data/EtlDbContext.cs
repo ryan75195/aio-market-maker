@@ -263,7 +263,7 @@ public class EtlDbContext : DbContext
             entity.HasIndex(e => e.ListingId).IsUnique();
             entity.HasIndex(e => e.EstimatedProfit).IsDescending();
             entity.HasOne(e => e.ScrapeJob).WithMany().HasForeignKey(e => e.ScrapeJobId).OnDelete(DeleteBehavior.Cascade);
-            entity.HasOne(e => e.Listing).WithMany().HasForeignKey(e => e.ListingId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(e => e.Listing).WithMany().HasForeignKey(e => e.ListingId).OnDelete(DeleteBehavior.NoAction);
         });
 
     }
