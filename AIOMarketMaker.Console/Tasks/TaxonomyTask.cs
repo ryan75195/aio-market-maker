@@ -65,7 +65,7 @@ public class TaxonomyTask : ITask
 
         System.Console.WriteLine("Running taxonomy pipeline...");
         var sw = System.Diagnostics.Stopwatch.StartNew();
-        var result = await _taxonomyService.Generate(titles, job.SearchTerm, ct);
+        var result = await _taxonomyService.Generate(titles, job.SearchTerm, ct: ct);
         sw.Stop();
 
         System.Console.WriteLine($"Completed in {sw.Elapsed.TotalSeconds:F1}s");

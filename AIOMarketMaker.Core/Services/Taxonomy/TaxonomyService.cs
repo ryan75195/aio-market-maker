@@ -51,6 +51,7 @@ public class TaxonomyService : ITaxonomyService
     public async Task<TaxonomyResult> Generate(
         IEnumerable<string> titles,
         string? productName = null,
+        IEnumerable<string>? brandTokens = null,
         CancellationToken ct = default)
     {
         var titleList = titles.ToList();

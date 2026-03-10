@@ -28,12 +28,14 @@ public record TaxonomyResult(
     IEnumerable<Axis> Axes,
     IEnumerable<CellAssignment> Assignments,
     IEnumerable<CellStats> Cells,
-    double CoveragePercent, double ConflictPercent);
+    double CoveragePercent, double ConflictPercent,
+    int ExcludedCount = 0);
 
 public interface ITaxonomyService
 {
     Task<TaxonomyResult> Generate(
         IEnumerable<string> titles,
         string? productName = null,
+        IEnumerable<string>? brandTokens = null,
         CancellationToken ct = default);
 }
