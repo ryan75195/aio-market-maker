@@ -130,7 +130,13 @@ public class BackfillTaxonomyTask : ITask
                 return JobOutcome.Skipped;
             }
 
-            var generated = await GenerateAndPersistTaxonomy(jobId, job.SearchTerm, listings, scope.Persistence, ct);
+            IEnumerable<string>? brandTokens = null;
+            if (job.BrandTokens != null)
+            {
+                brandTokens = System.Text.Json.JsonSerializer.Deserialize<string[]>(job.BrandTokens);
+            }
+
+            var generated = await GenerateAndPersistTaxonomy(jobId, job.SearchTerm, brandTokens, listings, scope.Persistence, ct);
 
             System.Console.WriteLine(
                 $"  Job {jobId} \"{job.SearchTerm}\": " +
@@ -163,14 +169,15 @@ public class BackfillTaxonomyTask : ITask
     }
 
     private async Task<TaxonomyGenerationResult> GenerateAndPersistTaxonomy(
-        int jobId, string searchTerm, List<ListingTitleProjection> listings,
+        int jobId, string searchTerm, IEnumerable<string>? brandTokens,
+        List<ListingTitleProjection> listings,
         ITaxonomyPersistenceService persistence, CancellationToken ct)
     {
         var titles = listings.Select(l => l.Title).ToList();
         var listingIds = listings.Select(l => l.Id).ToList();
 
         var sw = Stopwatch.StartNew();
-        var result = await _taxonomyService.Generate(titles, searchTerm, ct: ct);
+        var result = await _taxonomyService.Generate(titles, searchTerm, brandTokens, ct);
         sw.Stop();
 
         var persisted = await persistence.Save(jobId, result, listingIds, (int)sw.ElapsedMilliseconds, ct);

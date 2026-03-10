@@ -6,6 +6,7 @@ namespace AIOMarketMaker.Core.Services.Taxonomy;
 public partial class TitleDecontaminator : ITitleDecontaminator
 {
     private const double SimilarityThreshold = 0.60;
+    private const int EmbeddingBatchSize = 2000;
 
     private readonly IEmbeddingService _embeddingService;
     private readonly ILogger<TitleDecontaminator> _logger;
@@ -53,8 +54,7 @@ public partial class TitleDecontaminator : ITitleDecontaminator
                 await _embeddingService.GetEmbedding(productName, ct, EmbeddingModel.Small));
 
             var survivingTitles = surviving.Select(i => titleList[i]).ToList();
-            var titleEmbeddings = await _embeddingService.GetEmbeddings(
-                survivingTitles, ct, EmbeddingModel.Small);
+            var titleEmbeddings = await GetEmbeddingsInBatches(survivingTitles, ct);
 
             var passingSimilarity = new List<int>();
             for (var j = 0; j < surviving.Count; j++)
@@ -94,6 +94,27 @@ public partial class TitleDecontaminator : ITitleDecontaminator
 
         var excludedCount = titleList.Count - surviving.Count;
         return new DecontaminationResult(filteredTitles, indexMapping, excludedCount);
+    }
+
+    private async Task<float[][]> GetEmbeddingsInBatches(List<string> texts, CancellationToken ct)
+    {
+        if (texts.Count <= EmbeddingBatchSize)
+        {
+            return await _embeddingService.GetEmbeddings(texts, ct, EmbeddingModel.Small);
+        }
+
+        var allEmbeddings = new float[texts.Count][];
+        for (var offset = 0; offset < texts.Count; offset += EmbeddingBatchSize)
+        {
+            var batch = texts.Skip(offset).Take(EmbeddingBatchSize).ToList();
+            var batchEmbeddings = await _embeddingService.GetEmbeddings(batch, ct, EmbeddingModel.Small);
+            for (var i = 0; i < batchEmbeddings.Length; i++)
+            {
+                allEmbeddings[offset + i] = batchEmbeddings[i];
+            }
+        }
+
+        return allEmbeddings;
     }
 
     private static bool TitleContainsAnyToken(string title, HashSet<string> tokens)
