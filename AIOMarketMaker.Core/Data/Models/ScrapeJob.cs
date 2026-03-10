@@ -29,6 +29,12 @@ public class ScrapeJob
     public DateTime? LastRunUtc { get; set; }
 
     /// <summary>
+    /// JSON array of brand/product identifier tokens for taxonomy decontamination
+    /// (e.g., ["rolex"] or ["playstation", "ps5"])
+    /// </summary>
+    public string? BrandTokens { get; set; }
+
+    /// <summary>
     /// When this job was created
     /// </summary>
     public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
