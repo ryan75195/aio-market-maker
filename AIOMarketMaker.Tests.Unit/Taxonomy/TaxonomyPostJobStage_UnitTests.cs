@@ -154,6 +154,69 @@ public class TaxonomyPostJobStage_UnitTests
             Times.Once);
     }
 
+    [Test]
+    public async Task Should_pass_brand_tokens_from_scrape_job_to_generate()
+    {
+        var job = AddJob("Rolex Submariner");
+        job.BrandTokens = """["rolex"]""";
+        _db.SaveChanges();
+
+        AddListings(job.Id, 15);
+        var context = new PostJobContext(1, job.Id, "Rolex Submariner");
+
+        _taxonomyMock
+            .Setup(x => x.Generate(
+                It.IsAny<IEnumerable<string>>(), It.IsAny<string?>(),
+                It.IsAny<IEnumerable<string>?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(EmptyResult());
+
+        _persistenceMock
+            .Setup(x => x.Save(It.IsAny<int>(), It.IsAny<TaxonomyResult>(),
+                It.IsAny<IEnumerable<int>>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PersistedTaxonomyRun(1, 0, 0, 0));
+
+        await _stage.Execute(context);
+
+        _taxonomyMock.Verify(
+            x => x.Generate(
+                It.IsAny<IEnumerable<string>>(),
+                "Rolex Submariner",
+                It.Is<IEnumerable<string>?>(tokens =>
+                    tokens != null && tokens.Contains("rolex")),
+                It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    [Test]
+    public async Task Should_pass_null_brand_tokens_when_not_set_on_job()
+    {
+        var job = AddJob("PS5");
+        // BrandTokens is null by default
+        AddListings(job.Id, 15);
+        var context = new PostJobContext(1, job.Id, "PS5");
+
+        _taxonomyMock
+            .Setup(x => x.Generate(
+                It.IsAny<IEnumerable<string>>(), It.IsAny<string?>(),
+                It.IsAny<IEnumerable<string>?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(EmptyResult());
+
+        _persistenceMock
+            .Setup(x => x.Save(It.IsAny<int>(), It.IsAny<TaxonomyResult>(),
+                It.IsAny<IEnumerable<int>>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PersistedTaxonomyRun(1, 0, 0, 0));
+
+        await _stage.Execute(context);
+
+        _taxonomyMock.Verify(
+            x => x.Generate(
+                It.IsAny<IEnumerable<string>>(),
+                It.IsAny<string?>(),
+                (IEnumerable<string>?)null,
+                It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
     // -- Helpers --
 
     private ScrapeJob AddJob(string searchTerm = "PS5")

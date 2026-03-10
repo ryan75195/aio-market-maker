@@ -49,11 +49,24 @@ public class TaxonomyPostJobStage : IPostJobStage
         var titles = listings.Select(l => l.Title!).ToList();
         var listingIds = listings.Select(l => l.Id).ToList();
 
+        // Load brand tokens from the ScrapeJob
+        var job = await db.ScrapeJobs
+            .AsNoTracking()
+            .Where(j => j.Id == context.JobId)
+            .Select(j => new { j.BrandTokens })
+            .FirstOrDefaultAsync(ct);
+
+        IEnumerable<string>? brandTokens = null;
+        if (job?.BrandTokens != null)
+        {
+            brandTokens = System.Text.Json.JsonSerializer.Deserialize<string[]>(job.BrandTokens);
+        }
+
         _logger.LogInformation("Running taxonomy for job {JobId} with {Count} listings",
             context.JobId, listings.Count);
 
         var sw = Stopwatch.StartNew();
-        var result = await taxonomyService.Generate(titles, context.SearchTerm, ct: ct);
+        var result = await taxonomyService.Generate(titles, context.SearchTerm, brandTokens, ct);
         sw.Stop();
 
         var persisted = await persistenceService.Save(
