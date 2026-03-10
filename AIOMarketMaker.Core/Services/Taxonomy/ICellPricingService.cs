@@ -16,7 +16,8 @@ public record CellPricing(
     int SoldCount,
     decimal? MedianActivePrice,
     decimal? MedianSoldPrice,
-    decimal? Spread);
+    decimal? Spread,
+    double? CoefficientOfVariation = null);
 
 public record ArbitrageOpportunity(
     int ListingId,
