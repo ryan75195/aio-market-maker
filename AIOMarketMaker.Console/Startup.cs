@@ -162,6 +162,22 @@ public static class HostHelper
 
                 // Comparable pipeline disabled — replaced by taxonomy-based cell pricing.
 
+                // Taxonomy decontamination
+                services.AddSingleton<ITitleDecontaminator, TitleDecontaminator>();
+                services.AddSingleton<IBrandTokenExtractor>(sp =>
+                {
+                    var config = sp.GetRequiredService<IConfiguration>();
+                    var apiKey = config.GetValue<string>("OpenAi:ApiKey");
+                    if (string.IsNullOrEmpty(apiKey))
+                    {
+                        return null!;
+                    }
+                    var model = config.GetValue<string>("OpenAi:TaxonomyModel") ?? "gpt-4o-mini";
+                    var client = new OpenAI.Chat.ChatClient(model, apiKey);
+                    var logger = sp.GetRequiredService<ILogger<LlmBrandTokenExtractor>>();
+                    return new LlmBrandTokenExtractor(client, logger);
+                });
+
                 // Taxonomy pipeline
                 services.AddSingleton<INgramExtractor, NgramExtractor>();
                 services.AddSingleton<IMutualExclusivityAnalyzer, MutualExclusivityAnalyzer>();
@@ -198,6 +214,7 @@ public static class HostHelper
                 services.AddTask<ViewTaxonomyTask>();
                 services.AddTask<ArbitrageTask>();
                 services.AddTask<BackfillOpportunitiesTask>();
+                services.AddTask<BackfillBrandTokensTask>();
             })
             .Build();
     }

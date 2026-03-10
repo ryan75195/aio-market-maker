@@ -151,6 +151,19 @@ builder.Services.AddSingleton<ITaxonomyRefiner>(sp =>
 // Listing prediction service (reads existing predictions from DB)
 builder.Services.AddScoped<IListingPredictionService, ListingPredictionService>();
 
+// Taxonomy decontamination
+builder.Services.AddSingleton<ITitleDecontaminator, TitleDecontaminator>();
+builder.Services.AddSingleton<IBrandTokenExtractor>(sp =>
+{
+    var config = sp.GetRequiredService<IConfiguration>();
+    var apiKey = config["OpenAi:ApiKey"]
+        ?? throw new InvalidOperationException("OpenAi:ApiKey is not configured");
+    var model = config["OpenAi:TaxonomyModel"] ?? "gpt-4o-mini";
+    var client = new OpenAI.Chat.ChatClient(model, apiKey);
+    var logger = sp.GetRequiredService<ILogger<LlmBrandTokenExtractor>>();
+    return new LlmBrandTokenExtractor(client, logger);
+});
+
 // Taxonomy pipeline
 builder.Services.AddSingleton<INgramExtractor, NgramExtractor>();
 builder.Services.AddSingleton<IMutualExclusivityAnalyzer, MutualExclusivityAnalyzer>();
