@@ -109,8 +109,12 @@ public class LlmTaxonomyRefiner : ITaxonomyRefiner
         sb.AppendLine();
         foreach (var axis in axes)
         {
-            var values = axis.Values.Select(v => v.Label).ToList();
-            sb.AppendLine($"- **{axis.Name}**: [{string.Join(", ", values)}]");
+            var valueLabels = axis.Values.Select(v =>
+            {
+                var maxFreq = v.Ngrams.Any() ? v.Ngrams.Max(n => n.Frequency) : 0;
+                return maxFreq > 0 ? $"{v.Label} (freq={maxFreq})" : v.Label;
+            }).ToList();
+            sb.AppendLine($"- **{axis.Name}**: [{string.Join(", ", valueLabels)}]");
         }
         sb.AppendLine();
 
@@ -141,6 +145,7 @@ public class LlmTaxonomyRefiner : ITaxonomyRefiner
                - Represent a different concept than the axis name (e.g. "bundle" on a "color" axis)
                - Are too vague or generic (e.g. "edition" as a value on an "edition" axis)
                - Are duplicates of other values on the same axis
+               - **Do NOT remove values with high frequency.** High-frequency values (shown as "freq=N") are statistically validated sub-product variants. Even if a value like "baby" seems vague on its own, it may represent a distinct product line (e.g. "Baby Love" bracelet). Keep these values.
             5. **add_values**: Additional values visible in the sample titles that are missing from this axis. Only add values you can see in the titles above. Use lowercase.
 
             **Dropping axes**: Add axis names to "drop_axes" if the axis:

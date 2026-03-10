@@ -92,7 +92,7 @@ public class TaxonomyService : ITaxonomyService
             {
                 var sampleTitles = titleList.Take(20);
                 var refinement = await _refiner.Refine(axes, productName, sampleTitles, ct);
-                axes = ApplyRefinement(axes, refinement);
+                axes = ApplyRefinement(axes, refinement, matchSetLookup, titleList.Count);
             }
             catch (Exception ex)
             {
@@ -958,7 +958,8 @@ public class TaxonomyService : ITaxonomyService
     }
 
     internal static List<Axis> ApplyRefinement(
-        IEnumerable<Axis> axes, TaxonomyRefinement refinement)
+        IEnumerable<Axis> axes, TaxonomyRefinement refinement,
+        Dictionary<string, MatchSet>? matchSets = null, int totalListings = 0)
     {
         var axisList = axes.ToList();
         var dropSet = new HashSet<string>(refinement.DropAxes, StringComparer.OrdinalIgnoreCase);
@@ -996,6 +997,17 @@ public class TaxonomyService : ITaxonomyService
             var values = axisList[i].Values.ToList();
 
             var removeSet = new HashSet<string>(refined.RemoveValues, StringComparer.OrdinalIgnoreCase);
+
+            // Guard: don't let the LLM remove statistically significant values.
+            // These represent validated sub-product variants (e.g. "baby" in Cartier
+            // Love Bracelet represents Baby Love, a distinct $1,500 product vs $5,000).
+            if (matchSets != null && totalListings > 0)
+            {
+                var minMatches = (int)(totalListings * SignificanceThreshold);
+                removeSet.RemoveWhere(label =>
+                    matchSets.TryGetValue(label, out var ms) && ms.ListingIndices.Count >= minMatches);
+            }
+
             values.RemoveAll(v => removeSet.Contains(v.Label));
 
             foreach (var addLabel in refined.AddValues)
