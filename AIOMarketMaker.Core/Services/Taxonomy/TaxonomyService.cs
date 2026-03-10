@@ -30,6 +30,7 @@ public class TaxonomyService : ITaxonomyService
     private readonly ICommunityDetector _detector;
     private readonly IEmbeddingService _embeddingService;
     private readonly ITaxonomyRefiner? _refiner;
+    private readonly ITitleDecontaminator? _decontaminator;
     private readonly ILogger<TaxonomyService> _logger;
 
     public TaxonomyService(
@@ -38,7 +39,8 @@ public class TaxonomyService : ITaxonomyService
         ICommunityDetector detector,
         IEmbeddingService embeddingService,
         ILogger<TaxonomyService> logger,
-        ITaxonomyRefiner? refiner = null)
+        ITaxonomyRefiner? refiner = null,
+        ITitleDecontaminator? decontaminator = null)
     {
         _extractor = extractor;
         _analyzer = analyzer;
@@ -46,6 +48,7 @@ public class TaxonomyService : ITaxonomyService
         _embeddingService = embeddingService;
         _logger = logger;
         _refiner = refiner;
+        _decontaminator = decontaminator;
     }
 
     public async Task<TaxonomyResult> Generate(
@@ -56,6 +59,31 @@ public class TaxonomyService : ITaxonomyService
     {
         var titleList = titles.ToList();
 
+        // Pre-pipeline decontamination
+        int[]? filteredToOriginal = null;
+        var excludedCount = 0;
+        if (_decontaminator != null && brandTokens != null)
+        {
+            var decontamination = await _decontaminator.Filter(
+                titleList, productName, brandTokens, ct);
+            excludedCount = decontamination.ExcludedCount;
+
+            if (excludedCount > 0)
+            {
+                _logger.LogInformation(
+                    "Decontamination excluded {Excluded} of {Total} titles",
+                    excludedCount, titleList.Count);
+
+                filteredToOriginal = new int[decontamination.FilteredTitles.Count()];
+                for (var i = 0; i < filteredToOriginal.Length; i++)
+                {
+                    filteredToOriginal[i] = decontamination.FilteredToOriginalIndex[i];
+                }
+
+                titleList = decontamination.FilteredTitles.ToList();
+            }
+        }
+
         var rawNgrams = _extractor.Extract(titleList, productName);
         var synonymsMerged = await _extractor.MergeSynonyms(rawNgrams, ct);
         var ngrams = (await _extractor.SubsumeByTokenOverlap(synonymsMerged, ct)).ToList();
@@ -63,7 +91,7 @@ public class TaxonomyService : ITaxonomyService
         var candidates = FindCandidates(titleList, ngrams, out var allMatchSets, out var exclusivePairs);
         if (candidates.Count < MinAxisValues)
         {
-            return EmptyResult(titleList);
+            return EmptyResult(titleList, filteredToOriginal, excludedCount);
         }
 
         var graphEdges = await BuildGraphEdges(candidates, exclusivePairs, ct);
@@ -102,6 +130,15 @@ public class TaxonomyService : ITaxonomyService
         }
 
         var assignments = AssignListings(titleList, axes, matchSetLookup);
+
+        // Remap assignment indices back to original if decontamination filtered titles
+        if (filteredToOriginal != null)
+        {
+            assignments = assignments
+                .Select(a => a with { ListingIndex = filteredToOriginal[a.ListingIndex] })
+                .ToList();
+        }
+
         var covered = assignments.Count(a => a.Cell.Count > 0);
         var conflicts = assignments.Count(a => a.HasConflict);
         var total = titleList.Count;
@@ -109,16 +146,23 @@ public class TaxonomyService : ITaxonomyService
         return new TaxonomyResult(
             axes, assignments, Enumerable.Empty<CellStats>(),
             total > 0 ? 100.0 * covered / total : 0,
-            total > 0 ? 100.0 * conflicts / total : 0);
+            total > 0 ? 100.0 * conflicts / total : 0,
+            excludedCount);
     }
 
-    private static TaxonomyResult EmptyResult(List<string> titles)
+    private static TaxonomyResult EmptyResult(
+        List<string> titles, int[]? filteredToOriginal = null, int excludedCount = 0)
     {
+        var assignments = titles
+            .Select((_, i) => new CellAssignment(
+                filteredToOriginal != null ? filteredToOriginal[i] : i,
+                new Dictionary<string, string>(), false));
+
         return new TaxonomyResult(
             Enumerable.Empty<Axis>(),
-            titles.Select((_, i) => new CellAssignment(i, new Dictionary<string, string>(), false)),
+            assignments,
             Enumerable.Empty<CellStats>(),
-            0.0, 0.0);
+            0.0, 0.0, excludedCount);
     }
 
     private List<MatchSet> FindCandidates(

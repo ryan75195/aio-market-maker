@@ -36,19 +36,30 @@ public class TaxonomyServiceTests
                 return texts.Select(EmbeddingForText).ToArray();
             });
 
+        mockEmbedding
+            .Setup(e => e.GetEmbedding(It.IsAny<string>(), It.IsAny<CancellationToken>(), It.IsAny<EmbeddingModel>()))
+            .ReturnsAsync((string text, CancellationToken _, EmbeddingModel __) => EmbeddingForText(text));
+
         var extractor = new NgramExtractor(mockEmbedding.Object);
         var analyzer = new MutualExclusivityAnalyzer();
         var detector = new LouvainCommunityDetector();
+        var decontaminator = new TitleDecontaminator(
+            mockEmbedding.Object,
+            Mock.Of<ILogger<TitleDecontaminator>>());
 
         _service = new TaxonomyService(
             extractor, analyzer, detector, mockEmbedding.Object,
-            new Mock<ILogger<TaxonomyService>>().Object);
+            new Mock<ILogger<TaxonomyService>>().Object,
+            refiner: null,
+            decontaminator: decontaminator);
     }
 
     /// <summary>
     /// Returns a deterministic embedding for a given text. Known terms get
     /// hand-crafted vectors; unknown terms get a hash-based unique vector so
     /// that deduplication does not collapse unrelated n-grams.
+    /// Full title strings used in decontamination tests get explicit vectors
+    /// with high similarity to the "PS5 Console" product name.
     /// </summary>
     private static float[] EmbeddingForText(string text)
     {
@@ -63,6 +74,17 @@ public class TaxonomyServiceTests
             "slim" => new[] { 0f, 0f, 0f, 0f, 1f, 0f, 0f, 0f },
             "ps5" => new[] { 0f, 0f, 0f, 0f, 0f, 1f, 0f, 0f },
             "console" => new[] { 0f, 0f, 0f, 0f, 0f, 0f, 1f, 0f },
+            // Product name and full title strings for decontamination similarity checks.
+            // All PS5 titles share ps5+console dimensions, giving high cosine similarity
+            // to "PS5 Console". Xbox titles lack ps5 dimension, giving low similarity.
+            "PS5 Console" => new[] { 0f, 0f, 0f, 0f, 0f, 0.707f, 0.707f, 0f },
+            "PS5 Disc Console White" => new[] { 0.4f, 0f, 0.4f, 0f, 0f, 0.4f, 0.4f, 0f },
+            "PS5 Digital Console White" => new[] { 0.3f, 0.1f, 0.4f, 0f, 0f, 0.4f, 0.4f, 0f },
+            "PS5 Disc Console Black" => new[] { 0.4f, 0f, 0.3f, 0.1f, 0f, 0.4f, 0.4f, 0f },
+            "PS5 Digital Console Black" => new[] { 0.3f, 0.1f, 0.3f, 0.1f, 0f, 0.4f, 0.4f, 0f },
+            "PS5 Disc Slim Console" => new[] { 0.4f, 0f, 0f, 0f, 0.3f, 0.4f, 0.4f, 0f },
+            "Xbox Series X Console Black" => new[] { 0f, 0f, 0.3f, 0.1f, 0f, 0f, 0.4f, 0.8f },
+            "PS5 Disc Digital Console" => new[] { 0.5f, 0.1f, 0f, 0f, 0f, 0.4f, 0.4f, 0f },
             _ => HashBasedEmbedding(text, 8),
         };
     }
@@ -169,5 +191,38 @@ public class TaxonomyServiceTests
             Assert.That(assignedIndices.Distinct().Count(), Is.EqualTo(Ps5Titles.Length),
                 "Each listing index should appear exactly once");
         });
+    }
+
+    [Test]
+    public async Task Should_exclude_titles_not_matching_brand_tokens()
+    {
+        // 50 on-brand titles + 10 off-brand contaminants
+        var onBrand = Enumerable.Repeat("PS5 Disc Console White", 25)
+            .Concat(Enumerable.Repeat("PS5 Digital Console Black", 25))
+            .ToList();
+        var offBrand = Enumerable.Repeat("Xbox Series X Console Black", 10).ToList();
+        var allTitles = onBrand.Concat(offBrand).ToList();
+
+        var result = await _service.Generate(
+            allTitles, "PS5 Console", new[] { "ps5" });
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.ExcludedCount, Is.EqualTo(10));
+            // Assignments should only reference original indices 0-49 (the PS5 titles)
+            var maxIndex = result.Assignments.Max(a => a.ListingIndex);
+            Assert.That(maxIndex, Is.LessThan(50),
+                "Assignments should map back to original indices within the on-brand range");
+        });
+    }
+
+    [Test]
+    public async Task Should_not_filter_when_brand_tokens_null()
+    {
+        var titles = Ps5Titles;
+
+        var result = await _service.Generate(titles, "PS5 Console", null);
+
+        Assert.That(result.ExcludedCount, Is.EqualTo(0));
     }
 }
