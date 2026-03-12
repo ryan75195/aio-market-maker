@@ -15,6 +15,7 @@ using AIOMarketMaker.Core.Services.Pipeline;
 using AIOMarketMaker.Core.Services.Taxonomy;
 using AIOMarketMaker.ML.Services;
 using AIOMarketMaker.Console.Tasks;
+using LLama.Native;
 using ScraperWorker.Services;
 
 namespace AIOMarketMaker.Console;
@@ -178,11 +179,47 @@ public static class HostHelper
                     return new LlmBrandTokenExtractor(client, logger);
                 });
 
-                // Taxonomy pipeline
-                services.AddSingleton<INgramExtractor, NgramExtractor>();
-                services.AddSingleton<IMutualExclusivityAnalyzer, MutualExclusivityAnalyzer>();
-                services.AddSingleton<ICommunityDetector, LouvainCommunityDetector>();
-                services.AddSingleton<ITaxonomyService, TaxonomyService>();
+                // Taxonomy pipeline — top-down extraction or bottom-up fallback
+                var extractionModelPath = configuration.GetValue<string>("Extraction:ModelPath") ?? "";
+                if (!string.IsNullOrEmpty(extractionModelPath) && File.Exists(extractionModelPath))
+                {
+                    var gpuLayers = configuration.GetValue<int>("Extraction:GpuLayers", -1);
+                    if (gpuLayers != 0)
+                    {
+                        var cudaLibPath = Path.Combine(AppContext.BaseDirectory,
+                            "runtimes", "win-x64", "native", "cuda12", "llama.dll");
+                        NativeLibraryConfig.LLama
+                            .WithLibrary(cudaLibPath)
+                            .WithLogCallback((level, msg) =>
+                                System.Console.Error.WriteLine($"[LLama-{level}] {msg}"));
+                    }
+
+                    var extractionConfig = new ExtractionConfig(
+                        extractionModelPath,
+                        configuration.GetValue<int>("Extraction:MaxTokens", 512),
+                        configuration.GetValue<int>("Extraction:ContextSize", 1024),
+                        configuration.GetValue<int>("Extraction:GpuLayers", -1));
+                    services.AddSingleton(extractionConfig);
+                    services.AddSingleton<IExtractionModelRunner, ExtractionModelRunner>();
+
+                    var skeletonModel = configuration.GetValue<string>("OpenAi:SkeletonModel") ?? "gpt-5-nano";
+                    services.AddSingleton<ISkeletonGenerator>(sp =>
+                    {
+                        var apiKey = sp.GetRequiredService<IConfiguration>().GetValue<string>("OpenAi:ApiKey")!;
+                        var client = new OpenAI.Chat.ChatClient(skeletonModel, apiKey);
+                        var logger = sp.GetRequiredService<ILogger<OpenAiSkeletonGenerator>>();
+                        return new OpenAiSkeletonGenerator(client, logger);
+                    });
+
+                    services.AddSingleton<ITaxonomyService, TopDownTaxonomyService>();
+                }
+                else
+                {
+                    services.AddSingleton<INgramExtractor, NgramExtractor>();
+                    services.AddSingleton<IMutualExclusivityAnalyzer, MutualExclusivityAnalyzer>();
+                    services.AddSingleton<ICommunityDetector, LouvainCommunityDetector>();
+                    services.AddSingleton<ITaxonomyService, TaxonomyService>();
+                }
                 services.AddScoped<ITaxonomyPersistenceService, TaxonomyPersistenceService>();
                 services.AddSingleton<ITaxonomyRefiner>(sp =>
                 {

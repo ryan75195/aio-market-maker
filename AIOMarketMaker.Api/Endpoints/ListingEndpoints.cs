@@ -3,6 +3,7 @@ using Azure.Storage.Blobs;
 using AIOMarketMaker.Core.Data;
 using AIOMarketMaker.Core.Data.Models;
 using AIOMarketMaker.Core.Services;
+using AIOMarketMaker.Core.Services.Taxonomy;
 
 namespace AIOMarketMaker.Api.Endpoints;
 
@@ -134,7 +135,8 @@ public static class ListingEndpoints
     }
 
     private static async Task<IResult> GetListingDetail(
-        EtlDbContext db, IListingPredictionService predictionService, int id,
+        EtlDbContext db, IListingPredictionService predictionService,
+        ITaxonomyQueryService taxonomyQuery, int id,
         decimal priceBand = 0, decimal feePercent = 0, bool matchCondition = true)
     {
         var listing = await db.Listings
@@ -146,16 +148,49 @@ public static class ListingEndpoints
             return Results.NotFound();
         }
 
-        var filters = new PredictionFilters(priceBand, feePercent, matchCondition);
-        var comps = await predictionService.GetComparables(id, filters);
-        var prediction = await predictionService.GetPrediction(id, filters);
+        // Taxonomy is the primary source for comparables
+        var taxonomyComps = (await taxonomyQuery.GetCellComparables(id)).ToList();
+        IEnumerable<ComparableListing> comparables;
+        ListingPredictionResult? prediction = null;
 
-        var comparables = comps.Select(c => new ComparableListing(
-            c.RelationshipId, c.ListingId!, c.Title,
-            c.Description, c.Price, c.Condition,
-            c.Url, c.Images,
-            c.SoldDateUtc, c.SimilarityScore, c.ClassifierConfidence,
-            c.Explanation));
+        if (taxonomyComps.Count > 0)
+        {
+            comparables = taxonomyComps.Select(c => new ComparableListing(
+                0, c.EbayListingId ?? "", c.Title,
+                c.Description, c.Price, c.Condition,
+                c.Url, c.Images,
+                c.SoldDateUtc, 1.0, null,
+                $"Same taxonomy cell: {c.CellKey}"));
+
+            var opportunity = await db.TaxonomyOpportunities
+                .AsNoTracking()
+                .FirstOrDefaultAsync(o => o.ListingId == id);
+
+            if (opportunity != null)
+            {
+                prediction = new ListingPredictionResult(
+                    id,
+                    opportunity.SoldComps,
+                    opportunity.MedianSoldPrice,
+                    opportunity.EstimatedProfit,
+                    opportunity.AvgDaysToSell,
+                    MedianSoldPrice: opportunity.MedianSoldPrice);
+            }
+        }
+        else
+        {
+            // Fall back to vector search + classifier relationships
+            var filters = new PredictionFilters(priceBand, feePercent, matchCondition);
+            var comps = await predictionService.GetComparables(id, filters);
+            prediction = await predictionService.GetPrediction(id, filters);
+
+            comparables = comps.Select(c => new ComparableListing(
+                c.RelationshipId, c.ListingId!, c.Title,
+                c.Description, c.Price, c.Condition,
+                c.Url, c.Images,
+                c.SoldDateUtc, c.SimilarityScore, c.ClassifierConfidence,
+                c.Explanation));
+        }
 
         var detail = new ListingDetail(
             listing.Id, listing.ListingId, listing.Title, listing.Description,
@@ -173,6 +208,7 @@ public static class ListingEndpoints
 
     private static async Task<IResult> DismissComparable(
         EtlDbContext db, IListingPredictionService predictionService,
+        ITaxonomyQueryService taxonomyQuery,
         int id, int relationshipId,
         decimal priceBand = 0, decimal feePercent = 0, bool matchCondition = true)
     {
@@ -189,7 +225,7 @@ public static class ListingEndpoints
         db.ListingRelationships.Remove(relationship);
         await db.SaveChangesAsync();
 
-        return await GetListingDetail(db, predictionService, id, priceBand, feePercent, matchCondition);
+        return await GetListingDetail(db, predictionService, taxonomyQuery, id, priceBand, feePercent, matchCondition);
     }
 
     private static async Task<IResult> GetListingStats(EtlDbContext db)

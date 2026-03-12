@@ -3,10 +3,12 @@ using AIOMarketMaker.Api.Endpoints;
 using AIOMarketMaker.Core.Data;
 using AIOMarketMaker.Core.Data.Models;
 using AIOMarketMaker.Core.Services;
+using AIOMarketMaker.Core.Services.Taxonomy;
 using AIOMarketMaker.Tests.Common;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.Extensions.Options;
+using Moq;
 
 namespace AIOMarketMaker.Tests.Unit.Endpoints;
 
@@ -36,8 +38,11 @@ public class ListingEndpoints_UnitTests
             BindingFlags.NonPublic | BindingFlags.Static);
 
         var service = new ListingPredictionService(_db, Options.Create(new PricingOptions()));
+        var taxonomyQuery = new Mock<ITaxonomyQueryService>();
+        taxonomyQuery.Setup(t => t.GetCellComparables(It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Enumerable.Empty<TaxonomyCellComparable>());
         var resultTask = (Task<IResult>)method!.Invoke(null,
-            new object[] { _db, service, id, priceBand, feePercent, matchCondition })!;
+            new object[] { _db, service, taxonomyQuery.Object, id, priceBand, feePercent, matchCondition })!;
         return await resultTask;
     }
 
@@ -49,8 +54,11 @@ public class ListingEndpoints_UnitTests
             BindingFlags.NonPublic | BindingFlags.Static);
 
         var service = new ListingPredictionService(_db, Options.Create(new PricingOptions()));
+        var taxonomyQuery = new Mock<ITaxonomyQueryService>();
+        taxonomyQuery.Setup(t => t.GetCellComparables(It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Enumerable.Empty<TaxonomyCellComparable>());
         var resultTask = (Task<IResult>)method!.Invoke(null,
-            new object[] { _db, service, listingId, relationshipId, priceBand, feePercent, matchCondition })!;
+            new object[] { _db, service, taxonomyQuery.Object, listingId, relationshipId, priceBand, feePercent, matchCondition })!;
         return await resultTask;
     }
 

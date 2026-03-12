@@ -12,6 +12,18 @@ public record TaxonomyFacetResult(
     int TotalListings,
     int AssignedListings);
 
+public record TaxonomyCellComparable(
+    int ListingId,
+    string? EbayListingId,
+    string? Title,
+    string? Description,
+    decimal? Price,
+    string? Condition,
+    string? Url,
+    string? Images,
+    DateTime? SoldDateUtc,
+    string CellKey);
+
 public interface ITaxonomyQueryService
 {
     Task<TaxonomyFacetResult?> GetFacets(
@@ -19,6 +31,9 @@ public interface ITaxonomyQueryService
 
     Task<IEnumerable<ParsedAssignment>> GetAssignments(
         int jobId, CancellationToken ct = default);
+
+    Task<IEnumerable<TaxonomyCellComparable>> GetCellComparables(
+        int listingId, CancellationToken ct = default);
 }
 
 public static class TaxonomyFacets
