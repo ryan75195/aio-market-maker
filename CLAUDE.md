@@ -76,6 +76,77 @@ The `WebscraperClient` wraps this API and handles polling until jobs complete.
 - Requires `StorageConnectionString` configuration for Azure Storage
 - Parsers are registered as singletons (stateless)
 
+## The Variant Matching Problem
+
+**Core question:** Given an active eBay listing, which sold listings represent the *same product variant*? Getting this wrong means pricing a PS5 Digital against a PS5 Pro, or including accessories in console pricing.
+
+**Why it's hard:**
+- Titles are unstructured: "PS5 Slim 1TB White" vs "Sony PlayStation 5 Slim Disc Edition 1TB Console - White"
+- Accessories contaminate results: "PS5 Controller White" matches "white" and "PS5"
+- Variants are category-specific: PS5 has edition/storage/form_factor; sneakers have size/colorway/style code
+- O(n²) pairwise comparison doesn't scale (7,230 listings = 26M pairs)
+
+### Generation 1: Pairwise Comparison
+
+**ONNX Pairwise Classifier** (`ML/Services/VariantModelRunner.cs`) — RoBERTa-large fine-tuned on 143K labeled pairs. Given two titles, predicts "same variant?" with a confidence score. F1=0.913 on test set, 12ms/pair on GPU.
+
+**Problem:** O(n²) scaling. A job with 7,230 listings produces 26 million pairs. Even at 12ms/pair on GPU that's 87 hours. We tried reducing the candidate set with embedding similarity (Pinecone, then USearch) but similarity search is too noisy — it returns accessories, wrong products, and adjacent variants that look similar in embedding space but are different products.
+
+**Ensemble Calibration** combined the ONNX logit with embedding cosine similarity via logistic regression, improving confidence scores. But it's still fundamentally O(n²).
+
+**Status:** Active as a fallback for small batches. Pinecone removed, USearch disabled.
+
+### Generation 2: Bottom-Up Taxonomy (Current Production)
+
+**N-gram Taxonomy** (`Core/Services/Taxonomy/TaxonomyService.cs`) — Discovers variant axes automatically from title text. Pipeline: extract n-grams → find mutually exclusive pairs (e.g., "disc" and "digital" rarely co-occur) → cluster into axes via Louvain community detection → LLM refines the raw communities.
+
+**What works:** Produces interpretable axes cheaply (~$0.01/category, <15 seconds). Now running across all 126 jobs with 16,310 computed opportunities via cell-based pricing.
+
+**Problem 1: 8.4% average conflict rate.** Listings get assigned to contradictory cells — e.g., a listing matching both "disc" and "digital" values on the same axis. This happens because n-gram matching is fuzzy and community detection sometimes groups unrelated tokens. ~31K listings across all jobs have unreliable cell assignments, which corrupts the comparable pool for pricing.
+
+**Problem 2: 78% average coverage.** 22% of listings get no cell assignment at all — either they're accessories (correctly excluded) or the taxonomy missed their variant attributes (incorrectly excluded). We added brand token decontamination and regex injection for structured IDs (LEGO set numbers, Nike style codes) which helped, but coverage plateaus.
+
+**Problem 3: Axes are statistical, not semantic.** The pipeline discovers what tokens co-occur, not what they mean. It can't distinguish variant-defining axes (edition, storage) from condition axes (packaging, contents). A cell like `{"form_factor":"pro"}` with only 1 axis matched is a subcategory, not a variant — but the system treats it the same as a fully-specified cell.
+
+**Augmentations built on top:**
+- `LlmTaxonomyRefiner` — GPT-4o-mini post-processes axes. Helps but can over-prune statistically valid values.
+- `LlmBrandTokenExtractor` + `TitleDecontaminator` — Filters wrong products before taxonomy. Only catches brand-level mismatches, not accessory contamination within a brand.
+- `LLM Regex Injection` — LLM suggests structured ID patterns. Works well for categories with model numbers but doesn't help categories like sneakers where variants are color names.
+
+### Generation 3: Top-Down Extraction (Experimental, 2026-03-12)
+
+**Skeleton + Extraction** (`Core/Services/Taxonomy/TopDownTaxonomyService.cs`, `ML/Services/ExtractionModelRunner.cs`) — Two-stage approach: (1) GPT-5-nano examines sample titles and defines the axes + allowed values once per category (the "skeleton"), then (2) a fine-tuned Qwen3-4B GGUF model extracts values from each title locally on GPU.
+
+**What works:** Produces cleaner axes because the LLM understands product semantics. PS5 test: 84.4% coverage (up from 69%), 0% conflicts (down from 5.5%), 7 meaningful axes (model, edition, capacity, form_factor, color, packaging, contents).
+
+**Problem 1: Too slow.** 45 minutes for one job (7,230 listings) because the StatelessExecutor creates and destroys a CUDA context per title. Full backfill across 126 jobs would take days.
+
+**Problem 2: The model makes errors.** DualSense controller matched `color:white` instead of being rejected as an accessory. CFI-1216B was hallucinated as "pro" generation. These errors flow into pricing.
+
+**Problem 3: The extraction step may be over-engineered.** Running a 4B decoder model to match "1TB" against a known list of `["825gb", "1tb", "2tb"]` is overkill. The skeleton (defining axes + values) is the creative step that needs an LLM. The extraction (matching known values in title text) is a mechanical step that could be fuzzy string matching — except fuzzy matching can't reject accessories, which is where the LLM adds real value.
+
+**Problem 4: Partial-axis cells aren't variants.** A cell must specify ALL variant-defining axes to be a true comparable group. But most titles don't mention every axis (few PS5 listings say "white" because it's the default). Requiring full coverage kills volume; allowing partial coverage creates noisy subcategories.
+
+### Current State (2026-03-12)
+
+**Production:** Bottom-up taxonomy → cell-based pricing. 126 jobs, 374K listings, 16,310 opportunities.
+
+**Key unsolved problems:**
+1. **Conflict rate (8.4%)** — The biggest pricing accuracy issue. Conflicted listings get wrong cell assignments.
+2. **Variant vs condition axis distinction** — No approach separates axes that define the product (edition, storage) from axes that modify the price (packaging, condition, bundled accessories).
+3. **Accessory rejection at extraction time** — Bottom-up decontamination only filters by brand. Top-down model sometimes matches accessory attributes.
+4. **Partial-axis cells** — Neither approach enforces that a cell must fully specify all variant axes. Sparse cells create overlapping, noisy comparable groups.
+5. **Skeleton consistency across runs** — Each backfill generates fresh axes. "form_factor" today might be "generation" tomorrow for the same category. Cells are incomparable across runs.
+
+### Key Files
+
+- `Core/Services/Taxonomy/TaxonomyService.cs` — bottom-up pipeline (production)
+- `Core/Services/Taxonomy/TopDownTaxonomyService.cs` — top-down extraction (experimental)
+- `Core/Services/Taxonomy/CellPricingService.cs` — cell-based pricing
+- `Core/Services/Taxonomy/TaxonomyOpportunityService.cs` — opportunity detection
+- `ML/Services/ExtractionModelRunner.cs` — Qwen3-4B GGUF inference
+- `ML/Services/VariantModelRunner.cs` — ONNX pairwise classifier (fallback)
+
 ## Git & Committing
 
 This directory (`AIOMarketMaker/`) is its own git repository, separate from the parent `parent-repo/` repo. Always commit from inside this directory.

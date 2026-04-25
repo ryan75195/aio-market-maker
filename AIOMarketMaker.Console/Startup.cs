@@ -252,6 +252,7 @@ public static class HostHelper
                 services.AddTask<ArbitrageTask>();
                 services.AddTask<BackfillOpportunitiesTask>();
                 services.AddTask<BackfillBrandTokensTask>();
+                services.AddTask<TestExtractionTask>();
             })
             .Build();
     }
