@@ -35,8 +35,9 @@ from sklearn.metrics import accuracy_score, f1_score, log_loss
 
 MODEL_PATH = Path("E:/Dev/ml-training/variant-classifier/v10/onnx/model.onnx")
 DATA_PATH = Path("data/labeled_pairs_v10.csv")
-IDMAP_PATH = Path("<REPO_ROOT>/AIOMarketMaker/AIOMarketMaker.Api/data/vectors-idmap.json")
-INDEX_PATH = Path("<REPO_ROOT>/AIOMarketMaker/AIOMarketMaker.Api/data/vectors.usearch")
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+IDMAP_PATH = PROJECT_ROOT / "AIOMarketMaker.Api" / "data" / "vectors-idmap.json"
+INDEX_PATH = PROJECT_ROOT / "AIOMarketMaker.Api" / "data" / "vectors.usearch"
 MAX_LENGTH = 512
 BATCH_SIZE = 32
 
