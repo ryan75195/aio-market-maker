@@ -147,7 +147,7 @@ Co-Authored-By: Claude <noreply@anthropic.com>"
 
 ### Blob Storage
 1. Azurite (local): container `html`
-2. Azure: account `YOUR_STORAGE_ACCOUNT`, container `scrape-results`
+2. Azure: account `<SCRAPER_STORAGE_ACCOUNT>` (set via `SCRAPER_STORAGE_ACCOUNT` env var), container `scrape-results`
 
 ### Known Status Patterns
 | Pattern | Status |
