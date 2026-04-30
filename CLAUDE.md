@@ -42,10 +42,10 @@ The solution consists of these main projects:
 - NUnit with Moq
 - Test data: Saved HTML files in `Tests.Common\Data\Listings\`
 
-### AIOWebScraper.Storage.Azure
-- External dependency (located in `..\..\AIOWebScraper\`)
-- Azure Table Storage and Blob Storage abstractions
-- Provides `IJobRepository` for managing scrape jobs
+### Storage.Azure (external dependency)
+- Provides Azure Table Storage and Blob Storage abstractions
+- Exposes `IJobRepository` for managing scrape jobs
+- Sourced from a separate web-scraper repository (out of scope for this codebase)
 
 ## Key Architecture Patterns
 
@@ -149,24 +149,8 @@ The `WebscraperClient` wraps this API and handles polling until jobs complete.
 
 ## Git & Committing
 
-This directory (`AIOMarketMaker/`) is its own git repository, separate from the parent `parent-repo/` repo. Always commit from inside this directory.
-
-```bash
-# Correct — commit from the AIOMarketMaker directory
-cd AIOMarketMaker
-git add <files>
-git commit -m "feat: description"
-
-# Wrong — committing from the parent repo won't see AIOMarketMaker files
-cd parent-repo
-git add AIOMarketMaker/...  # These files are invisible to this repo
-```
-
-- **Remote:** `origin` → `https://github.com/ryan75195/AIOMarketMaker.git`
-- **Main branch:** `main`
-- **Working branch:** typically `master` (local development)
-
-The parent `parent-repo/` repo treats `AIOMarketMaker/` as a nested repo (it has its own `.git/`). Plan docs live in the parent repo at `docs/plans/`.
+- **Main branch:** `master`
+- Plan docs live under `docs/plans/`
 
 ## Common Commands
 
@@ -314,14 +298,7 @@ Test screenshots are saved to `tests/screenshots/`:
 - Azure Storage Emulator or real Azure Storage account for job persistence
 
 ### Running the Scraper Dependency
-AIOMarketMaker depends on AIOWebScraper for HTML fetching. Start it before running the API:
-
-```bash
-# From the AIOWebScraper folder
-cd ../AIOWebScraper/ScraperWorker
-dotnet run -- --dedicated-mode
-# Runs on http://localhost:7126
-```
+AIOMarketMaker depends on an external HTML-fetching scraper service. Start that service before running the API; it should listen on `http://localhost:7126`.
 
 ### Clearing Azurite Queues
 To clear the scrape work queue during development:
@@ -339,7 +316,7 @@ When scrapes return small/invalid HTML:
 
 ## Migration & Refactor Planning - LESSONS LEARNED
 
-**Context:** The 2026-01-31 Durable Functions migration introduced regressions because the plan didn't explicitly document behavioral requirements.
+**Context:** A previous Durable Functions migration introduced regressions because the plan didn't explicitly document behavioral requirements. The guidance below grew out of that retrospective.
 
 ### Required Sections in Any Migration Plan
 
@@ -367,7 +344,7 @@ If simplifying, list EVERY feature being removed:
 
 #### 3. Tests Must Encode Business Requirements
 
-**The 2026-01-31 regression happened because:**
+**A real regression happened because:**
 ```csharp
 // The test created a listing with NULL status
 var existing = new Listing { ListingId = "itm002" };

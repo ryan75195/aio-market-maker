@@ -17,7 +17,12 @@ except ImportError:
 # --- Constants ---
 MODEL = "gpt-4o-mini"  # tiktoken uses gpt-4o-mini encoding (same as gpt-5-mini: o200k_base)
 MAX_DESC_LENGTH = 500
-CSV_PATH = r"<REPO_ROOT>\AIOMarketMaker\AIOMarketMaker.ML\Training\data\labeled_pairs_v8.csv"
+import os as _os
+_REPO_ROOT = _os.path.abspath(_os.path.join(_os.path.dirname(__file__), "..", ".."))
+CSV_PATH = _os.environ.get(
+    "AIOMM_LABELED_PAIRS_CSV",
+    _os.path.join(_REPO_ROOT, "AIOMarketMaker.ML", "Training", "data", "labeled_pairs_v8.csv"),
+)
 
 # Batch API pricing for gpt-5-mini (per 1M tokens)
 PRICE_INPUT_UNCACHED = 0.0625   # $0.125 standard * 0.5 batch discount

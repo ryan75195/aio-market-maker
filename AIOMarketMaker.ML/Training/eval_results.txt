@@ -14,154 +14,154 @@ Evaluating 50 pairs...
 ================================================================================
 [1/50] Louis Vuitton Neverfull | OK | 4.9s
   Human: not comparable
-  Model: different — Different colorways: Azure (N51107) vs Monogram — fashion colorway matters.
+  Model: different ï¿½ Different colorways: Azure (N51107) vs Monogram ï¿½ fashion colorway matters.
 [2/50] Samsung Galaxy S24 | WRONG | 3.8s
   Human: not comparable
-  Model: same — Same model/specs; one sealed new, the other like-new opened — adjacent condition bands, comparable.
+  Model: same ï¿½ Same model/specs; one sealed new, the other like-new opened ï¿½ adjacent condition bands, comparable.
 [3/50] Elden Ring Shadow of the Erdtree | OK | 4.8s
   Human: comparable
-  Model: same — Both are PS5 Elden Ring: Shadow of the Erdtree Collector's Edition; no explicit conflicts in conditi
+  Model: same ï¿½ Both are PS5 Elden Ring: Shadow of the Erdtree Collector's Edition; no explicit conflicts in conditi
 [4/50] PlayStation 5 Console | OK | 4.9s
   Human: not comparable
-  Model: different — Listing A includes an extra 512GB M.2 SSD and specific controllers; Listing B only lists an extra co
+  Model: different ï¿½ Listing A includes an extra 512GB M.2 SSD and specific controllers; Listing B only lists an extra co
 [5/50] Nest Thermostat | OK | 4.1s
   Human: comparable
-  Model: same — Same model HF001235-GB; one sealed, other unstated (compatible).
+  Model: same ï¿½ Same model HF001235-GB; one sealed, other unstated (compatible).
 [6/50] Louis Vuitton Neverfull | WRONG | 3.6s
   Human: comparable
-  Model: different — Listing A includes Pochette and Dustbag; Listing B does not list those accessories.
+  Model: different ï¿½ Listing A includes Pochette and Dustbag; Listing B does not list those accessories.
 [7/50] Peloton Bike | WRONG | 3.2s
   Human: comparable
-  Model: different — Included accessories differ (weights and pedals vs shoes, earphones, manuals).
+  Model: different ï¿½ Included accessories differ (weights and pedals vs shoes, earphones, manuals).
 [8/50] Ubiquiti UniFi Access Point | WRONG | 4.4s
   Human: not comparable
-  Model: same — Same model UAP-AC-LITE; both used/accessories-only; no explicit contradictions in condition or inclu
+  Model: same ï¿½ Same model UAP-AC-LITE; both used/accessories-only; no explicit contradictions in condition or inclu
 [9/50] PlayStation 5 Console | OK | 3.1s
   Human: comparable
-  Model: same — Same PS Portal model, similar condition and no explicit conflicting inclusions.
+  Model: same ï¿½ Same PS Portal model, similar condition and no explicit conflicting inclusions.
 [10/50] iPhone 15 Pro Max | OK | 4.0s
   Human: comparable
-  Model: same — Same model and storage; condition bands adjacent (Good vs Great); no conflicting completeness or col
+  Model: same ï¿½ Same model and storage; condition bands adjacent (Good vs Great); no conflicting completeness or col
 [11/50] Samsung Galaxy S24 | OK | 2.8s
   Human: comparable
-  Model: same — Same product and specs; no conflicting condition or completeness details.
+  Model: same ï¿½ Same product and specs; no conflicting condition or completeness details.
 [12/50] Canada Goose Parka | OK | 3.5s
   Human: comparable
-  Model: same — Same model, size, and condition; both have minor pocket damage and no conflicting details.
+  Model: same ï¿½ Same model, size, and condition; both have minor pocket damage and no conflicting details.
 [13/50] Dyson Airwrap | WRONG | 4.5s
   Human: not comparable
-  Model: same — Same Dyson Airwrap 30mm barrel; one new, one used (adjacent condition); no conflicting details.
+  Model: same ï¿½ Same Dyson Airwrap 30mm barrel; one new, one used (adjacent condition); no conflicting details.
 [14/50] Dyson Airwrap | WRONG | 4.2s
   Human: not comparable
-  Model: same — Same Dyson Airwrap HS01 replacement power cord; only color differs (color is trivial for this access
+  Model: same ï¿½ Same Dyson Airwrap HS01 replacement power cord; only color differs (color is trivial for this access
 [15/50] Samsung Galaxy S24 | WRONG | 3.8s
   Human: not comparable
-  Model: same — Same model and storage; condition adjacent (Good vs Fair); color is trivial for electronics.
+  Model: same ï¿½ Same model and storage; condition adjacent (Good vs Fair); color is trivial for electronics.
 [16/50] Louis Vuitton Neverfull | WRONG | 3.4s
   Human: comparable
-  Model: different — Listing A includes a pouch; Listing B does not list the pouch — included items differ.
+  Model: different ï¿½ Listing A includes a pouch; Listing B does not list the pouch ï¿½ included items differ.
 [17/50] Zelda Tears of the Kingdom | OK | 4.0s
   Human: comparable
-  Model: same — Same Collector's Edition; sealed vs NM+ (adjacent condition) and no explicit conflicting inclusions.
+  Model: same ï¿½ Same Collector's Edition; sealed vs NM+ (adjacent condition) and no explicit conflicting inclusions.
 [18/50] PlayStation 5 Console | OK | 4.1s
   Human: not comparable
-  Model: different — Listing A is brand-new sealed; Listing B is used and missing the original cable — condition and comp
+  Model: different ï¿½ Listing A is brand-new sealed; Listing B is used and missing the original cable ï¿½ condition and comp
 [19/50] Shure SM7B Microphone | OK | 3.5s
   Human: not comparable
-  Model: different — Listing A explicitly lacks cables; Listing B is sealed (complete) — completeness differs.
+  Model: different ï¿½ Listing A explicitly lacks cables; Listing B is sealed (complete) ï¿½ completeness differs.
 [20/50] Louis Vuitton Neverfull | OK | 4.4s
   Human: not comparable
-  Model: different — Different fashion colorways/patterns (Monogram vs Damier Ebene) — colorway matters for purses.
+  Model: different ï¿½ Different fashion colorways/patterns (Monogram vs Damier Ebene) ï¿½ colorway matters for purses.
 [21/50] Dyson Airwrap | OK | 4.2s
   Human: comparable
-  Model: same — Same Dyson Airwrap Complete Long; color and limited edition mention don't prevent price comparabilit
+  Model: same ï¿½ Same Dyson Airwrap Complete Long; color and limited edition mention don't prevent price comparabilit
 [22/50] iPhone 15 Pro Max | WRONG | 4.8s
   Human: not comparable
-  Model: same — Same iPhone 15 Pro Max 256GB White Titanium, both Grade A condition; no conflicting details.
+  Model: same ï¿½ Same iPhone 15 Pro Max 256GB White Titanium, both Grade A condition; no conflicting details.
 [23/50] Boss Katana Amp | WRONG | 3.4s
   Human: not comparable
-  Model: same — Same model (Boss Katana:GO); no conflicting condition or completeness details.
+  Model: same ï¿½ Same model (Boss Katana:GO); no conflicting condition or completeness details.
 [24/50] Omega Seamaster Watch | WRONG | 3.3s
   Human: comparable
-  Model: different — Different dial color (black vs silver); colorway matters for watches.
+  Model: different ï¿½ Different dial color (black vs silver); colorway matters for watches.
 [25/50] Nintendo Switch OLED | OK | 3.2s
   Human: not comparable
-  Model: different — Listing B includes games and headset; Listing A does not confirm those extras.
+  Model: different ï¿½ Listing B includes games and headset; Listing A does not confirm those extras.
 [26/50] Dyson V15 Vacuum | OK | 3.5s
   Human: comparable
-  Model: same — Same Dyson V15 Detect model; no explicit contradictions in condition or included items.
+  Model: same ï¿½ Same Dyson V15 Detect model; no explicit contradictions in condition or included items.
 [27/50] Pokemon Booster Box Sealed | WRONG | 3.4s
   Human: not comparable
-  Model: same — Same sealed Mega Charizard X Ultra-Premium Collection; no conflicting details.
+  Model: same ï¿½ Same sealed Mega Charizard X Ultra-Premium Collection; no conflicting details.
 [28/50] Dell Ultrasharp Monitor | OK | 3.5s
   Human: comparable
-  Model: same — Same Dell U2412Mb model; no conflicting condition or included-item differences.
+  Model: same ï¿½ Same Dell U2412Mb model; no conflicting condition or included-item differences.
 [29/50] Bose QuietComfort Headphones | OK | 4.3s
   Human: comparable
-  Model: same — Same Bose QuietComfort earbuds, similar used condition and both include charging case; color is triv
+  Model: same ï¿½ Same Bose QuietComfort earbuds, similar used condition and both include charging case; color is triv
 [30/50] Ring Video Doorbell | WRONG | 3.5s
   Human: comparable
-  Model: different — Listing B includes a Ring Chime accessory; Listing A does not confirm that accessory.
+  Model: different ï¿½ Listing B includes a Ring Chime accessory; Listing A does not confirm that accessory.
 [31/50] Louis Vuitton Neverfull | WRONG | 3.8s
   Human: comparable
-  Model: different — Different colorways (Damier Ebene vs Damier Azur) — fashion colorway matters.
+  Model: different ï¿½ Different colorways (Damier Ebene vs Damier Azur) ï¿½ fashion colorway matters.
 [32/50] Vintage Star Wars Figure | WRONG | 3.4s
   Human: comparable
-  Model: different — Listing B includes a weapon/accessory; Listing A does not confirm included accessories.
+  Model: different ï¿½ Listing B includes a weapon/accessory; Listing A does not confirm included accessories.
 [33/50] Louis Vuitton Neverfull | OK | 3.7s
   Human: not comparable
-  Model: different — Different fashion colorways/patterns (Damier Ebene vs Monogram) — not comparable.
+  Model: different ï¿½ Different fashion colorways/patterns (Damier Ebene vs Monogram) ï¿½ not comparable.
 [34/50] Dyson Airwrap | OK | 3.7s
   Human: comparable
-  Model: same — Same Dyson Airwrap Long Edition; no explicit conflicting condition or included-item differences.
+  Model: same ï¿½ Same Dyson Airwrap Long Edition; no explicit conflicting condition or included-item differences.
 [35/50] Titleist Pro V1 Golf Balls | OK | 3.8s
   Human: not comparable
-  Model: different — Different quantity: Listing A is a box of 40, Listing B is unspecified (single).
+  Model: different ï¿½ Different quantity: Listing A is a box of 40, Listing B is unspecified (single).
 [36/50] Vintage Levis 501 Jeans | OK | 5.0s
   Human: not comparable
-  Model: different — Different model: Listing A is 501 (standard) while Listing B is 501xx (501XX).
+  Model: different ï¿½ Different model: Listing A is 501 (standard) while Listing B is 501xx (501XX).
 [37/50] LEGO Technic Set | OK | 3.8s
   Human: comparable
-  Model: same — Same LEGO Technic 8265 set; no explicit conflicts in condition or included items.
+  Model: same ï¿½ Same LEGO Technic 8265 set; no explicit conflicts in condition or included items.
 [38/50] Bose QuietComfort Headphones | OK | 5.2s
   Human: not comparable
-  Model: different — Different QC35 generations: Listing A is QC35 (original), Listing B is QC35 II (Series 2).
+  Model: different ï¿½ Different QC35 generations: Listing A is QC35 (original), Listing B is QC35 II (Series 2).
 [39/50] Herman Miller Aeron Chair | WRONG | 4.0s
   Human: not comparable
-  Model: same — Same model and size; one is new, the other used but in near-perfect condition — comparable.
+  Model: same ï¿½ Same model and size; one is new, the other used but in near-perfect condition ï¿½ comparable.
 [40/50] Nest Thermostat | WRONG | 3.8s
   Human: comparable
-  Model: different — Listing A is the thermostat unit; Listing B is the stand accessory — different items.
+  Model: different ï¿½ Listing A is the thermostat unit; Listing B is the stand accessory ï¿½ different items.
 [41/50] Dyson V15 Vacuum | WRONG | 3.6s
   Human: not comparable
-  Model: same — Same Dyson V15 model; no explicit conflicting condition or included-item contradictions.
+  Model: same ï¿½ Same Dyson V15 model; no explicit conflicting condition or included-item contradictions.
 [42/50] Rolex Submariner | OK | 6.7s
   Human: not comparable
-  Model: different — Listing A is a two-tone 16613 (steel+18k gold) with custom blue bezel/dial; Listing B is a 100% stee
+  Model: different ï¿½ Listing A is a two-tone 16613 (steel+18k gold) with custom blue bezel/dial; Listing B is a 100% stee
 [43/50] Whoop 4.0 Strap | OK | 3.3s
   Human: not comparable
-  Model: different — Different colorways (Artic White vs Grey) — color matters for wearable bands.
+  Model: different ï¿½ Different colorways (Artic White vs Grey) ï¿½ color matters for wearable bands.
 [44/50] Louis Vuitton Neverfull | OK | 3.1s
   Human: comparable
-  Model: same — Same model, Damier Ebene Neverfull MM; no explicit conflicting details.
+  Model: same ï¿½ Same model, Damier Ebene Neverfull MM; no explicit conflicting details.
 [45/50] Rolex Submariner | OK | 4.8s
   Human: comparable
-  Model: same — Same model (116610LV Hulk), both full sets; condition adjacent (good vs mint); no conflicting detail
+  Model: same ï¿½ Same model (116610LV Hulk), both full sets; condition adjacent (good vs mint); no conflicting detail
 [46/50] Vintage Star Wars Figure | WRONG | 2.9s
   Human: not comparable
-  Model: same — Both are vintage Star Wars figure bundles with no explicit conflicting details.
+  Model: same ï¿½ Both are vintage Star Wars figure bundles with no explicit conflicting details.
 [47/50] Nintendo Switch OLED | OK | 3.4s
   Human: not comparable
-  Model: different — Listing A includes 7 games; Listing B does not confirm included games.
+  Model: different ï¿½ Listing A includes 7 games; Listing B does not confirm included games.
 [48/50] PlayStation 5 Console | OK | 3.9s
   Human: comparable
-  Model: same — Same PS5 Slim Disc 1TB, both listed as excellent/great condition; no conflicting inclusions.
+  Model: same ï¿½ Same PS5 Slim Disc 1TB, both listed as excellent/great condition; no conflicting inclusions.
 [49/50] Oura Ring | OK | 3.4s
   Human: comparable
-  Model: same — Same Oura Ring Gen3 sizing kit; no conflicting condition or completeness details.
+  Model: same ï¿½ Same Oura Ring Gen3 sizing kit; no conflicting condition or completeness details.
 [50/50] Brompton Folding Bike | OK | 3.9s
   Human: not comparable
-  Model: different — Different included accessories: A includes rack, phone mount, reflector; B doesn't list these.
+  Model: different ï¿½ Different included accessories: A includes rack, phone mount, reflector; B doesn't list these.
 
 ================================================================================
 FINE-TUNED ACCURACY: 31/50 (62.0%)

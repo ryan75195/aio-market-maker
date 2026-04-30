@@ -24,7 +24,13 @@ BERT_CONF_THRESHOLD = 0.80
 
 
 def load_pinecone_key():
-    path = r"<REPO_ROOT>\AIOMarketMaker\AIOMarketMaker.Console\local.settings.json"
+    # Resolve local.settings.json relative to the repo root.
+    import os
+    repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
+    path = os.environ.get(
+        "AIOMM_LOCAL_SETTINGS",
+        os.path.join(repo_root, "AIOMarketMaker.Console", "local.settings.json"),
+    )
     with open(path) as f:
         return json.load(f)["Values"]["Pinecone:ApiKey"]
 
