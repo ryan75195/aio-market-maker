@@ -39,7 +39,7 @@ Two-stage pipeline: **GPT-5-nano** defines axes and allowed values once per cate
 |---|---|
 | `AIOMarketMaker.Api` | ASP.NET Core API — scrape jobs, listings, history, nightly scheduling |
 | `AIOMarketMaker.Core` | Domain logic, EF Core data layer, eBay HTML parsers (AngleSharp), ETL services |
-| `AIOMarketMaker.ML` | ONNX runtime, OpenAI embeddings, HDBSCAN clustering, USearch ANN, Qwen3 GGUF inference |
+| `AIOMarketMaker.ML` | ONNX runtime, OpenAI embeddings, Ward agglomerative clustering, USearch ANN, Qwen3 GGUF inference |
 | `AIOMarketMaker.Console` | DI-discovered CLI tasks: search, pricing, backfill, comparables, validation |
 | `AIOMarketMaker.Desktop` | Electron + Vue 3 admin app — batch monitoring, progress bars, stats dashboards |
 | `AIOMarketMaker.Tests.{Unit,Integration,E2E,Contract,Common}` | NUnit + Moq, including HTML-snapshot contract tests against parser regressions |
@@ -50,7 +50,7 @@ Two-stage pipeline: **GPT-5-nano** defines axes and allowed values once per cate
 - **AngleSharp** for HTML parsing of eBay listing/search pages
 - **ONNX Runtime** with CUDA for transformer inference
 - **OpenAI** APIs + custom **Qwen3-4B GGUF** for skeleton/extraction stages
-- **HDBSCAN** + **USearch** for clustering and approximate nearest neighbour
+- **Ward agglomerative clustering** + **USearch** (265K vectors, 3072 dims) for clustering and approximate nearest neighbour
 - **SQL Server** (LocalDB locally, Azure SQL in deployment)
 - **Azure Table / Blob Storage** for job persistence and HTML snapshots
 - **Electron + Vue 3 + Chart.js** for the desktop admin UI
