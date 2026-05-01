@@ -10,6 +10,24 @@ The problem sounds straightforward and isn't. Titles are unstructured ("PS5 Slim
 - **16,310** pricing opportunities computed via cell-based comparable matching
 - **143K** labeled pairs used to fine-tune a RoBERTa-large variant-matching classifier (test F1 = **0.913**)
 
+## Screens
+
+The desktop client (Electron + Vue 3 + Chart.js) is the operator console for the platform.
+
+### Overview — KPIs and trend charts
+![Overview](docs/screenshots/01-overview.png)
+
+### Opportunities — actively-listed items priced against historical comparables
+![Opportunities](docs/screenshots/02-opportunities.png)
+
+### Markets — sell-through and velocity per search-term job
+![Markets list](docs/screenshots/03-markets-list.png)
+
+### Markets drill-in — listing-level view of a single category
+![Markets drilldown](docs/screenshots/04-markets-drilldown.png)
+
+> Screenshots are rendered against synthetic data via `AIOMarketMaker.Desktop/electron/tests/readme-screenshots.mjs` so they reflect the UI without exposing actual market-research targets.
+
 ## Approaches explored
 
 The matching problem has been attacked three ways, each addressing the limitations of the previous.
