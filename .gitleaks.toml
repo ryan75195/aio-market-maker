@@ -1,0 +1,15 @@
+title = "AIOMarketMaker gitleaks config"
+
+# Extend the upstream default ruleset.
+[extend]
+useDefault = true
+
+# Allowlist the well-known public Azurite (Azure Storage Emulator) key.
+# Microsoft publishes it in their docs — it only authenticates to a local
+# 127.0.0.1 emulator and is identical for every developer worldwide.
+# Source: https://learn.microsoft.com/en-us/azure/storage/common/storage-use-azurite
+[[allowlists]]
+description = "Public Azurite emulator key"
+regexes = [
+    '''Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==''',
+]
