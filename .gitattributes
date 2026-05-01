@@ -4,6 +4,18 @@
 * text=auto
 
 ###############################################################################
+# GitHub Linguist overrides — exclude bulk test fixtures, training data,
+# and exploratory scripts from the repo's language statistics. Without
+# these, saved eBay HTML snapshots (~10 MB in Tests.Common/Data) dominate
+# the byte count and the repo gets misclassified as HTML.
+###############################################################################
+AIOMarketMaker.Tests.Common/Data/** linguist-vendored
+AIOMarketMaker.ML/Training/data/** linguist-generated
+experiments/** linguist-vendored
+docs/** linguist-documentation
+*.jsonl linguist-generated
+
+###############################################################################
 # Set default behavior for command prompt diff.
 #
 # This is need for earlier builds of msysgit that does not have it on by
