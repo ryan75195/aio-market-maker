@@ -11,8 +11,11 @@ using AIOMarketMaker.Core.Data;
 using AIOMarketMaker.Core.Data.Migrations;
 using AIOMarketMaker.Core.Parsers;
 using AIOMarketMaker.Core.Services;
+using AIOMarketMaker.Core.Services.Pipeline;
+using AIOMarketMaker.Core.Services.Taxonomy;
 using AIOMarketMaker.ML.Services;
 using AIOMarketMaker.Console.Tasks;
+using LLama.Native;
 using ScraperWorker.Services;
 
 namespace AIOMarketMaker.Console;
@@ -73,6 +76,7 @@ public static class HostHelper
                         sp.GetRequiredService<ILogger<AzureJobRepository>>()));
 
                 services.AddSingleton(new DbWriteGate(10));
+                services.AddSingleton(new ScrapingConfig());
                 services.AddScoped<IScrapeJobProcessor, ScrapeJobProcessor>();
 
                 // Database: SQLite (local dev) or SQL Server (Azure)
@@ -157,90 +161,98 @@ public static class HostHelper
                 services.AddSingleton(clusteringConfig);
                 services.AddSingleton<IClusteringService, ClusteringService>();
 
-                // Vector index (local USearch)
-                var vectorIndexConfig = new VectorIndexConfig(
-                    IndexPath: configuration.GetValue<string>("VectorIndex:IndexPath")
-                        ?? configuration.GetValue<string>("Values:VectorIndex:IndexPath")
-                        ?? "./data/vectors.usearch",
-                    IdMapPath: configuration.GetValue<string>("VectorIndex:IdMapPath")
-                        ?? configuration.GetValue<string>("Values:VectorIndex:IdMapPath")
-                        ?? "./data/vectors-idmap.json",
-                    TopK: configuration.GetValue<int?>("VectorIndex:TopK")
-                        ?? configuration.GetValue<int?>("Values:VectorIndex:TopK")
-                        ?? 30,
-                    SimilarityThreshold: configuration.GetValue<float?>("VectorIndex:SimilarityThreshold")
-                        ?? configuration.GetValue<float?>("Values:VectorIndex:SimilarityThreshold")
-                        ?? 0.80f,
-                    Dimensions: configuration.GetValue<int?>("VectorIndex:Dimensions")
-                        ?? configuration.GetValue<int?>("Values:VectorIndex:Dimensions")
-                        ?? 3072,
-                    Connectivity: configuration.GetValue<int?>("VectorIndex:Connectivity")
-                        ?? configuration.GetValue<int?>("Values:VectorIndex:Connectivity")
-                        ?? 16,
-                    ExpansionAdd: configuration.GetValue<int?>("VectorIndex:ExpansionAdd")
-                        ?? configuration.GetValue<int?>("Values:VectorIndex:ExpansionAdd")
-                        ?? 128,
-                    ExpansionSearch: configuration.GetValue<int?>("VectorIndex:ExpansionSearch")
-                        ?? configuration.GetValue<int?>("Values:VectorIndex:ExpansionSearch")
-                        ?? 64);
-                services.AddSingleton(vectorIndexConfig);
-                services.AddSingleton<IVectorIndex>(sp =>
+                // Comparable pipeline disabled — replaced by taxonomy-based cell pricing.
+
+                // Taxonomy decontamination
+                services.AddSingleton<ITitleDecontaminator, TitleDecontaminator>();
+                services.AddSingleton<IBrandTokenExtractor>(sp =>
                 {
-                    var config = sp.GetRequiredService<VectorIndexConfig>();
-                    var index = new USearchVectorIndex(config);
-                    if (File.Exists(config.IndexPath) && File.Exists(config.IdMapPath))
+                    var config = sp.GetRequiredService<IConfiguration>();
+                    var apiKey = config.GetValue<string>("OpenAi:ApiKey");
+                    if (string.IsNullOrEmpty(apiKey))
                     {
-                        index.Load();
-                        sp.GetRequiredService<ILogger<USearchVectorIndex>>()
-                            .LogInformation("Loaded vector index with {Count} vectors from {Path}",
-                                index.Count, config.IndexPath);
+                        return null!;
                     }
-                    return index;
+                    var model = config.GetValue<string>("OpenAi:TaxonomyModel") ?? "gpt-4o-mini";
+                    var client = new OpenAI.Chat.ChatClient(model, apiKey);
+                    var logger = sp.GetRequiredService<ILogger<LlmBrandTokenExtractor>>();
+                    return new LlmBrandTokenExtractor(client, logger);
                 });
-                services.AddSingleton<ISemanticSearchService, SemanticSearchService>();
 
-                // Listing indexing service
-                services.AddSingleton<IListingIndexingService, ListingIndexingService>();
-
-                // Variant classifier (local ONNX model + ensemble calibration)
-                var classifierConfig = new OnnxClassifierConfig(
-                    ModelPath: configuration.GetValue<string>("VariantClassifier:ModelPath") ?? "models/variant-classifier/model.onnx",
-                    VocabPath: configuration.GetValue<string>("VariantClassifier:VocabPath") ?? "models/variant-classifier/vocab.json",
-                    MergesPath: configuration.GetValue<string>("VariantClassifier:MergesPath") ?? "models/variant-classifier/merges.txt",
-                    MaxLength: configuration.GetValue<int?>("VariantClassifier:MaxLength") ?? 512);
-                services.AddSingleton(classifierConfig);
-                services.AddSingleton<VariantModelRunner>();
-                services.AddSingleton<IVariantModelRunner>(sp => sp.GetRequiredService<VariantModelRunner>());
-
-                var ensembleLogitWeight = configuration.GetValue<float>("VariantClassifier:Ensemble:LogitWeight");
-                if (ensembleLogitWeight != 0)
+                // Taxonomy pipeline — top-down extraction or bottom-up fallback
+                var extractionModelPath = configuration.GetValue<string>("Extraction:ModelPath") ?? "";
+                if (!string.IsNullOrEmpty(extractionModelPath) && File.Exists(extractionModelPath))
                 {
-                    services.AddSingleton(new EnsembleConfig(
-                        LogitWeight: ensembleLogitWeight,
-                        SimilarityWeight: configuration.GetValue<float>("VariantClassifier:Ensemble:SimilarityWeight"),
-                        Intercept: configuration.GetValue<float>("VariantClassifier:Ensemble:Intercept")));
+                    var gpuLayers = configuration.GetValue<int>("Extraction:GpuLayers", -1);
+                    if (gpuLayers != 0)
+                    {
+                        var cudaLibPath = Path.Combine(AppContext.BaseDirectory,
+                            "runtimes", "win-x64", "native", "cuda12", "llama.dll");
+                        NativeLibraryConfig.LLama
+                            .WithLibrary(cudaLibPath)
+                            .WithLogCallback((level, msg) =>
+                                System.Console.Error.WriteLine($"[LLama-{level}] {msg}"));
+                    }
+
+                    var extractionConfig = new ExtractionConfig(
+                        extractionModelPath,
+                        configuration.GetValue<int>("Extraction:MaxTokens", 512),
+                        configuration.GetValue<int>("Extraction:ContextSize", 1024),
+                        configuration.GetValue<int>("Extraction:GpuLayers", -1));
+                    services.AddSingleton(extractionConfig);
+                    services.AddSingleton<IExtractionModelRunner, ExtractionModelRunner>();
+
+                    var skeletonModel = configuration.GetValue<string>("OpenAi:SkeletonModel") ?? "gpt-5-nano";
+                    services.AddSingleton<ISkeletonGenerator>(sp =>
+                    {
+                        var apiKey = sp.GetRequiredService<IConfiguration>().GetValue<string>("OpenAi:ApiKey")!;
+                        var client = new OpenAI.Chat.ChatClient(skeletonModel, apiKey);
+                        var logger = sp.GetRequiredService<ILogger<OpenAiSkeletonGenerator>>();
+                        return new OpenAiSkeletonGenerator(client, logger);
+                    });
+
+                    services.AddSingleton<ITaxonomyService, TopDownTaxonomyService>();
                 }
                 else
                 {
-                    services.AddSingleton<EnsembleConfig>(_ => null!);
+                    services.AddSingleton<INgramExtractor, NgramExtractor>();
+                    services.AddSingleton<IMutualExclusivityAnalyzer, MutualExclusivityAnalyzer>();
+                    services.AddSingleton<ICommunityDetector, LouvainCommunityDetector>();
+                    services.AddSingleton<ITaxonomyService, TaxonomyService>();
                 }
-                services.AddSingleton<IVariantClassifierClient, VariantClassifier>();
+                services.AddScoped<ITaxonomyPersistenceService, TaxonomyPersistenceService>();
+                services.AddSingleton<ITaxonomyRefiner>(sp =>
+                {
+                    var config = sp.GetRequiredService<IConfiguration>();
+                    var apiKey = config.GetValue<string>("OpenAi:ApiKey");
+                    if (string.IsNullOrEmpty(apiKey))
+                    {
+                        return null!;
+                    }
+                    var model = config.GetValue<string>("OpenAi:TaxonomyModel") ?? "gpt-4o-mini";
+                    var client = new OpenAI.Chat.ChatClient(model, apiKey);
+                    var logger = sp.GetRequiredService<ILogger<LlmTaxonomyRefiner>>();
+                    return new LlmTaxonomyRefiner(client, logger);
+                });
+                services.AddSingleton<ICellPricingService, CellPricingService>();
+                services.AddScoped<ITaxonomyQueryService, TaxonomyQueryService>();
+                services.AddScoped<ITaxonomyOpportunityService, TaxonomyOpportunityService>();
 
-                // ComparablesEtlService
-                services.AddScoped<IComparablesEtlService, ComparablesEtlService>();
+                // Pricing options
+                services.Configure<PricingOptions>(configuration.GetSection("Pricing"));
 
                 // Task system
                 services.AddTaskRunner();
-                services.AddTask<SearchTask>();
-                services.AddTask<SearchTestTask>();
-                services.AddTask<PricingTask>();
                 services.AddTask<MigrateTask>();
-                services.AddTask<BackfillConfidenceTask>();
-                services.AddTask<ComparablesTask>();
-                services.AddTask<ReindexMissingTask>();
-                services.AddTask<ValidationTask>();
-                services.AddTask<KAnalysisTask>();
                 services.AddTask<BatchLabelTask>();
+                services.AddTask<BackfillPredictionsTask>();
+                services.AddTask<TaxonomyTask>();
+                services.AddTask<BackfillTaxonomyTask>();
+                services.AddTask<ViewTaxonomyTask>();
+                services.AddTask<ArbitrageTask>();
+                services.AddTask<BackfillOpportunitiesTask>();
+                services.AddTask<BackfillBrandTokensTask>();
+                services.AddTask<TestExtractionTask>();
             })
             .Build();
     }

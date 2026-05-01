@@ -6,6 +6,7 @@ using AIOMarketMaker.Core.Data;
 using AIOMarketMaker.Core.Data.Models;
 using AIOMarketMaker.Core.Parsers;
 using AIOMarketMaker.Core.Services;
+using AIOMarketMaker.Core.Services.Pipeline;
 using AIOMarketMaker.Models.Ebay;
 using AIOMarketMaker.Tests.Common;
 using AngleSharp.Dom;
@@ -41,6 +42,10 @@ public class ScrapeJobProcessor_UnitTests
         _indexingServiceMock
             .Setup(i => i.Index(It.IsAny<Listing>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new IndexingResult(IndexingAction.Skipped));
+        _indexingServiceMock
+            .Setup(i => i.IndexBatch(It.IsAny<IEnumerable<Listing>>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IEnumerable<Listing> listings, bool embed, CancellationToken _) =>
+                listings.Select(_ => new IndexingResult(embed ? IndexingAction.Embedded : IndexingAction.Skipped)));
 
         // Default: empty search results (stops pagination)
         _webscraperClientMock
@@ -79,7 +84,8 @@ public class ScrapeJobProcessor_UnitTests
         _loggerMock.Object, _dbContext, _webscraperClientMock.Object,
         _searchParserMock.Object, _listingParserMock.Object,
         _urlBuilderMock.Object, _indexingServiceMock.Object,
-        new DbWriteGate(100));
+        new DbWriteGate(100), Enumerable.Empty<IPostJobStage>(),
+        new ScrapingConfig());
 
     private static EbayProductSummary CreateSummary(
         string listingId, decimal? price = 100m, bool isSold = false,
@@ -707,5 +713,62 @@ public class ScrapeJobProcessor_UnitTests
         Assert.That(updatedJob!.LastRunUtc, Is.Not.Null,
             "Job LastRunUtc should be updated after successful run");
         Assert.That(updatedJob.LastRunUtc, Is.EqualTo(DateTime.UtcNow).Within(TimeSpan.FromSeconds(5)));
+    }
+
+    [Test]
+    public async Task Should_persist_completed_status_when_all_listings_update_from_summary()
+    {
+        // Reproduces production bug: runs with only existing listings
+        // (no new → skips FetchAndProcessDescriptions) failed to persist
+        // MarkCompleted because ChangeTracker.Clear() in UpdateListingsFromSummary
+        // broke EF change detection for the subsequent save.
+        var run = CreateAndSeedScrapeRun();
+        var job = CreateJobConfig();
+
+        // Seed multiple existing active listings with the same job
+        for (var i = 1; i <= 10; i++)
+        {
+            _dbContext.Listings.Add(new Listing
+            {
+                ListingId = $"EXIST{i}", ScrapeJobId = 1,
+                Title = $"Existing Item {i}", ListingStatus = "Active",
+                Price = 100m, Condition = "USED", ShippingCost = 5m
+            });
+        }
+        await _dbContext.SaveChangesAsync();
+
+        // Search returns only existing listings with price changes → all go to UpdateFromSummary
+        var summaries = Enumerable.Range(1, 10)
+            .Select(i => CreateSummary($"EXIST{i}", price: 90m, isSold: false, shippingCost: 3m))
+            .ToArray();
+
+        var callCount = 0;
+        _searchParserMock
+            .Setup(p => p.ParseSearchResults(It.IsAny<IDocument>()))
+            .Returns(() =>
+            {
+                callCount++;
+                return callCount == 2 ? summaries : Enumerable.Empty<IEbayProductSummary>();
+            });
+
+        await CreateProcessor().Execute(run, job);
+
+        // Re-read from DB to verify persistence (not just in-memory state)
+        _dbContext.ChangeTracker.Clear();
+        var persisted = await _dbContext.ScrapeRuns.FindAsync(1);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(persisted!.Status, Is.EqualTo("Completed"),
+                "Status must persist to DB after UpdateListingsFromSummary + ChangeTracker.Clear");
+            Assert.That(persisted.CurrentPhase, Is.EqualTo("Completed"),
+                "CurrentPhase must persist to DB");
+            Assert.That(persisted.CompletedUtc, Is.Not.Null,
+                "CompletedUtc must persist to DB");
+            Assert.That(persisted.ListingsProcessed, Is.EqualTo(10),
+                "All 10 listings should be processed");
+            Assert.That(persisted.ListingsUpdated, Is.EqualTo(10),
+                "All 10 listings should be updated (price changed)");
+        });
     }
 }

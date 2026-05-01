@@ -1,23 +1,18 @@
-using Microsoft.EntityFrameworkCore;
-using AIOMarketMaker.Core.Data;
-using AIOMarketMaker.Core.Services;
+using AIOMarketMaker.Core.Services.Pipeline;
 
 namespace AIOMarketMaker.Api.Services;
 
 public class NightlyScrapeService : BackgroundService
 {
-    private readonly IServiceScopeFactory _scopeFactory;
+    private readonly IBatchPipelineRunner _pipeline;
     private readonly ILogger<NightlyScrapeService> _logger;
-    private readonly ScrapingConfig _scrapingConfig;
 
     public NightlyScrapeService(
-        IServiceScopeFactory scopeFactory,
-        ILogger<NightlyScrapeService> logger,
-        ScrapingConfig scrapingConfig)
+        IBatchPipelineRunner pipeline,
+        ILogger<NightlyScrapeService> logger)
     {
-        _scopeFactory = scopeFactory;
+        _pipeline = pipeline;
         _logger = logger;
-        _scrapingConfig = scrapingConfig;
     }
 
     protected override async Task ExecuteAsync(CancellationToken ct)
@@ -51,54 +46,19 @@ public class NightlyScrapeService : BackgroundService
     {
         _logger.LogInformation("Starting nightly scrape");
 
-        using var scope = _scopeFactory.CreateScope();
-        var processor = scope.ServiceProvider.GetRequiredService<IScrapeJobProcessor>();
-        var db = scope.ServiceProvider.GetRequiredService<EtlDbContext>();
-
-        var jobs = await db.ScrapeJobs.WhereEffectivelyEnabled()
-            .Select(j => new ScrapeJobConfig(j.Id, j.SearchTerm, j.LastRunUtc))
-            .ToListAsync(ct);
-
-        _logger.LogInformation("Found {Count} enabled jobs for nightly scrape", jobs.Count);
-
-        // Create all runs sequentially in one scope so they appear in UI immediately
-        var batchId = Guid.NewGuid();
-        var runIds = new List<int>();
-        foreach (var job in jobs)
+        try
         {
-            if (ct.IsCancellationRequested) { break; }
-
-            var run = await processor.CreateRun(job, "Nightly", batchId);
-            runIds.Add(run.Id);
+            var batch = await _pipeline.CreateBatch("Nightly", ct);
+            await _pipeline.Execute(batch.BatchId, ct);
+            _logger.LogInformation("Nightly scrape completed");
         }
-
-        // Execute in parallel with per-job DI scopes
-        var parallelism = new SemaphoreSlim(_scrapingConfig.MaxConcurrentRuns);
-        var tasks = jobs.Select((job, i) => Task.Run(async () =>
+        catch (InvalidOperationException ex)
         {
-            await parallelism.WaitAsync(ct);
-            try
-            {
-                using var jobScope = _scopeFactory.CreateScope();
-                var jobProcessor = jobScope.ServiceProvider.GetRequiredService<IScrapeJobProcessor>();
-                var jobDb = jobScope.ServiceProvider.GetRequiredService<EtlDbContext>();
-
-                var run = await jobDb.ScrapeRuns.FindAsync(runIds[i]);
-                if (run == null) { return; }
-
-                await jobProcessor.Execute(run, job);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Nightly scrape failed for job {JobId}", job.Id);
-            }
-            finally
-            {
-                parallelism.Release();
-            }
-        }));
-        await Task.WhenAll(tasks);
-
-        _logger.LogInformation("Nightly scrape completed");
+            _logger.LogWarning("Nightly scrape skipped: {Message}", ex.Message);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogError(ex, "Nightly scrape failed");
+        }
     }
 }

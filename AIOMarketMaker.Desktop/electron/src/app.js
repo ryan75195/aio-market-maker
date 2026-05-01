@@ -7,12 +7,13 @@ createApp({
       config: null,
       configError: null,
       overviewLoading: false,
+      overviewError: null,
       opportunitiesLoading: false,
       historyLoading: false,
       jobs: [],
       opportunities: [],
       opportunityPage: 1,
-      opportunitySortBy: 'potentialProfit',
+      opportunitySortBy: 'estimatedProfit',
       opportunitySortDir: 'desc',
       opportunityJobFilter: [],
       opportunityCategoryFilter: [],
@@ -115,7 +116,52 @@ createApp({
         topOpportunities: [],
         recentRuns: []
       },
-      overviewCharts: {}
+      overviewCharts: {},
+      // Markets tab state
+      marketsLoading: false,
+      marketsError: null,
+      marketsData: null,
+      marketsSearch: '',
+      marketsGroupFilter: '',
+      marketsSortKey: 'salesPerDay',
+      marketsSortDir: -1,
+      // Markets detail (drill-in)
+      marketsSelected: null,
+      marketsListings: [],
+      marketsListingsLoading: false,
+      marketsListingSearch: '',
+      marketsStatusFilter: '',
+      marketsConditionFilter: '',
+      marketsConditions: [],
+      marketsMinPrice: '',
+      marketsMaxPrice: '',
+      marketsMinDays: '',
+      marketsMaxDays: '',
+      marketsRegex: '',
+      marketsRegexError: '',
+      marketsShowFilters: false,
+      // Chat panel
+      marketsChatOpen: false,
+      marketsChatMessages: [],
+      marketsChatInput: '',
+      marketsChatLoading: false,
+      marketsChatToolStatus: null,
+      marketsChatExpanded: false,
+      _chatAbortController: null,
+      marketsListingSortKey: 'daysOnMarket',
+      marketsListingSortDir: 1,
+      marketsListingPage: 1,
+      marketsListingPageSize: 50,
+      marketsListingTotal: 0,
+      marketsListingStats: null,
+      // Taxonomy facets
+      marketsTaxonomy: null,
+      marketsTaxonomyLoading: false,
+      marketsAxisFilters: {},
+      // Cell pricing
+      marketsPricing: null,
+      marketsPricingLoading: false,
+      marketsOpportunityMap: {},
     };
   },
 
@@ -152,6 +198,29 @@ createApp({
     batchPageSize() {
       // ~36px per row, ~240px overhead (header/stats/table-head/pagination/padding)
       return Math.max(5, Math.floor((this.windowHeight - 240) / 36));
+    },
+
+    sortedBatchRuns() {
+      if (!this.selectedBatch || !this.selectedBatch.runs) { return []; }
+      const runs = [...this.selectedBatch.runs];
+      if (this.selectedBatch.batchPhase === 'Searching') {
+        const priority = (r) => {
+          if (r.status === 'Searching' && !r.totalListingsFound) { return 0; } // actively searching
+          if (r.totalListingsFound > 0) { return 1; } // search done
+          return 2; // waiting
+        };
+        runs.sort((a, b) => priority(a) - priority(b));
+      } else {
+        // Processing phase: active runs first, then completed, then queued
+        const priority = (r) => {
+          if (r.status === 'Running') { return 0; }
+          if (r.status === 'Failed') { return 1; }
+          if (r.status === 'Completed') { return 2; }
+          return 3; // Queued
+        };
+        runs.sort((a, b) => priority(a) - priority(b));
+      }
+      return runs;
     },
 
     compPageSize() {
@@ -329,51 +398,126 @@ createApp({
       return allRuns.filter(r => statuses.includes(r.status));
     },
 
-    runStats() {
-      const active = this.activeRuns;
-      if (active.length === 0) { return null; }
-
-      const earliest = Math.min(...active.map(r => new Date(r.startedUtc).getTime()));
-      const runtimeMs = this.now - earliest;
-
-      // Include completed runs from same batch for stable rate calculation
-      const allRuns = this.batches.flatMap(b => b.runs || []);
-      const batchRuns = allRuns.filter(r => new Date(r.startedUtc).getTime() >= earliest);
-
-      // Split into runs with data vs queued (no listing data yet)
-      const startedRuns = batchRuns.filter(r => r.status !== 'Queued');
-      const queuedRuns = batchRuns.filter(r => r.status === 'Queued');
-
-      // Extrapolate queued runs using average from started runs
-      const avgToProcess = startedRuns.length > 0
-        ? startedRuns.reduce((s, r) => s + this.listingsToProcess(r), 0) / startedRuns.length
-        : 0;
-
-      const batchProcessed = startedRuns.reduce((s, r) => s + (r.listingsProcessed || 0), 0);
-      const batchToProcess = startedRuns.reduce((s, r) => s + this.listingsToProcess(r), 0)
-        + Math.round(avgToProcess * queuedRuns.length);
-
-      // Remaining: active non-queued remaining + extrapolated queued
-      const activeStarted = active.filter(r => r.status !== 'Queued');
-      const activeQueued = active.filter(r => r.status === 'Queued');
-      const activeRemaining = activeStarted.reduce((s, r) => s + this.listingsToProcess(r) - (r.listingsProcessed || 0), 0)
-        + Math.round(avgToProcess * activeQueued.length);
-
-      const runtimeSec = runtimeMs / 1000;
-      const rate = runtimeSec > 0 ? batchProcessed / runtimeSec : 0;
-      const etaSec = rate > 0 ? activeRemaining / rate : 0;
-
-      return {
-        activeCount: active.length,
-        queuedCount: activeQueued.length,
-        runtimeMs,
-        totalProcessed: batchProcessed,
-        totalToProcess: batchToProcess,
-        remaining: activeRemaining,
-        rate,
-        etaSec,
+    detailStats() {
+      if (!this.selectedBatch || !['Running', 'Queued'].includes(this.selectedBatch.status)) { return null; }
+      // The detail endpoint doesn't have aggregated listing fields —
+      // compute them from individual runs
+      const batch = this.selectedBatch;
+      const runs = batch.runs || [];
+      const agg = {
+        ...batch,
+        totalListingsAddedActive: runs.reduce((s, r) => s + (r.listingsAddedActive || 0), 0),
+        totalListingsAddedSold: runs.reduce((s, r) => s + (r.listingsAddedSold || 0), 0),
+        totalListingsUpdated: runs.reduce((s, r) => s + (r.listingsUpdated || 0), 0),
+        totalListingsSkipped: runs.reduce((s, r) => s + (r.listingsSkipped || 0), 0),
+        totalListingsFailed: runs.reduce((s, r) => s + (r.listingsFailed || 0), 0),
+        totalListingsFilteredPreQueue: runs.reduce((s, r) => s + (r.listingsFilteredPreQueue || 0), 0),
       };
-    }
+      return this._batchStats(agg);
+    },
+
+    runStats() {
+      const activeBatch = this.batches.find(b => ['Running', 'Queued'].includes(b.status));
+      if (!activeBatch) { return null; }
+      return this._batchStats(activeBatch);
+    },
+
+    // ── Markets tab computed ─────────────────────────────────
+
+    filteredMarkets() {
+      if (!this.marketsData?.jobs) { return []; }
+      let list = this.marketsData.jobs;
+      if (this.marketsSearch) {
+        const q = this.marketsSearch.toLowerCase();
+        list = list.filter(j => j.searchTerm?.toLowerCase().includes(q));
+      }
+      if (this.marketsGroupFilter) {
+        list = list.filter(j => j.categories?.includes(this.marketsGroupFilter));
+      }
+      const key = this.marketsSortKey;
+      const dir = this.marketsSortDir;
+      if (key === 'searchTerm') {
+        return [...list].sort((a, b) => (a.searchTerm || '').localeCompare(b.searchTerm || '') * dir);
+      }
+      return [...list].sort((a, b) => ((a[key] ?? 0) - (b[key] ?? 0)) * dir);
+    },
+
+    marketsMaxVelocity() {
+      if (!this.marketsData?.jobs) { return 1; }
+      return Math.max(...this.marketsData.jobs.map(j => j.salesPerDay), 1);
+    },
+
+    marketsTotalSold() {
+      if (!this.marketsData?.jobs) { return 0; }
+      return this.marketsData.jobs.reduce((s, j) => s + j.soldCount, 0);
+    },
+
+    marketsTotalSalesPerDay() {
+      if (!this.marketsData?.jobs) { return 0; }
+      return this.marketsData.jobs.reduce((s, j) => s + j.salesPerDay, 0);
+    },
+
+    marketsActiveFilterCount() {
+      let count = 0;
+      if (this.marketsListingSearch) { count++; }
+      if (this.marketsStatusFilter) { count++; }
+      if (this.marketsConditionFilter) { count++; }
+      if (this.marketsMinPrice) { count++; }
+      if (this.marketsMaxPrice) { count++; }
+      if (this.marketsMinDays) { count++; }
+      if (this.marketsMaxDays) { count++; }
+      if (this.marketsRegex) { count++; }
+      return count;
+    },
+
+    marketsDetailKpis() {
+      const s = this.marketsListingStats;
+      if (!s) { return { count: 0, sold: 0, active: 0, sellThrough: 0, avgDays: 0, avgPrice: '0', priceRange: '0' }; }
+      const avgPrice = s.avgPrice ? s.avgPrice.toFixed(0) : '0';
+      const priceRange = s.minPrice && s.maxPrice
+        ? s.minPrice.toFixed(0) + '\u2013' + s.maxPrice.toFixed(0)
+        : '0';
+      return {
+        count: this.marketsListingTotal,
+        sold: s.soldCount,
+        active: s.activeCount,
+        sellThrough: s.sellThrough,
+        avgDays: s.avgDaysToSell,
+        avgPrice,
+        priceRange,
+      };
+    },
+    marketsPricingMedianSold() {
+      if (!this.marketsPricing?.cells?.length) { return null; }
+      const soldCells = this.marketsPricing.cells.filter(c => c.medianSoldPrice > 0);
+      if (!soldCells.length) { return null; }
+      const sum = soldCells.reduce((s, c) => s + c.medianSoldPrice, 0);
+      return (sum / soldCells.length).toFixed(0);
+    },
+  },
+
+  watch: {
+    marketsListingSearch() {
+      this._debouncedMarketsReload();
+    },
+    marketsConditionFilter() {
+      this._debouncedMarketsReload();
+    },
+    marketsMinPrice() {
+      this._debouncedMarketsReload();
+    },
+    marketsMaxPrice() {
+      this._debouncedMarketsReload();
+    },
+    marketsMinDays() {
+      this._debouncedMarketsReload();
+    },
+    marketsMaxDays() {
+      this._debouncedMarketsReload();
+    },
+    marketsRegex() {
+      this._debouncedMarketsReload();
+    },
   },
 
   async mounted() {
@@ -418,6 +562,56 @@ createApp({
   },
 
   methods: {
+    _batchStats(batch) {
+      const batchStart = new Date(batch.startedUtc).getTime();
+      const runtimeMs = this.now - batchStart;
+      const batchPhase = batch.batchPhase || null;
+
+      const totalFound = batch.totalListingsFound || 0;
+      const filtered = batch.totalListingsFilteredPreQueue || 0;
+      const skipped = batch.totalListingsSkipped || 0;
+      const addedActive = batch.totalListingsAddedActive || 0;
+      const addedSold = batch.totalListingsAddedSold || 0;
+      const updated = batch.totalListingsUpdated || 0;
+      const failed = batch.totalListingsFailed || 0;
+
+      const batchDone = addedActive + addedSold;
+      const batchTotal = totalFound - filtered - updated - skipped;
+
+      const allProcessed = addedActive + addedSold + updated + failed;
+      const allToProcess = totalFound - filtered - skipped;
+      const allRemaining = Math.max(0, allToProcess - allProcessed);
+      const processingStart = batch.processingStartedUtc
+        ? new Date(batch.processingStartedUtc).getTime()
+        : 0;
+      const processingSec = processingStart ? (this.now - processingStart) / 1000 : 0;
+      const rate = processingSec > 0 ? allProcessed / processingSec : 0;
+      const etaSec = rate > 0 ? allRemaining / rate : 0;
+
+      // Count run statuses
+      const runs = batch.runs || [];
+      const completed = runs.filter(r => r.status === 'Completed').length;
+      const running = runs.filter(r => r.status === 'Running').length;
+      const queued = runs.filter(r => r.status === 'Queued').length;
+      const searching = runs.filter(r => r.status === 'Searching').length;
+
+      return {
+        runCount: batch.runCount || 0,
+        batchPhase,
+        currentPostStage: batch.currentPostStage || null,
+        runtimeMs,
+        totalProcessed: batchDone,
+        totalToProcess: batchTotal,
+        remaining: Math.max(0, batchTotal - batchDone),
+        rate,
+        etaSec,
+        completed,
+        running,
+        queued,
+        searching,
+      };
+    },
+
     async loadConfig() {
       try {
         const result = await window.electronAPI.getConfig();
@@ -437,27 +631,31 @@ createApp({
 
     async loadOverview() {
       this.overviewLoading = true;
+      this.overviewError = null;
       try {
         const opp = this.settings?.opportunities || {};
         const params = new URLSearchParams();
         if (opp.minComps > 0) {
           params.set('minComps', opp.minComps);
         }
-        if (opp.feePercent > 0) {
-          params.set('feePercent', opp.feePercent);
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 15000);
+        try {
+          const data = await this.apiCall(`/overview?${params.toString()}`, { signal: controller.signal });
+          this.overviewData = this.toCamelCase(data);
+          this.$nextTick(() => {
+            this.renderCharts();
+            this.overviewLoading = false;
+          });
+        } finally {
+          clearTimeout(timeout);
         }
-        if (opp.matchCondition) {
-          params.set('matchCondition', 'true');
-        }
-        const data = await this.apiCall(`/overview?${params.toString()}`);
-        this.overviewData = this.toCamelCase(data);
-        // Render charts while content is invisible (opacity:0), then reveal
-        this.$nextTick(() => {
-          this.renderCharts();
-          this.overviewLoading = false;
-        });
       } catch (err) {
-        this.showToast(`Failed to load overview: ${err.message}`, 'error');
+        if (err.name === 'AbortError') {
+          this.overviewError = 'Dashboard query timed out. The database may be busy during a scrape.';
+        } else {
+          this.overviewError = `Failed to load: ${err.message}`;
+        }
         this.overviewLoading = false;
       }
     },
@@ -697,7 +895,7 @@ createApp({
         type: 'scatter',
         data: {
           datasets: [{
-            data: data.map(d => ({ x: d.price, y: d.potentialProfit })),
+            data: data.map(d => ({ x: d.price, y: d.estimatedProfit })),
             backgroundColor: data.map(d => conditionColors[d.condition] || '#a855f7'),
             pointRadius: 2,
             pointHoverRadius: 5
@@ -712,7 +910,7 @@ createApp({
               callbacks: {
                 label: (ctx) => {
                   const item = data[ctx.dataIndex];
-                  return `${item.condition || 'Unknown'}: Buy ${this.formatPrice(item.price, 'GBP')}, Profit ${this.formatPrice(item.potentialProfit, 'GBP')}`;
+                  return `${item.condition || 'Unknown'}: Buy ${this.formatPrice(item.price, 'GBP')}, Profit ${this.formatPrice(item.estimatedProfit, 'GBP')}`;
                 }
               }
             }
@@ -965,8 +1163,10 @@ createApp({
       }
     },
 
-    async loadHistory() {
-      this.historyLoading = true;
+    async loadHistory(showLoading = true) {
+      if (showLoading) {
+        this.historyLoading = true;
+      }
       try {
         const params = new URLSearchParams({
           page: this.batchPage,
@@ -977,11 +1177,9 @@ createApp({
         this.batches = result.items || [];
         this.batchTotalCount = result.totalCount || 0;
         this.batchTotalPages = result.totalPages || 0;
+        // If viewing a batch detail, refresh it too
         if (this.selectedBatch) {
-          const fresh = this.batches.find(b => b.id === this.selectedBatch.id);
-          if (fresh) {
-            this.selectedBatch = fresh;
-          }
+          await this.loadBatchDetail(this.selectedBatch.batchId, false);
         }
       } catch (err) {
         this.showToast(`Failed to load history: ${err.message}`, 'error');
@@ -990,11 +1188,27 @@ createApp({
       }
     },
 
-    selectBatch(batch) {
-      this.selectedBatch = batch;
+    async loadBatchDetail(batchId, showLoading = true) {
+      if (showLoading) {
+        this.historyLoading = true;
+      }
+      try {
+        const data = await this.apiCall(`/history/batches/${batchId}`);
+        this.selectedBatch = this.toCamelCase(data);
+      } catch (err) {
+        this.showToast(`Failed to load batch detail: ${err.message}`, 'error');
+      } finally {
+        if (showLoading) {
+          this.historyLoading = false;
+        }
+      }
+    },
+
+    async selectBatch(batch) {
       this.historyMode = 'runs';
       this.expandedRuns = {};
       this.runIssues = {};
+      await this.loadBatchDetail(batch.batchId);
     },
 
     backToBatches() {
@@ -1012,7 +1226,6 @@ createApp({
     async loadOpportunities() {
       this.opportunitiesLoading = true;
       try {
-        const opp = this.settings?.opportunities || this.config?.opportunities || {};
         const params = new URLSearchParams({
           page: this.opportunityPage,
           pageSize: this.opportunityPageSize,
@@ -1028,26 +1241,17 @@ createApp({
         if (effectiveJobIds.length > 0) {
           params.set('jobIds', effectiveJobIds.join(','));
         }
-        if (opp.minComps > 0) {
-          params.set('minComps', opp.minComps);
-        }
-        if (opp.priceBandMultiplier > 0) {
-          params.set('priceBand', opp.priceBandMultiplier);
-        }
-        if (opp.feePercent > 0) {
-          params.set('feePercent', opp.feePercent);
-        }
-        if (opp.matchCondition) {
-          params.set('matchCondition', 'true');
+        if (this.opportunityCategoryFilter.length > 0) {
+          params.set('categoryIds', this.opportunityCategoryFilter.join(','));
         }
         if (this.opportunityBudget > 0) {
           params.set('maxPrice', this.opportunityBudget);
         }
         if (this.opportunitySearchQuery.trim()) {
-          params.set('searchQuery', this.opportunitySearchQuery.trim());
+          params.set('search', this.opportunitySearchQuery.trim());
           this.opportunitySearchLoading = true;
         }
-        const data = await this.apiCall(`/listings/active?${params.toString()}`);
+        const data = await this.apiCall(`/opportunities?${params.toString()}`);
         const result = this.toCamelCase(data);
         this.opportunities = result.items;
         this.opportunityTotalCount = result.totalCount;
@@ -1347,7 +1551,7 @@ createApp({
           timeout: 120000
         });
         const result = this.toCamelCase(data);
-        const runCount = result.runs?.length || 0;
+        const runCount = result.runCount || 0;
         this.showToast(`Scrape started (${runCount} job${runCount !== 1 ? 's' : ''})`, 'success');
 
         // Switch to history view to see progress
@@ -1433,15 +1637,51 @@ createApp({
       return date.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
     },
 
-    listingsToProcess(run) {
-      // Actual listings to process = total found - pre-queue filtered (terminal status)
-      return (run.totalListingsFound || 0) - (run.listingsFilteredPreQueue || 0);
+    searchedJobCount(batch) {
+      // Use server-aggregated count, fallback to runs if available
+      if (batch.searchedJobCount != null) { return batch.searchedJobCount; }
+      if (!batch.runs) { return 0; }
+      return batch.runs.filter(r => r.totalListingsFound > 0).length;
+    },
+
+    // Progress calculations — logic lives in progress.js (shared with tests).
+    // These delegate to the same formulas used there.
+    activeSoldDone(run) {
+      return (run.listingsAddedActive || 0) + (run.listingsAddedSold || 0);
+    },
+
+    activeSoldTotal(run) {
+      return (run.totalListingsFound || 0) - (run.listingsFilteredPreQueue || 0)
+        - (run.listingsUpdated || 0) - (run.listingsSkipped || 0);
     },
 
     progressPercent(run) {
-      const toProcess = this.listingsToProcess(run);
-      if (toProcess <= 0) return 0;
-      return Math.round((run.listingsProcessed / toProcess) * 100);
+      const total = this.activeSoldTotal(run);
+      const done = this.activeSoldDone(run);
+      if (total <= 0) { return done > 0 ? 100 : 0; }
+      return Math.min(100, Math.round((done / total) * 100));
+    },
+
+    batchDone(batch) {
+      if (batch.totalListingsAddedActive != null) {
+        return (batch.totalListingsAddedActive || 0) + (batch.totalListingsAddedSold || 0);
+      }
+      return (batch.runs || []).reduce((s, r) => s + this.activeSoldDone(r), 0);
+    },
+
+    batchTotal(batch) {
+      if (batch.totalListingsAddedActive != null) {
+        return (batch.totalListingsFound || 0) - (batch.totalListingsFilteredPreQueue || 0)
+          - (batch.totalListingsUpdated || 0) - (batch.totalListingsSkipped || 0);
+      }
+      return (batch.runs || []).reduce((s, r) => s + this.activeSoldTotal(r), 0);
+    },
+
+    batchProgressPercent(batch) {
+      const total = this.batchTotal(batch);
+      const done = this.batchDone(batch);
+      if (total <= 0) { return done > 0 ? 100 : 0; }
+      return Math.min(100, Math.round((done / total) * 100));
     },
 
     formatDuration(ms) {
@@ -1465,7 +1705,7 @@ createApp({
           const hasActive = this.batches.some(b =>
             ['Running', 'Queued'].includes(b.status));
           if (hasActive) {
-            this.loadHistory();
+            this.loadHistory(false);
             // Also refresh issues for any expanded active runs in the selected batch
             if (this.selectedBatch) {
               (this.selectedBatch.runs || [])
@@ -1574,6 +1814,451 @@ createApp({
 
     getEbayListingUrl(listingId) {
       return `https://www.ebay.co.uk/itm/${listingId}`;
-    }
+    },
+
+    // ── Markets tab methods ──────────────────────────────────
+
+    async loadMarkets() {
+      this.marketsLoading = true;
+      this.marketsError = null;
+      try {
+        this.marketsData = await this.apiCall('/markets');
+      } catch (error) {
+        this.marketsError = error.message;
+      } finally {
+        this.marketsLoading = false;
+      }
+    },
+
+    clearMarketsFilters() {
+      this.marketsListingSearch = '';
+      this.marketsStatusFilter = '';
+      this.marketsConditionFilter = '';
+      this.marketsMinPrice = '';
+      this.marketsMaxPrice = '';
+      this.marketsMinDays = '';
+      this.marketsMaxDays = '';
+      this.marketsRegex = '';
+      this.marketsRegexError = '';
+      this.marketsAxisFilters = {};
+      this.marketsListingPage = 1;
+      this.loadMarketListings();
+      this.loadTaxonomy();
+      this.loadPricing();
+    },
+
+    _debouncedMarketsReload() {
+      clearTimeout(this._marketsFilterTimer);
+      this._marketsFilterTimer = setTimeout(() => {
+        this.marketsListingPage = 1;
+        this.loadMarketListings();
+      }, 400);
+    },
+
+    async openMarketJob(job) {
+      this.marketsSelected = job;
+      this.marketsListingSearch = '';
+      this.marketsStatusFilter = '';
+      this.marketsConditionFilter = '';
+      this.marketsMinPrice = '';
+      this.marketsMaxPrice = '';
+      this.marketsMinDays = '';
+      this.marketsMaxDays = '';
+      this.marketsRegex = '';
+      this.marketsRegexError = '';
+      this.marketsShowFilters = false;
+      this.marketsChatOpen = false;
+      this.marketsChatMessages = [];
+      this.marketsChatInput = '';
+      this.marketsChatLoading = false;
+      this.marketsChatToolStatus = null;
+      this.marketsChatExpanded = false;
+      this.marketsListingSortKey = 'daysOnMarket';
+      this.marketsListingSortDir = 1;
+      this.marketsListingPage = 1;
+      this.marketsAxisFilters = {};
+      this.marketsTaxonomy = null;
+      this.marketsPricing = null;
+      this.marketsOpportunityMap = {};
+      this.loadConditions();
+      await this.loadMarketListings();
+      this.loadTaxonomy();
+      this.loadPricing();
+    },
+
+    async loadConditions() {
+      try {
+        this.marketsConditions = await this.apiCall(
+          `/markets/${this.marketsSelected.jobId}/conditions`
+        );
+      } catch {
+        this.marketsConditions = [];
+      }
+    },
+
+    async loadMarketListings() {
+      this.marketsListingsLoading = true;
+      this.marketsRegexError = '';
+      try {
+        const params = new URLSearchParams();
+        params.set('page', this.marketsListingPage);
+        params.set('pageSize', this.marketsListingPageSize);
+        params.set('sortBy', this.marketsListingSortKey);
+        params.set('sortDir', this.marketsListingSortDir === 1 ? 'asc' : 'desc');
+        if (this.marketsStatusFilter) {
+          params.set('status', this.marketsStatusFilter);
+        }
+        if (this.marketsListingSearch) {
+          params.set('search', this.marketsListingSearch);
+        }
+        if (this.marketsConditionFilter) {
+          params.set('condition', this.marketsConditionFilter);
+        }
+        if (this.marketsMinPrice) {
+          params.set('minPrice', this.marketsMinPrice);
+        }
+        if (this.marketsMaxPrice) {
+          params.set('maxPrice', this.marketsMaxPrice);
+        }
+        if (this.marketsMinDays) {
+          params.set('minDays', this.marketsMinDays);
+        }
+        if (this.marketsMaxDays) {
+          params.set('maxDays', this.marketsMaxDays);
+        }
+        if (this.marketsRegex) {
+          params.set('regex', this.marketsRegex);
+        }
+        for (const [axis, value] of Object.entries(this.marketsAxisFilters)) {
+          params.set('axis' + axis, value);
+        }
+        const data = await this.apiCall(
+          `/markets/${this.marketsSelected.jobId}/listings?${params.toString()}`
+        );
+        this.marketsListings = data.items;
+        this.marketsListingTotal = data.totalCount;
+        this.marketsListingStats = data.stats;
+      } catch (error) {
+        if (error.message?.includes('regex') || error.message?.includes('Invalid')) {
+          this.marketsRegexError = 'Invalid regex pattern';
+        } else {
+          this.marketsError = error.message;
+        }
+      } finally {
+        this.marketsListingsLoading = false;
+      }
+    },
+
+    async loadTaxonomy() {
+      this.marketsTaxonomyLoading = true;
+      try {
+        const params = new URLSearchParams();
+        for (const [axis, value] of Object.entries(this.marketsAxisFilters)) {
+          params.set('axis' + axis, value);
+        }
+        const qs = params.toString();
+        const url = `/markets/${this.marketsSelected.jobId}/taxonomy${qs ? '?' + qs : ''}`;
+        this.marketsTaxonomy = await this.apiCall(url);
+      } catch (error) {
+        console.error('Failed to load taxonomy:', error);
+        this.marketsTaxonomy = null;
+      } finally {
+        this.marketsTaxonomyLoading = false;
+      }
+    },
+
+    async loadPricing() {
+      this.marketsPricingLoading = true;
+      try {
+        const params = new URLSearchParams();
+        params.set('fee', (this.settings.opportunities.feePercent || 13.25).toString());
+        params.set('minComps', (this.settings.opportunities.minComps || 3).toString());
+        for (const [axis, value] of Object.entries(this.marketsAxisFilters)) {
+          params.set('axis' + axis, value);
+        }
+        const url = `/markets/${this.marketsSelected.jobId}/pricing?${params.toString()}`;
+        this.marketsPricing = await this.apiCall(url);
+        this.marketsOpportunityMap = {};
+        if (this.marketsPricing?.opportunities) {
+          for (const opp of this.marketsPricing.opportunities) {
+            this.marketsOpportunityMap[opp.listingId] = opp;
+          }
+        }
+      } catch (error) {
+        console.error('Failed to load pricing:', error);
+        this.marketsPricing = null;
+        this.marketsOpportunityMap = {};
+      } finally {
+        this.marketsPricingLoading = false;
+      }
+    },
+
+    toggleAxisFilter(axisName, value) {
+      if (this.marketsAxisFilters[axisName] === value) {
+        const copy = { ...this.marketsAxisFilters };
+        delete copy[axisName];
+        this.marketsAxisFilters = copy;
+      } else {
+        this.marketsAxisFilters = { ...this.marketsAxisFilters, [axisName]: value };
+      }
+      this.marketsListingPage = 1;
+      this.loadTaxonomy();
+      this.loadPricing();
+      this.loadMarketListings();
+    },
+
+    backToMarkets() {
+      this.marketsSelected = null;
+      this.marketsListings = [];
+      this.marketsTaxonomy = null;
+      this.marketsPricing = null;
+      this.marketsOpportunityMap = {};
+      this.marketsAxisFilters = {};
+      this.marketsConditions = [];
+    },
+
+    setMarketsSort(key) {
+      if (this.marketsSortKey === key) {
+        this.marketsSortDir *= -1;
+      } else {
+        this.marketsSortKey = key;
+        this.marketsSortDir = key === 'searchTerm' ? 1 : -1;
+      }
+    },
+
+    setMarketsListingSort(key) {
+      if (this.marketsListingSortKey === key) {
+        this.marketsListingSortDir *= -1;
+      } else {
+        this.marketsListingSortKey = key;
+        this.marketsListingSortDir = (key === 'title' || key === 'listingStatus' || key === 'condition') ? 1 : -1;
+      }
+      if (key === 'opportunity') {
+        this.marketsListings.sort((a, b) => {
+          const oa = this.marketsOpportunityMap[a.id];
+          const ob = this.marketsOpportunityMap[b.id];
+          const pa = oa ? oa.estimatedProfit : -Infinity;
+          const pb = ob ? ob.estimatedProfit : -Infinity;
+          return this.marketsListingSortDir === 1 ? pa - pb : pb - pa;
+        });
+        return;
+      }
+      this.marketsListingPage = 1;
+      this.loadMarketListings();
+    },
+
+    marketsStClass(val) {
+      if (val >= 40) { return 'st-high'; }
+      if (val >= 25) { return 'st-mid'; }
+      return 'st-low';
+    },
+
+    marketsDaysClass(val) {
+      if (val == null) { return ''; }
+      if (val <= 7) { return 'st-high'; }
+      if (val <= 21) { return 'st-mid'; }
+      return 'st-low';
+    },
+
+    // Chat panel methods
+    toggleMarketsChat() {
+      this.marketsChatOpen = !this.marketsChatOpen;
+      if (this.marketsChatOpen && this.marketsChatMessages.length === 0) {
+        const term = this.marketsSelected?.searchTerm || 'this category';
+        this.marketsChatMessages.push({
+          role: 'assistant',
+          text: `I can help you find specific variants within "${term}". Describe what you're looking for — e.g. "825GB console only, no bundles" — and I'll filter the listings for you.`,
+          time: new Date()
+        });
+      }
+      this.$nextTick(() => this._scrollChatToBottom());
+    },
+
+    async sendChatMessage() {
+      const text = this.marketsChatInput.trim();
+      if (!text || this.marketsChatLoading) { return; }
+
+      this.marketsChatMessages.push({ role: 'user', text, time: new Date() });
+      this.marketsChatInput = '';
+      this.marketsChatLoading = true;
+      this.marketsChatToolStatus = null;
+      this._chatAbortController = new AbortController();
+      this.$nextTick(() => this._scrollChatToBottom());
+
+      try {
+        const body = {
+          message: text,
+          history: this.marketsChatMessages
+            .filter(m => m.role === 'user' || m.role === 'assistant')
+            .slice(0, -1)
+            .map(m => ({ role: m.role, content: m.text })),
+          currentFilters: {
+            regex: this.marketsRegex || null,
+            condition: this.marketsConditionFilter || null,
+            minPrice: this.marketsMinPrice ? Number(this.marketsMinPrice) : null,
+            maxPrice: this.marketsMaxPrice ? Number(this.marketsMaxPrice) : null,
+            minDays: this.marketsMinDays ? Number(this.marketsMinDays) : null,
+            maxDays: this.marketsMaxDays ? Number(this.marketsMaxDays) : null,
+            status: this.marketsStatusFilter || null
+          }
+        };
+
+        const baseUrl = this.config.marketMakerApi.baseUrl;
+        const functionKey = this.config.marketMakerApi.functionKey;
+        const url = new URL(`${baseUrl}/markets/${this.marketsSelected.jobId}/chat/stream`);
+        if (functionKey && functionKey !== 'your-function-key-here') {
+          url.searchParams.set('code', functionKey);
+        }
+
+        const response = await fetch(url.toString(), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+          signal: this._chatAbortController.signal
+        });
+
+        if (!response.ok) {
+          const errorBody = await response.json().catch(() => ({ error: response.statusText }));
+          throw new Error(errorBody.error || `HTTP ${response.status}`);
+        }
+
+        if (!response.body) {
+          throw new Error('No response body received');
+        }
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) { break; }
+
+          buffer += decoder.decode(value, { stream: true });
+          const parts = buffer.split('\n\n');
+          buffer = parts.pop();
+
+          for (const part of parts) {
+            const line = part.trim();
+            if (!line.startsWith('data:')) { continue; }
+            const json = line.slice(5).trim();
+            let evt;
+            try {
+              evt = JSON.parse(json);
+            } catch {
+              continue;
+            }
+
+            if (evt.type === 'tool_call') {
+              const toolLabels = {
+                query_listings: 'Querying listings...',
+                set_filters: 'Applying filters...',
+                sample_listings: 'Browsing listings...',
+                discover_variants: 'Discovering product variants...'
+              };
+              const label = toolLabels[evt.data.name] || 'Working...';
+              this.marketsChatToolStatus = label;
+              this.marketsChatMessages.push({
+                role: 'tool',
+                toolName: evt.data.name,
+                text: label,
+                status: 'running',
+                time: new Date()
+              });
+              this.$nextTick(() => this._scrollChatToBottom());
+            } else if (evt.type === 'tool_result') {
+              this.marketsChatToolStatus = evt.data.summary;
+              const lastTool = [...this.marketsChatMessages].reverse().find(m => m.role === 'tool' && m.status === 'running');
+              if (lastTool) {
+                lastTool.text = evt.data.summary;
+                lastTool.status = 'done';
+              }
+              this.$nextTick(() => this._scrollChatToBottom());
+            } else if (evt.type === 'response') {
+              this.marketsChatToolStatus = null;
+              this.marketsChatMessages.push({
+                role: 'assistant',
+                text: evt.data.message,
+                time: new Date()
+              });
+
+              if (evt.data.filters) {
+                this.marketsRegex = evt.data.filters.regex || '';
+                this.marketsConditionFilter = evt.data.filters.condition || '';
+                this.marketsMinPrice = evt.data.filters.minPrice != null ? String(evt.data.filters.minPrice) : '';
+                this.marketsMaxPrice = evt.data.filters.maxPrice != null ? String(evt.data.filters.maxPrice) : '';
+                this.marketsMinDays = evt.data.filters.minDays != null ? String(evt.data.filters.minDays) : '';
+                this.marketsMaxDays = evt.data.filters.maxDays != null ? String(evt.data.filters.maxDays) : '';
+                this.marketsStatusFilter = evt.data.filters.status || '';
+                this.marketsListingPage = 1;
+                await this.loadMarketListings();
+              }
+
+              this.$nextTick(() => this._scrollChatToBottom());
+            } else if (evt.type === 'error') {
+              this.marketsChatToolStatus = null;
+              this.marketsChatMessages.push({
+                role: 'assistant',
+                text: evt.data.error || 'Sorry, something went wrong. Try again.',
+                time: new Date()
+              });
+              this.$nextTick(() => this._scrollChatToBottom());
+            }
+          }
+        }
+      } catch (error) {
+        if (error.name === 'AbortError') {
+          this.marketsChatMessages.push({
+            role: 'assistant',
+            text: 'Stopped.',
+            time: new Date()
+          });
+        } else {
+          this.marketsChatMessages.push({
+            role: 'assistant',
+            text: 'Sorry, something went wrong. Try again.',
+            time: new Date()
+          });
+        }
+      } finally {
+        this.marketsChatLoading = false;
+        this.marketsChatToolStatus = null;
+        this._chatAbortController = null;
+        this.$nextTick(() => this._scrollChatToBottom());
+      }
+    },
+
+    stopChatMessage() {
+      if (this._chatAbortController) {
+        this._chatAbortController.abort();
+      }
+    },
+
+    handleChatKeydown(e) {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        this.sendChatMessage();
+      }
+    },
+
+    formatChatMessage(text) {
+      const escaped = text
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+      return escaped.replace(/`([^`]+)`/g, '<code>$1</code>');
+    },
+
+    chatTimeLabel(time) {
+      if (!time) { return ''; }
+      const d = new Date(time);
+      return d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+    },
+
+    _scrollChatToBottom() {
+      const el = this.$el?.querySelector('.chat-messages');
+      if (el) { el.scrollTop = el.scrollHeight; }
+    },
   }
 }).mount('#app');

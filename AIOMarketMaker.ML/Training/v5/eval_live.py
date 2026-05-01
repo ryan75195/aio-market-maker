@@ -23,7 +23,13 @@ TOP_K = 50
 
 
 def load_pinecone_key():
-    settings_path = r"<REPO_ROOT>\AIOMarketMaker\AIOMarketMaker.Console\local.settings.json"
+    # Resolve local.settings.json relative to the repo root.
+    import os
+    repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
+    settings_path = os.environ.get(
+        "AIOMM_LOCAL_SETTINGS",
+        os.path.join(repo_root, "AIOMarketMaker.Console", "local.settings.json"),
+    )
     with open(settings_path) as f:
         settings = json.load(f)
     return settings["Values"]["Pinecone:ApiKey"]

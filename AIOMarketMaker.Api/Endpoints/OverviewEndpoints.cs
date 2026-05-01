@@ -1,5 +1,4 @@
 using System.Data;
-using System.Data.Common;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using AIOMarketMaker.Core.Data;
@@ -32,12 +31,12 @@ public record ConditionProfitEntry(string Condition, decimal AvgProfit, int Coun
 
 public record DaysToSellEntry(int JobId, string? SearchTerm, decimal? AvgDaysToSell);
 
-public record PriceVsProfitEntry(decimal Price, decimal PotentialProfit, string? Condition);
+public record PriceVsProfitEntry(decimal Price, decimal EstimatedProfit, string? Condition);
 
 public record TopOpportunityResponse(
     string ListingId, string? Title, decimal? Price, string? Currency,
-    decimal? AverageSoldPrice, decimal? PotentialProfit,
-    int SimilarSoldCount, string? Condition, string? Url);
+    decimal? MedianSoldPrice, decimal? EstimatedProfit,
+    int SoldComps, string? Condition, string? Url);
 
 public record RecentRunResponse(
     int Id, DateTime? StartedUtc, string? JobSearchTerm,
@@ -53,47 +52,107 @@ public static class OverviewEndpoints
 
     private static async Task<IResult> GetOverview(
         EtlDbContext db,
-        IListingPredictionService predictionService,
         IOptions<PricingOptions> pricingOptions,
-        int? minComps = null,
-        decimal? feePercent = null,
-        bool matchCondition = true)
+        int? minComps = null)
     {
         var opts = pricingOptions.Value;
-        var filters = new PredictionFilters(
-            FeePercent: feePercent ?? (decimal)opts.FeePercent,
-            MatchCondition: matchCondition,
-            MinComps: minComps ?? opts.MinComps);
+        var effectiveMinComps = minComps ?? opts.MinComps;
+
         var statusCounts = await GetStatusCounts(db);
-        var agg = await predictionService.GetAggregates(filters);
         var lastScrape = await GetLastScrape(db);
         var cumulativeGrowth = await GetCumulativeGrowth(db);
-        var opportunitiesByDay = await GetOpportunitiesByDay(db, filters);
+        var opportunitiesByDay = await GetOpportunitiesByDay(db, effectiveMinComps);
+
+        var oppQuery = db.TaxonomyOpportunities
+            .AsNoTracking()
+            .AsQueryable();
+
+        if (effectiveMinComps > 0)
+        {
+            oppQuery = oppQuery.Where(o => o.SoldComps >= effectiveMinComps);
+        }
+
+        var opportunities = await oppQuery.CountAsync();
+        var aggregateProfit = opportunities > 0
+            ? await oppQuery.SumAsync(o => (double)o.EstimatedProfit)
+            : 0;
+
+        // Materialize opportunity rows with joined data for in-memory aggregation.
+        // The dataset is bounded (only profitable opportunities above min comps),
+        // so materializing is safe and avoids EF Core GroupBy translation issues.
+        var oppRows = await oppQuery
+            .Select(o => new OpportunityRow(
+                o.ScrapeJobId, o.ListingId, o.AskPrice,
+                o.MedianSoldPrice, o.EstimatedProfit, o.SoldComps,
+                o.Listing!.ListingId, o.Listing.Id,
+                o.Listing.Title, o.Listing.Currency,
+                o.Listing.Condition, o.Listing.Url,
+                o.ScrapeJob!.SearchTerm))
+            .ToListAsync();
+
+        var topJobsByOpportunities = oppRows
+            .GroupBy(o => new { o.ScrapeJobId, o.SearchTerm })
+            .Select(g => new TopJobOpportunityEntry(
+                g.Key.ScrapeJobId, g.Key.SearchTerm ?? "",
+                g.Count(), g.Sum(x => x.EstimatedProfit)))
+            .OrderByDescending(j => j.OpportunityCount)
+            .Take(10)
+            .ToList();
+
+        var avgProfitByCondition = oppRows
+            .Where(o => o.Condition != null)
+            .GroupBy(o => o.Condition!)
+            .Select(g => new ConditionProfitEntry(
+                g.Key, g.Average(x => x.EstimatedProfit), g.Count()))
+            .OrderByDescending(c => c.AvgProfit)
+            .ToList();
+
+        var priceVsProfitPoints = oppRows
+            .Take(500)
+            .Select(o => new PriceVsProfitEntry(
+                o.AskPrice, o.EstimatedProfit, o.Condition))
+            .ToList();
+
+        var topOpportunities = oppRows
+            .OrderByDescending(o => o.EstimatedProfit)
+            .Take(10)
+            .Select(o => new TopOpportunityResponse(
+                o.ListingEbayId ?? o.ListingDbId.ToString(),
+                o.Title,
+                o.AskPrice,
+                o.Currency ?? "GBP",
+                o.MedianSoldPrice,
+                o.EstimatedProfit,
+                o.SoldComps,
+                o.Condition,
+                o.Url))
+            .ToList();
 
         var response = new OverviewResponse(
             TotalListings: statusCounts.Total,
             ActiveListings: statusCounts.Active,
             SoldListings: statusCounts.Sold,
             EndedListings: statusCounts.Ended,
-            Opportunities: agg.Opportunities,
-            AggregateProfit: agg.AggregateProfit,
+            Opportunities: opportunities,
+            AggregateProfit: (decimal)aggregateProfit,
             LastScrape: lastScrape,
             CumulativeGrowth: cumulativeGrowth,
             OpportunitiesByDay: opportunitiesByDay,
-            TopJobsByOpportunities: agg.TopJobsByOpportunities
-                .Select(j => new TopJobOpportunityEntry(j.JobId, j.SearchTerm, j.OpportunityCount, j.TotalProfit)),
-            AvgProfitByCondition: agg.AvgProfitByCondition
-                .Select(c => new ConditionProfitEntry(c.Condition, c.AvgProfit, c.Count)),
-            PriceVsProfitPoints: agg.PriceVsProfitPoints
-                .Select(p => new PriceVsProfitEntry(p.Price, p.PotentialProfit, p.Condition)),
-            TopOpportunities: agg.TopOpportunities
-                .Select(o => new TopOpportunityResponse(
-                    o.ListingId, o.Title, o.Price, o.Currency,
-                    o.AverageSoldPrice, o.PotentialProfit, o.SimilarSoldCount,
-                    o.Condition, o.Url)));
+            TopJobsByOpportunities: topJobsByOpportunities,
+            AvgProfitByCondition: avgProfitByCondition,
+            PriceVsProfitPoints: priceVsProfitPoints,
+            TopOpportunities: topOpportunities);
 
         return Results.Ok(response);
     }
+
+    // -- Materialized opportunity row for in-memory aggregation --
+
+    private record OpportunityRow(
+        int ScrapeJobId, int ListingId, decimal AskPrice,
+        decimal MedianSoldPrice, decimal EstimatedProfit, int SoldComps,
+        string? ListingEbayId, int ListingDbId, string? Title,
+        string? Currency, string? Condition, string? Url, string? SearchTerm);
 
     // -- Status counts --
 
@@ -162,7 +221,7 @@ public static class OverviewEndpoints
             GROUP BY {dateCast}
             ORDER BY ListingDate";
 
-        var dailyCounts = await ExecuteQuery(db, sql, reader => new DailyCount(
+        var dailyCounts = await DbQueryHelper.ExecuteQuery(db, sql, reader => new DailyCount(
             isSqlite ? reader.GetString(0) : reader.GetDateTime(0).ToString("yyyy-MM-dd"),
             reader.GetInt32(1)));
 
@@ -181,7 +240,7 @@ public static class OverviewEndpoints
     // -- Opportunities by day --
 
     private static async Task<IEnumerable<OpportunitiesByDayEntry>> GetOpportunitiesByDay(
-        EtlDbContext db, PredictionFilters filters)
+        EtlDbContext db, int minComps)
     {
         var conn = db.Database.GetDbConnection();
         if (conn.State != ConnectionState.Open)
@@ -190,43 +249,18 @@ public static class OverviewEndpoints
         }
 
         var isSqlite = conn.GetType().Name.Contains("Sqlite");
-        var dateCast = isSqlite ? "DATE(l.CreatedUtc)" : "CAST(l.CreatedUtc AS DATE)";
-        var minComps = filters.MinComps > 0 ? filters.MinComps : 1;
+        var dateCast = isSqlite ? "DATE(ComputedUtc)" : "CAST(ComputedUtc AS DATE)";
 
         var sql = $@"
             SELECT {dateCast} AS OpDate, COUNT(*) AS OpCount
-            FROM Listings l
-            WHERE l.ListingStatus = 'Active'
-              AND (SELECT COUNT(*) FROM ListingRelationships lr WHERE lr.ListingIdA = l.Id) >= {minComps}
+            FROM TaxonomyOpportunities
+            WHERE SoldComps >= {minComps}
             GROUP BY {dateCast}
             ORDER BY OpDate";
 
-        return await ExecuteQuery(db, sql, reader => new OpportunitiesByDayEntry(
+        return await DbQueryHelper.ExecuteQuery(db, sql, reader => new OpportunitiesByDayEntry(
             isSqlite ? reader.GetString(0) : reader.GetDateTime(0).ToString("yyyy-MM-dd"),
             reader.GetInt32(1)));
     }
 
-    // -- SQL helper (used by raw SQL queries for cross-database date grouping) --
-
-    private static async Task<List<T>> ExecuteQuery<T>(
-        EtlDbContext db, string sql, Func<DbDataReader, T> map)
-    {
-        var conn = db.Database.GetDbConnection();
-        if (conn.State != ConnectionState.Open)
-        {
-            await conn.OpenAsync();
-        }
-
-        await using var cmd = conn.CreateCommand();
-        cmd.CommandText = sql;
-        await using var reader = await cmd.ExecuteReaderAsync();
-
-        var results = new List<T>();
-        while (await reader.ReadAsync())
-        {
-            results.Add(map(reader));
-        }
-
-        return results;
-    }
 }

@@ -3,6 +3,7 @@ using Azure.Storage.Blobs;
 using AIOMarketMaker.Core.Data;
 using AIOMarketMaker.Core.Data.Models;
 using AIOMarketMaker.Core.Services;
+using AIOMarketMaker.Core.Services.Taxonomy;
 
 namespace AIOMarketMaker.Api.Endpoints;
 
@@ -64,7 +65,6 @@ public static class ListingEndpoints
     private static async Task<IResult> GetActiveListings(
         EtlDbContext db,
         IListingPredictionService predictionService,
-        ISemanticSearchService semanticSearchService,
         int page = 1,
         int pageSize = 50,
         string sortBy = "potentialProfit",
@@ -74,32 +74,14 @@ public static class ListingEndpoints
         decimal priceBand = 0,
         decimal feePercent = 0,
         bool matchCondition = true,
-        decimal maxPrice = 0,
-        string? searchQuery = null)
+        decimal maxPrice = 0)
     {
         var filters = new PredictionFilters(priceBand, feePercent, matchCondition, minComps, maxPrice);
         var jobIdList = ParseJobIds(jobIds);
 
-        List<int>? searchListingIds = null;
-        if (!string.IsNullOrWhiteSpace(searchQuery))
-        {
-            var searchResult = await semanticSearchService.Search(searchQuery, 5000);
-            var matchedEbayIds = searchResult.Hits.Select(h => h.ListingId).ToHashSet();
-            searchListingIds = await db.Listings
-                .Where(l => l.ListingStatus == "Active" && matchedEbayIds.Contains(l.ListingId))
-                .Select(l => l.Id)
-                .ToListAsync();
-
-            if (searchListingIds.Count == 0)
-            {
-                return Results.Ok(new PagedResponse<OpportunityListing>(
-                    Enumerable.Empty<OpportunityListing>(), 0, page, pageSize, 0));
-            }
-        }
-
         var paged = await predictionService.GetPredictions(
             filters, jobIdList.Count > 0 ? jobIdList : null,
-            sortBy, sortDir, page, pageSize, searchListingIds);
+            sortBy, sortDir, page, pageSize, null);
 
         if (paged.TotalCount == 0)
         {
@@ -153,7 +135,8 @@ public static class ListingEndpoints
     }
 
     private static async Task<IResult> GetListingDetail(
-        EtlDbContext db, IListingPredictionService predictionService, int id,
+        EtlDbContext db, IListingPredictionService predictionService,
+        ITaxonomyQueryService taxonomyQuery, int id,
         decimal priceBand = 0, decimal feePercent = 0, bool matchCondition = true)
     {
         var listing = await db.Listings
@@ -165,16 +148,49 @@ public static class ListingEndpoints
             return Results.NotFound();
         }
 
-        var filters = new PredictionFilters(priceBand, feePercent, matchCondition);
-        var comps = await predictionService.GetComparables(id, filters);
-        var prediction = await predictionService.GetPrediction(id, filters);
+        // Taxonomy is the primary source for comparables
+        var taxonomyComps = (await taxonomyQuery.GetCellComparables(id)).ToList();
+        IEnumerable<ComparableListing> comparables;
+        ListingPredictionResult? prediction = null;
 
-        var comparables = comps.Select(c => new ComparableListing(
-            c.RelationshipId, c.ListingId!, c.Title,
-            c.Description, c.Price, c.Condition,
-            c.Url, c.Images,
-            c.SoldDateUtc, c.SimilarityScore, c.ClassifierConfidence,
-            c.Explanation));
+        if (taxonomyComps.Count > 0)
+        {
+            comparables = taxonomyComps.Select(c => new ComparableListing(
+                0, c.EbayListingId ?? "", c.Title,
+                c.Description, c.Price, c.Condition,
+                c.Url, c.Images,
+                c.SoldDateUtc, 1.0, null,
+                $"Same taxonomy cell: {c.CellKey}"));
+
+            var opportunity = await db.TaxonomyOpportunities
+                .AsNoTracking()
+                .FirstOrDefaultAsync(o => o.ListingId == id);
+
+            if (opportunity != null)
+            {
+                prediction = new ListingPredictionResult(
+                    id,
+                    opportunity.SoldComps,
+                    opportunity.MedianSoldPrice,
+                    opportunity.EstimatedProfit,
+                    opportunity.AvgDaysToSell,
+                    MedianSoldPrice: opportunity.MedianSoldPrice);
+            }
+        }
+        else
+        {
+            // Fall back to vector search + classifier relationships
+            var filters = new PredictionFilters(priceBand, feePercent, matchCondition);
+            var comps = await predictionService.GetComparables(id, filters);
+            prediction = await predictionService.GetPrediction(id, filters);
+
+            comparables = comps.Select(c => new ComparableListing(
+                c.RelationshipId, c.ListingId!, c.Title,
+                c.Description, c.Price, c.Condition,
+                c.Url, c.Images,
+                c.SoldDateUtc, c.SimilarityScore, c.ClassifierConfidence,
+                c.Explanation));
+        }
 
         var detail = new ListingDetail(
             listing.Id, listing.ListingId, listing.Title, listing.Description,
@@ -192,6 +208,7 @@ public static class ListingEndpoints
 
     private static async Task<IResult> DismissComparable(
         EtlDbContext db, IListingPredictionService predictionService,
+        ITaxonomyQueryService taxonomyQuery,
         int id, int relationshipId,
         decimal priceBand = 0, decimal feePercent = 0, bool matchCondition = true)
     {
@@ -208,7 +225,7 @@ public static class ListingEndpoints
         db.ListingRelationships.Remove(relationship);
         await db.SaveChangesAsync();
 
-        return await GetListingDetail(db, predictionService, id, priceBand, feePercent, matchCondition);
+        return await GetListingDetail(db, predictionService, taxonomyQuery, id, priceBand, feePercent, matchCondition);
     }
 
     private static async Task<IResult> GetListingStats(EtlDbContext db)
@@ -258,21 +275,20 @@ public static class ListingEndpoints
     }
 
     private static async Task<IResult> ClearAllListings(
-        EtlDbContext db, IVectorIndex vectorIndex, ILogger<Program> logger)
+        EtlDbContext db, ILogger<Program> logger)
     {
         var count = await db.Listings.CountAsync();
 
         if (count > 0)
         {
-            // Delete relationships first (NoAction FK to Listings). Predictions are a live view.
+            // Delete in dependency order: predictions (cascade FK), relationships (NoAction FK), then listings
+            await db.Database.ExecuteSqlRawAsync("DELETE FROM ListingPredictions");
             await db.Database.ExecuteSqlRawAsync("DELETE FROM ListingRelationships");
             await db.Database.ExecuteSqlRawAsync("DELETE FROM Listings");
             logger.LogInformation("Cleared {Count} listings from database", count);
         }
 
-        bool indexCleared = ClearVectorIndex(vectorIndex, logger);
-
-        return Results.Ok(new ClearListingsResponse(count, indexCleared));
+        return Results.Ok(new ClearListingsResponse(count, false));
     }
 
     private static async Task<IResult> ClearAllHistory(
@@ -290,13 +306,14 @@ public static class ListingEndpoints
     }
 
     private static async Task<IResult> ClearAllData(
-        EtlDbContext db, BlobServiceClient blobService, IVectorIndex vectorIndex,
+        EtlDbContext db, BlobServiceClient blobService,
         ILogger<Program> logger)
     {
         var listingsCount = await db.Listings.CountAsync();
         var runsCount = await db.ScrapeRuns.CountAsync();
 
-        // Delete in correct order: relationships first (NoAction FK), then Listings, then ScrapeRuns (cascades)
+        // Delete in dependency order: predictions, relationships (NoAction FK), then Listings, then ScrapeRuns
+        await db.Database.ExecuteSqlRawAsync("DELETE FROM ListingPredictions");
         await db.Database.ExecuteSqlRawAsync("DELETE FROM ListingRelationships");
         if (listingsCount > 0)
         {
@@ -325,31 +342,11 @@ public static class ListingEndpoints
             logger.LogWarning(ex, "Failed to clear blob storage (non-fatal)");
         }
 
-        // Clear local vector index
-        bool indexCleared = ClearVectorIndex(vectorIndex, logger);
-
         logger.LogInformation(
-            "Cleared all data: {Listings} listings, {Runs} scrape runs, blobs cleared: {BlobsCleared}, index cleared: {IndexCleared}",
-            listingsCount, runsCount, blobsCleared, indexCleared);
+            "Cleared all data: {Listings} listings, {Runs} scrape runs, blobs cleared: {BlobsCleared}",
+            listingsCount, runsCount, blobsCleared);
 
-        return Results.Ok(new ClearDataResponse(listingsCount, runsCount, blobsCleared, indexCleared));
-    }
-
-    private static bool ClearVectorIndex(IVectorIndex vectorIndex, ILogger logger)
-    {
-        try
-        {
-            var count = vectorIndex.Count;
-            vectorIndex.Clear();
-            vectorIndex.Save();
-            logger.LogInformation("Cleared {Count} vectors from local index", count);
-            return true;
-        }
-        catch (Exception ex)
-        {
-            logger.LogWarning(ex, "Failed to clear vector index (non-fatal)");
-            return false;
-        }
+        return Results.Ok(new ClearDataResponse(listingsCount, runsCount, blobsCleared, false));
     }
 
     private static OpportunityListing ToOpportunityListing(

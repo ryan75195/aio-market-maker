@@ -3,4 +3,6 @@
 *.json
 *.pt
 *.log
+*.safetensors
 __pycache__/
+output/

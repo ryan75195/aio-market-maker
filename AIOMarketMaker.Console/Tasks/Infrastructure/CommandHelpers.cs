@@ -26,4 +26,28 @@ public static class CommandHelpers
         }
         return text[..maxChars];
     }
+
+    public static double GetDoubleFlag(string[] args, string flag, double defaultValue)
+    {
+        for (var i = 0; i < args.Length - 1; i++)
+        {
+            if (args[i] == flag && double.TryParse(args[i + 1], out var value))
+            {
+                return value;
+            }
+        }
+        return defaultValue;
+    }
+
+    public static int GetIntFlag(string[] args, string flag, int defaultValue)
+    {
+        for (var i = 0; i < args.Length - 1; i++)
+        {
+            if (args[i] == flag && int.TryParse(args[i + 1], out var value))
+            {
+                return value;
+            }
+        }
+        return defaultValue;
+    }
 }

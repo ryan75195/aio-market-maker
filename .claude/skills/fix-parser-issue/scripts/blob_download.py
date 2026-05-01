@@ -2,6 +2,7 @@
 """Download HTML from Azurite or Azure blob storage."""
 
 import argparse
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -9,8 +10,8 @@ from pathlib import Path
 # Azurite (local development) connection string
 AZURITE_CONN = "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://127.0.0.1:10000/devstoreaccount1;"
 
-# Azure storage account
-AZURE_ACCOUNT = "YOUR_STORAGE_ACCOUNT"
+# Azure storage account (set SCRAPER_STORAGE_ACCOUNT env var for cloud storage access)
+AZURE_ACCOUNT = os.environ.get("SCRAPER_STORAGE_ACCOUNT", "<SCRAPER_STORAGE_ACCOUNT>")
 
 def run_az(args: list) -> tuple[str, str, int]:
     """Run az CLI command and return stdout, stderr, returncode."""

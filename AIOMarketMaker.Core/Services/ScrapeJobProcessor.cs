@@ -6,6 +6,7 @@ using AngleSharp;
 using AIOMarketMaker.Core.Data;
 using AIOMarketMaker.Core.Data.Models;
 using AIOMarketMaker.Core.Parsers;
+using AIOMarketMaker.Core.Services.Pipeline;
 using AIOMarketMaker.Models.Ebay;
 
 namespace AIOMarketMaker.Core.Services;
@@ -14,6 +15,7 @@ public interface IScrapeJobProcessor
 {
     Task<ScrapeRun> CreateRun(ScrapeJobConfig job, string triggerType, Guid? batchId = null);
     Task Execute(ScrapeRun run, ScrapeJobConfig job);
+    Task SearchAndPersist(ScrapeRun run, ScrapeJobConfig job, CancellationToken ct = default);
 }
 
 public record ClassifiedListings(
@@ -36,6 +38,8 @@ public class ScrapeJobProcessor : IScrapeJobProcessor
     private readonly IEbayUrlBuilder _urlBuilder;
     private readonly IListingIndexingService _indexingService;
     private readonly DbWriteGate _dbWriteGate;
+    private readonly IEnumerable<IPostJobStage> _postJobStages;
+    private readonly ScrapingConfig _scrapingConfig;
 
     public ScrapeJobProcessor(
         ILogger<ScrapeJobProcessor> logger,
@@ -45,7 +49,9 @@ public class ScrapeJobProcessor : IScrapeJobProcessor
         IListingParser listingParser,
         IEbayUrlBuilder urlBuilder,
         IListingIndexingService indexingService,
-        DbWriteGate dbWriteGate)
+        DbWriteGate dbWriteGate,
+        IEnumerable<IPostJobStage> postJobStages,
+        ScrapingConfig scrapingConfig)
     {
         _logger = logger;
         _dbContext = dbContext;
@@ -55,6 +61,8 @@ public class ScrapeJobProcessor : IScrapeJobProcessor
         _urlBuilder = urlBuilder;
         _indexingService = indexingService;
         _dbWriteGate = dbWriteGate;
+        _postJobStages = postJobStages;
+        _scrapingConfig = scrapingConfig;
     }
 
     public async Task<ScrapeRun> CreateRun(ScrapeJobConfig job, string triggerType, Guid? batchId = null)
@@ -94,26 +102,96 @@ public class ScrapeJobProcessor : IScrapeJobProcessor
         }
     }
 
+    public async Task SearchAndPersist(ScrapeRun run, ScrapeJobConfig job, CancellationToken ct = default)
+    {
+        if (run.SearchResultsJson != null)
+        {
+            _logger.LogInformation("Search results already persisted for RunId={RunId}, skipping", run.Id);
+            return;
+        }
+
+        const int maxPages = 100;
+        var maxSoldPages = CalculateMaxSoldPages(job.LastRunUtc, maxPages);
+        _logger.LogInformation("SearchAndPersist: RunId={RunId}, JobId={JobId}, maxSoldPages={MaxSoldPages}",
+            run.Id, job.Id, maxSoldPages);
+
+        var soldSummaries = await SearchSoldListings(run, job.SearchTerm, maxSoldPages);
+        ct.ThrowIfCancellationRequested();
+        var activeSummaries = await SearchActiveListings(run, job.SearchTerm, maxPages);
+        ct.ThrowIfCancellationRequested();
+
+        // Merge — sold wins if listing appears in both (same logic as ClassifyListings)
+        var merged = new Dictionary<string, EbayProductSummary>();
+        foreach (var summary in soldSummaries.Concat(activeSummaries))
+        {
+            if (string.IsNullOrEmpty(summary.ListingId))
+            {
+                continue;
+            }
+
+            merged.TryAdd(summary.ListingId, (EbayProductSummary)summary);
+        }
+
+        run.SearchResultsJson = JsonSerializer.Serialize(merged.Values.ToList());
+        run.TotalListingsFound = merged.Count;
+        await _dbContext.SaveChangesAsync(ct);
+
+        _logger.LogInformation(
+            "SearchAndPersist complete: RunId={RunId}, {SoldCount} sold + {ActiveCount} active = {MergedCount} merged",
+            run.Id, soldSummaries.Count, activeSummaries.Count, merged.Count);
+    }
+
     private async Task ExecuteScrape(ScrapeRun scrapeRun, ScrapeJobConfig job)
     {
-        // Reset progress counters — ensures clean state on recovery restarts
+        // Mark as running so the UI can track progress
+        scrapeRun.Status = "Running";
+        // Reset processing counters — ensures clean state on recovery restarts.
+        // TotalListingsFound is preserved if already set by SearchAndPersist phase.
         scrapeRun.ListingsProcessed = 0;
         scrapeRun.ListingsAddedActive = 0;
         scrapeRun.ListingsAddedSold = 0;
         scrapeRun.ListingsUpdated = 0;
         scrapeRun.ListingsSkipped = 0;
         scrapeRun.ListingsFailed = 0;
-        scrapeRun.TotalListingsFound = 0;
         scrapeRun.ListingsFilteredPreQueue = 0;
+        if (scrapeRun.SearchResultsJson == null)
+        {
+            // Only reset TotalListingsFound for inline search path —
+            // phased pipeline already set this in SearchAndPersist
+            scrapeRun.TotalListingsFound = 0;
+        }
         await _dbContext.SaveChangesAsync();
 
-        const int maxPages = 100;
-        var maxSoldPages = CalculateMaxSoldPages(job.LastRunUtc, maxPages);
-        _logger.LogInformation("Smart lookback: LastRunUtc={LastRun}, maxSoldPages={MaxSoldPages}",
-            job.LastRunUtc, maxSoldPages);
+        List<IEbayProductSummary> soldSummaries;
+        List<IEbayProductSummary> activeSummaries;
 
-        var soldSummaries = await SearchSoldListings(scrapeRun, job.SearchTerm, maxSoldPages);
-        var activeSummaries = await SearchActiveListings(scrapeRun, job.SearchTerm, maxPages);
+        if (scrapeRun.SearchResultsJson != null)
+        {
+            // Consume persisted search results from SearchAndPersist phase
+            var persisted = JsonSerializer.Deserialize<List<EbayProductSummary>>(scrapeRun.SearchResultsJson) ?? [];
+            soldSummaries = persisted.Where(s => s.IsSold).Cast<IEbayProductSummary>().ToList();
+            activeSummaries = persisted.Where(s => !s.IsSold).Cast<IEbayProductSummary>().ToList();
+
+            // Clear JSON after consumption to free memory
+            scrapeRun.SearchResultsJson = null;
+            await _dbContext.SaveChangesAsync();
+
+            _logger.LogInformation(
+                "Loaded persisted search results: {SoldCount} sold, {ActiveCount} active",
+                soldSummaries.Count, activeSummaries.Count);
+        }
+        else
+        {
+            // Fallback: inline search (backward-compatible for recovery/standalone use)
+            const int maxPages = 100;
+            var maxSoldPages = CalculateMaxSoldPages(job.LastRunUtc, maxPages);
+            _logger.LogInformation("Smart lookback: LastRunUtc={LastRun}, maxSoldPages={MaxSoldPages}",
+                job.LastRunUtc, maxSoldPages);
+
+            soldSummaries = await SearchSoldListings(scrapeRun, job.SearchTerm, maxSoldPages);
+            activeSummaries = await SearchActiveListings(scrapeRun, job.SearchTerm, maxPages);
+        }
+
         var classified = await ClassifyListings(scrapeRun, activeSummaries, soldSummaries, job.Id);
 
         if (classified.ToUpdateFromSummary.Count > 0)
@@ -125,6 +203,8 @@ public class ScrapeJobProcessor : IScrapeJobProcessor
         {
             await FetchAndProcessDescriptions(scrapeRun, classified.ToScrape, classified.ExistingListings, job.Id);
         }
+
+        await RunPostJobStages(scrapeRun, job);
 
         // Always mark complete — no more "waiting for callbacks"
         await MarkCompleted(scrapeRun, job.Id);
@@ -179,7 +259,9 @@ public class ScrapeJobProcessor : IScrapeJobProcessor
         _logger.LogInformation("Found {Count} listings that transitioned from Active to Sold", transitionCount);
 
         // Load existing listings globally (IX_Listings_ListingId is unique across all jobs)
+        // AsNoTracking: we re-attach only the ones we modify later
         var existingListings = await _dbContext.Listings
+            .AsNoTracking()
             .Where(l => allListingIds.Contains(l.ListingId))
             .ToDictionaryAsync(l => l.ListingId);
 
@@ -234,6 +316,24 @@ public class ScrapeJobProcessor : IScrapeJobProcessor
         await SetPhase(scrapeRun, "Updating from summary");
         var updatedListings = new List<Listing>();
 
+        // Re-attach or locate tracked entities loaded with AsNoTracking
+        foreach (var summary in summaries)
+        {
+            if (string.IsNullOrEmpty(summary.ListingId)) { continue; }
+            if (!existingListings.TryGetValue(summary.ListingId, out var listing)) { continue; }
+
+            var tracked = _dbContext.Listings.Local.FirstOrDefault(l => l.Id == listing.Id);
+            if (tracked != null)
+            {
+                // Entity already tracked (e.g., test context or prior operation) — use the tracked instance
+                existingListings[summary.ListingId] = tracked;
+            }
+            else
+            {
+                _dbContext.Listings.Attach(listing);
+            }
+        }
+
         foreach (var summary in summaries)
         {
             if (string.IsNullOrEmpty(summary.ListingId)) { continue; }
@@ -273,6 +373,12 @@ public class ScrapeJobProcessor : IScrapeJobProcessor
 
         await _dbContext.SaveChangesAsync();
 
+        // Detach updated listings — no longer needed downstream.
+        // Keep scrapeRun attached since it's updated throughout the pipeline.
+        var scrapeRunEntry = _dbContext.Entry(scrapeRun);
+        _dbContext.ChangeTracker.Clear();
+        scrapeRunEntry.State = EntityState.Unchanged;
+
         foreach (var listing in updatedListings)
         {
             await _indexingService.Index(listing, embedContent: false);
@@ -298,9 +404,12 @@ public class ScrapeJobProcessor : IScrapeJobProcessor
             _dbWriteGate.Release();
         }
 
-        // Channel lets us process results as they arrive (DbContext is not thread-safe)
-        var channel = Channel.CreateUnbounded<DescriptionFetchResult>();
-        var concurrency = new SemaphoreSlim(15);
+        // Bounded channel prevents memory growth if consumer lags behind producer.
+        // Capacity = 2× concurrency gives producer headroom without unbounded queuing.
+        var fetchConcurrency = _scrapingConfig.MaxConcurrentDescriptionFetches;
+        var channel = Channel.CreateBounded<DescriptionFetchResult>(
+            new BoundedChannelOptions(fetchConcurrency * 2) { FullMode = BoundedChannelFullMode.Wait });
+        var concurrency = new SemaphoreSlim(fetchConcurrency);
         // Producer: fetch descriptions concurrently, write results to channel
         var producerTask = Task.Run(async () =>
         {
@@ -362,6 +471,23 @@ public class ScrapeJobProcessor : IScrapeJobProcessor
         ScrapeRun scrapeRun, List<IEbayProductSummary> summaries,
         Dictionary<string, Listing> existingListings, int jobId)
     {
+        // Re-attach or locate tracked entities loaded with AsNoTracking
+        foreach (var summary in summaries)
+        {
+            if (string.IsNullOrEmpty(summary.ListingId)) { continue; }
+            if (!existingListings.TryGetValue(summary.ListingId, out var existing)) { continue; }
+
+            var tracked = _dbContext.Listings.Local.FirstOrDefault(l => l.Id == existing.Id);
+            if (tracked != null)
+            {
+                existingListings[summary.ListingId] = tracked;
+            }
+            else if (_dbContext.Entry(existing).State == EntityState.Detached)
+            {
+                _dbContext.Listings.Attach(existing);
+            }
+        }
+
         var newListings = new List<(Listing Listing, IEbayProductSummary Summary)>();
 
         foreach (var summary in summaries)
@@ -449,6 +575,14 @@ public class ScrapeJobProcessor : IScrapeJobProcessor
         }
         await _dbContext.SaveChangesAsync();
 
+        // Detach all saved entities to prevent unbounded tracker growth.
+        // Keep scrapeRun attached since it's updated throughout the pipeline.
+        // Listings in existingListings dictionary remain usable as POCOs for
+        // downstream lookups — they'll be re-attached as needed in ProcessFetchedDescription.
+        var scrapeRunEntry = _dbContext.Entry(scrapeRun);
+        _dbContext.ChangeTracker.Clear();
+        scrapeRunEntry.State = EntityState.Unchanged;
+
         _logger.LogInformation("Saved {Count} listings for job {JobId}", summaries.Count, jobId);
     }
 
@@ -466,6 +600,18 @@ public class ScrapeJobProcessor : IScrapeJobProcessor
             RecordIssue(scrapeRun, summary.ListingId ?? "unknown", "ListingNotFound", "DescriptionFetch",
                 "Listing not found in database during description processing");
             return null;
+        }
+
+        // Re-attach listing if detached (cleared by ChangeTracker.Clear after SaveListingsFromSummaries)
+        var tracked = _dbContext.Listings.Local.FirstOrDefault(l => l.Id == listing.Id);
+        if (tracked != null && tracked != listing)
+        {
+            listing = tracked;
+            allListings[summary.ListingId] = tracked;
+        }
+        else if (_dbContext.Entry(listing).State == EntityState.Detached)
+        {
+            _dbContext.Listings.Attach(listing);
         }
 
         if (result.Error != null)
@@ -512,20 +658,38 @@ public class ScrapeJobProcessor : IScrapeJobProcessor
     {
         await _dbContext.SaveChangesAsync();
 
-        var hadErrors = false;
-        foreach (var (listing, summary) in toIndex)
+        // Detach saved entities to prevent unbounded change tracker growth.
+        // Keep scrapeRun attached since it's updated throughout the pipeline.
+        var scrapeRunEntry = _dbContext.Entry(scrapeRun);
+        _dbContext.ChangeTracker.Clear();
+        scrapeRunEntry.State = EntityState.Unchanged;
+
+        if (toIndex.Count == 0)
         {
-            try
+            return;
+        }
+
+        // Batch embedding: single API call per batch instead of one per listing
+        var listings = toIndex.Select(x => x.Listing).ToList();
+        var results = (await _indexingService.IndexBatch(listings, embedContent: true)).ToList();
+
+        var hadErrors = false;
+        for (var i = 0; i < toIndex.Count; i++)
+        {
+            var (_, summary) = toIndex[i];
+            var result = i < results.Count ? results[i] : new IndexingResult(IndexingAction.Failed, "No result returned");
+
+            if (result.Action == IndexingAction.Failed)
             {
-                await _indexingService.Index(listing, embedContent: true);
-                IncrementAddedCounter(scrapeRun, summary);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "Failed to index listing {ListingId}", summary.ListingId);
+                _logger.LogWarning("Failed to index listing {ListingId}: {Error}", summary.ListingId, result.Error);
                 scrapeRun.ListingsFailed++;
-                RecordIssue(scrapeRun, summary.ListingId!, "IndexingFailed", "Indexing", ex);
+                RecordIssue(scrapeRun, summary.ListingId!, "IndexingFailed", "Indexing",
+                    result.Error ?? "Embedding failed");
                 hadErrors = true;
+            }
+            else
+            {
+                IncrementAddedCounter(scrapeRun, summary);
             }
         }
 
@@ -581,6 +745,12 @@ public class ScrapeJobProcessor : IScrapeJobProcessor
         });
     }
 
+    private void RecordIssue(ScrapeRun scrapeRun,
+        string issueType, string phase, Exception ex)
+    {
+        RecordIssue(scrapeRun, string.Empty, issueType, phase, ex);
+    }
+
     private static async Task<AngleSharp.Dom.IDocument> ParseHtml(string html)
     {
         return await SharedBrowsingContext.OpenAsync(req => req.Content(html));
@@ -596,11 +766,35 @@ public class ScrapeJobProcessor : IScrapeJobProcessor
         await _dbContext.SaveChangesAsync();
     }
 
+    private async Task RunPostJobStages(ScrapeRun scrapeRun, ScrapeJobConfig job)
+    {
+        var context = new PostJobContext(scrapeRun.Id, job.Id, job.SearchTerm);
+
+        foreach (var stage in _postJobStages)
+        {
+            try
+            {
+                await SetPhase(scrapeRun, stage.Name);
+                await stage.Execute(context);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Post-job stage '{StageName}' failed for RunId={RunId}", stage.Name, scrapeRun.Id);
+                RecordIssue(scrapeRun, "PostJobStageFailed", stage.Name, ex);
+                await _dbContext.SaveChangesAsync();
+            }
+        }
+    }
+
     private async Task MarkCompleted(ScrapeRun scrapeRun, int jobId)
     {
         scrapeRun.Status = "Completed";
         scrapeRun.CurrentPhase = "Completed";
         scrapeRun.CompletedUtc = DateTime.UtcNow;
+
+        // Force EF to persist changes — ChangeTracker.Clear() earlier in the pipeline
+        // can leave the entity in a state where automatic change detection misses updates.
+        _dbContext.Entry(scrapeRun).State = EntityState.Modified;
 
         var job = await _dbContext.ScrapeJobs.FindAsync(jobId);
         if (job != null)

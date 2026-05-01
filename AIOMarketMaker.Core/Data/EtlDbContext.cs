@@ -27,6 +27,12 @@ public class EtlDbContext : DbContext
     public DbSet<ListingRelationship> ListingRelationships { get; set; } = null!;
     public DbSet<Category> Categories { get; set; } = null!;
     public DbSet<JobCategory> JobCategories { get; set; } = null!;
+    public DbSet<ListingPrediction> ListingPredictions { get; set; } = null!;
+    public DbSet<TaxonomyRun> TaxonomyRuns { get; set; } = null!;
+    public DbSet<TaxonomyAxis> TaxonomyAxes { get; set; } = null!;
+    public DbSet<TaxonomyAxisValue> TaxonomyAxisValues { get; set; } = null!;
+    public DbSet<TaxonomyListingAssignment> TaxonomyListingAssignments { get; set; } = null!;
+    public DbSet<TaxonomyOpportunity> TaxonomyOpportunities { get; set; } = null!;
 
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
     {
@@ -131,6 +137,9 @@ public class EtlDbContext : DbContext
             entity.HasIndex(e => e.InstanceId);
             entity.HasIndex(e => e.BatchId)
                 .HasFilter("[BatchId] IS NOT NULL");
+
+            entity.Property(e => e.BatchPhase).HasMaxLength(20);
+            entity.Property(e => e.CurrentPostStage).HasMaxLength(100);
         });
 
         modelBuilder.Entity<ScrapeRunIssue>(entity =>
@@ -170,6 +179,91 @@ public class EtlDbContext : DbContext
                 .WithMany()
                 .HasForeignKey(e => e.ListingIdB)
                 .OnDelete(DeleteBehavior.NoAction);
+        });
+
+        modelBuilder.Entity<ListingPrediction>(entity =>
+        {
+            entity.ToTable("ListingPredictions");
+            entity.HasKey(e => e.ListingId);
+
+            entity.Property(e => e.AverageSoldPrice).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.MedianSoldPrice).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.PotentialProfit).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.ComputedUtc).HasDefaultValueSql(dateDefaultSql);
+
+            entity.HasOne(e => e.Listing)
+                .WithOne()
+                .HasForeignKey<ListingPrediction>(e => e.ListingId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<TaxonomyRun>(entity =>
+        {
+            entity.ToTable("TaxonomyRuns");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.CreatedUtc).HasDefaultValueSql(dateDefaultSql);
+            entity.HasIndex(e => e.ScrapeJobId);
+            entity.HasOne(e => e.ScrapeJob)
+                .WithMany()
+                .HasForeignKey(e => e.ScrapeJobId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<TaxonomyAxis>(entity =>
+        {
+            entity.ToTable("TaxonomyAxes");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Name).IsRequired().HasMaxLength(100);
+            entity.HasIndex(e => e.TaxonomyRunId);
+            entity.HasOne(e => e.TaxonomyRun)
+                .WithMany(r => r.Axes)
+                .HasForeignKey(e => e.TaxonomyRunId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<TaxonomyAxisValue>(entity =>
+        {
+            entity.ToTable("TaxonomyAxisValues");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Label).IsRequired().HasMaxLength(200);
+            entity.HasIndex(e => e.TaxonomyAxisId);
+            entity.HasOne(e => e.TaxonomyAxis)
+                .WithMany(a => a.Values)
+                .HasForeignKey(e => e.TaxonomyAxisId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<TaxonomyListingAssignment>(entity =>
+        {
+            entity.ToTable("TaxonomyListingAssignments");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.CellJson).IsRequired().HasMaxLength(500);
+            entity.HasIndex(e => e.TaxonomyRunId);
+            entity.HasIndex(e => e.ListingId);
+            entity.HasOne(e => e.TaxonomyRun)
+                .WithMany(r => r.Assignments)
+                .HasForeignKey(e => e.TaxonomyRunId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(e => e.Listing)
+                .WithMany()
+                .HasForeignKey(e => e.ListingId)
+                .OnDelete(DeleteBehavior.NoAction);
+        });
+
+        modelBuilder.Entity<TaxonomyOpportunity>(entity =>
+        {
+            entity.ToTable("TaxonomyOpportunities");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.CellKey).IsRequired().HasMaxLength(500);
+            entity.Property(e => e.AskPrice).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.MedianSoldPrice).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.EstimatedProfit).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.ComputedUtc).HasDefaultValueSql(dateDefaultSql);
+            entity.HasIndex(e => e.ScrapeJobId);
+            entity.HasIndex(e => e.ListingId).IsUnique();
+            entity.HasIndex(e => e.EstimatedProfit).IsDescending();
+            entity.HasOne(e => e.ScrapeJob).WithMany().HasForeignKey(e => e.ScrapeJobId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(e => e.Listing).WithMany().HasForeignKey(e => e.ListingId).OnDelete(DeleteBehavior.NoAction);
         });
 
     }

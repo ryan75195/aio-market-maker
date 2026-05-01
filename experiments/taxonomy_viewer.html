@@ -1,0 +1,1171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Taxonomy Explorer</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg-primary: #08090d;
+  --bg-surface: #0e1017;
+  --bg-elevated: #151821;
+  --bg-hover: #1c2030;
+  --border: #1e2235;
+  --border-active: #2a3050;
+  --text-primary: #e4e6ef;
+  --text-secondary: #7a7f96;
+  --text-muted: #4a4f66;
+  --accent-green: #00e676;
+  --accent-green-dim: #00e67622;
+  --accent-amber: #ffab00;
+  --accent-amber-dim: #ffab0022;
+  --accent-blue: #448aff;
+  --accent-blue-dim: #448aff22;
+  --accent-red: #ff5252;
+  --accent-red-dim: #ff525222;
+  --accent-purple: #b388ff;
+  --font-mono: 'JetBrains Mono', monospace;
+  --font-sans: 'DM Sans', sans-serif;
+}
+
+html, body {
+  height: 100%;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  overflow: hidden;
+}
+
+/* ── Layout ── */
+.app {
+  display: grid;
+  grid-template-columns: 260px 1fr;
+  grid-template-rows: 56px 1fr;
+  height: 100vh;
+}
+
+/* ── Header ── */
+.header {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 24px;
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border);
+  z-index: 10;
+}
+.header-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.header-brand .logo {
+  width: 8px;
+  height: 8px;
+  background: var(--accent-green);
+  border-radius: 2px;
+  box-shadow: 0 0 12px var(--accent-green);
+  animation: pulse-glow 3s ease-in-out infinite;
+}
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: 0 0 8px var(--accent-green); opacity: 1; }
+  50% { box-shadow: 0 0 20px var(--accent-green); opacity: 0.8; }
+}
+.header-brand h1 {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+.header-metrics {
+  display: flex;
+  gap: 24px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+.header-metric {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.header-metric .label {
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  font-size: 10px;
+}
+.header-metric .value {
+  font-weight: 600;
+}
+.header-metric .value.good { color: var(--accent-green); }
+.header-metric .value.warn { color: var(--accent-amber); }
+.header-metric .value.bad { color: var(--accent-red); }
+
+/* ── Sidebar ── */
+.sidebar {
+  background: var(--bg-surface);
+  border-right: 1px solid var(--border);
+  overflow-y: auto;
+  padding: 16px 0;
+}
+.sidebar::-webkit-scrollbar { width: 4px; }
+.sidebar::-webkit-scrollbar-track { background: transparent; }
+.sidebar::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+.sidebar-section {
+  padding: 0 16px;
+  margin-bottom: 20px;
+}
+.sidebar-section-title {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  color: var(--text-muted);
+  margin-bottom: 10px;
+}
+
+.category-btn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 16px;
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+  text-align: left;
+  border-left: 2px solid transparent;
+}
+.category-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+.category-btn.active {
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  border-left-color: var(--accent-blue);
+}
+.category-btn .cat-count {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.category-btn .cat-cov {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--accent-green);
+}
+
+/* ── Axis filters ── */
+.axis-filter {
+  margin-bottom: 14px;
+}
+.axis-name {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.axis-values {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.axis-value-chip {
+  padding: 3px 8px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 400;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.12s;
+  white-space: nowrap;
+}
+.axis-value-chip:hover:not(.unavailable) {
+  border-color: var(--accent-blue);
+  color: var(--text-primary);
+  background: var(--accent-blue-dim);
+}
+.axis-value-chip.active {
+  border-color: var(--accent-blue);
+  background: var(--accent-blue-dim);
+  color: var(--accent-blue);
+  font-weight: 500;
+}
+.axis-value-chip.unavailable {
+  opacity: 0.25;
+  cursor: default;
+  pointer-events: none;
+}
+.axis-value-chip .chip-pct {
+  color: var(--text-muted);
+  font-size: 10px;
+  margin-left: 3px;
+}
+.axis-value-chip .chip-count {
+  color: var(--text-muted);
+  font-size: 10px;
+  margin-left: 3px;
+}
+
+/* Modifier chips — include (green) / exclude (red) */
+.axis-value-chip.mod-include {
+  border-color: var(--accent-green);
+  background: var(--accent-green-dim);
+  color: var(--accent-green);
+  font-weight: 500;
+}
+.axis-value-chip.mod-exclude {
+  border-color: var(--accent-red);
+  background: var(--accent-red-dim);
+  color: var(--accent-red);
+  font-weight: 500;
+  text-decoration: line-through;
+}
+
+/* ── Main content ── */
+.main {
+  overflow-y: auto;
+  padding: 24px;
+  background: var(--bg-primary);
+}
+.main::-webkit-scrollbar { width: 6px; }
+.main::-webkit-scrollbar-track { background: transparent; }
+.main::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+/* ── Welcome state ── */
+.welcome {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  text-align: center;
+  opacity: 0;
+  animation: fadeIn 0.4s ease forwards;
+}
+@keyframes fadeIn { to { opacity: 1; } }
+.welcome h2 {
+  font-family: var(--font-mono);
+  font-size: 16px;
+  font-weight: 400;
+  color: var(--text-secondary);
+  margin-bottom: 8px;
+}
+.welcome p {
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+/* ── View tabs ── */
+.view-tabs {
+  display: flex;
+  gap: 2px;
+  margin-bottom: 20px;
+  background: var(--bg-surface);
+  border-radius: 6px;
+  padding: 3px;
+  width: fit-content;
+}
+.view-tab {
+  padding: 7px 16px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 500;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-radius: 4px;
+  transition: all 0.12s;
+}
+.view-tab:hover { color: var(--text-secondary); }
+.view-tab.active {
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+}
+
+/* ── Cell tag (shared) ── */
+.cell-tag {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  padding: 2px 7px;
+  border-radius: 3px;
+  background: var(--accent-blue-dim);
+  color: var(--accent-blue);
+  border: 1px solid #448aff33;
+}
+
+/* ── Cells table ── */
+.cells-table-wrap {
+  animation: fadeIn 0.3s ease;
+  overflow-x: auto;
+}
+.cells-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.cells-table th {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--text-muted);
+  text-align: left;
+  padding: 10px 12px;
+  border-bottom: 2px solid var(--border);
+  position: sticky;
+  top: 0;
+  background: var(--bg-primary);
+  z-index: 1;
+  white-space: nowrap;
+}
+.cells-table th.right { text-align: right; }
+.cells-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid #1a1d2a;
+  vertical-align: middle;
+}
+.cells-table tr:hover td {
+  background: var(--bg-surface);
+}
+.cells-table tr { cursor: pointer; }
+
+/* Variant column — tags */
+.variant-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  min-width: 200px;
+}
+
+/* Numeric cells */
+.cells-table .num {
+  font-family: var(--font-mono);
+  font-weight: 500;
+  text-align: right;
+  white-space: nowrap;
+}
+.cells-table .price-buy { color: var(--accent-blue); }
+.cells-table .price-sell { color: var(--accent-green); }
+.cells-table .sell-through { color: var(--accent-amber); }
+.cells-table .count-col { color: var(--text-secondary); }
+
+/* Margin pill */
+.margin-pill {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 10px;
+  white-space: nowrap;
+}
+.margin-pill.positive {
+  background: var(--accent-green-dim);
+  color: var(--accent-green);
+}
+.margin-pill.negative {
+  background: var(--accent-red-dim);
+  color: var(--accent-red);
+}
+.margin-pill.neutral {
+  background: var(--bg-elevated);
+  color: var(--text-muted);
+}
+
+/* Specificity bar */
+.spec-bar {
+  display: flex;
+  gap: 2px;
+  align-items: center;
+}
+.spec-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 1px;
+  background: var(--accent-purple);
+}
+.spec-dot.empty {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+}
+
+/* Price range bar */
+.price-range {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+}
+.price-range-bar {
+  height: 3px;
+  background: var(--bg-elevated);
+  border-radius: 2px;
+  flex: 1;
+  min-width: 40px;
+  position: relative;
+}
+.price-range-fill {
+  position: absolute;
+  height: 100%;
+  border-radius: 2px;
+  background: var(--accent-blue);
+  opacity: 0.5;
+}
+
+/* Sort controls for cells */
+.cells-sort-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.cells-sort-bar select {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.cells-sort-bar select:focus { outline: none; border-color: var(--accent-blue); }
+
+/* ── Listings table ── */
+.listings-table-wrap {
+  animation: fadeIn 0.3s ease;
+  overflow-x: auto;
+}
+.listings-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.listings-table th {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--text-muted);
+  text-align: left;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  background: var(--bg-primary);
+  z-index: 1;
+}
+.listings-table td {
+  padding: 7px 12px;
+  border-bottom: 1px solid #1a1d2a;
+  vertical-align: middle;
+}
+.listings-table tr:hover td {
+  background: var(--bg-surface);
+}
+.listings-table .title-cell {
+  max-width: 400px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+}
+.listings-table .price-cell {
+  font-family: var(--font-mono);
+  font-weight: 500;
+  white-space: nowrap;
+}
+.listings-table .status-badge {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 3px;
+  text-transform: uppercase;
+}
+.status-badge.active {
+  background: var(--accent-blue-dim);
+  color: var(--accent-blue);
+}
+.status-badge.sold {
+  background: var(--accent-green-dim);
+  color: var(--accent-green);
+}
+.status-badge.ended {
+  background: var(--accent-amber-dim);
+  color: var(--accent-amber);
+}
+.cell-tags-cell {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+}
+.cell-tags-cell .cell-tag {
+  font-size: 10px;
+  padding: 1px 5px;
+}
+.uncovered-tag {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+/* ── Pagination ── */
+.pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 16px;
+  padding: 12px 0;
+  border-top: 1px solid var(--border);
+}
+.pagination-info {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.pagination-btns {
+  display: flex;
+  gap: 4px;
+}
+.pagination-btn {
+  padding: 5px 12px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.12s;
+}
+.pagination-btn:hover:not(:disabled) {
+  border-color: var(--accent-blue);
+  color: var(--text-primary);
+}
+.pagination-btn:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+/* ── Uncovered panel ── */
+.uncovered-panel {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 20px;
+  animation: fadeIn 0.3s ease;
+}
+.uncovered-panel h3 {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: 8px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+/* ── Loading ── */
+.loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  gap: 16px;
+}
+.loading-spinner {
+  width: 24px;
+  height: 24px;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent-blue);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.loading-text {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+/* ── Sort indicator ── */
+.sortable { cursor: pointer; user-select: none; }
+.sortable:hover { color: var(--text-secondary); }
+.sort-arrow { margin-left: 4px; font-size: 8px; }
+
+/* ── Responsive ── */
+@media (max-width: 768px) {
+  .app { grid-template-columns: 1fr; }
+  .sidebar { display: none; }
+}
+</style>
+</head>
+<body>
+<div class="app" id="app">
+  <header class="header">
+    <div class="header-brand">
+      <div class="logo"></div>
+      <h1>Taxonomy Explorer</h1>
+    </div>
+    <div class="header-metrics" id="header-metrics"></div>
+  </header>
+
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-section">
+      <div class="sidebar-section-title">Categories</div>
+      <div id="category-list"></div>
+    </div>
+    <div class="sidebar-section" id="axis-filters" style="display:none">
+      <div class="sidebar-section-title">Axes</div>
+      <div id="axis-filter-list"></div>
+    </div>
+    <div class="sidebar-section" id="modifier-filters" style="display:none">
+      <div class="sidebar-section-title">Modifiers</div>
+      <div id="modifier-filter-list"></div>
+    </div>
+  </aside>
+
+  <main class="main" id="main">
+    <div class="loading" id="loading">
+      <div class="loading-spinner"></div>
+      <div class="loading-text">Loading taxonomy_data.json...</div>
+    </div>
+  </main>
+</div>
+
+<script>
+let DATA = null;
+let currentCategory = null;
+let activeFilters = {};  // axis -> Set of active values
+let modifierFilters = {};  // modifier -> 'include' | 'exclude'
+let currentView = 'cells';  // 'cells' | 'listings'
+let listingPage = 0;
+const PAGE_SIZE = 100;
+let listingSort = { col: null, dir: 'asc' };
+let cellSort = 'specificity'; // 'specificity' | 'margin' | 'sell_through' | 'count' | 'price'
+
+async function loadData() {
+  try {
+    const resp = await fetch('taxonomy_data.json');
+    DATA = await resp.json();
+    document.getElementById('loading').style.display = 'none';
+    renderCategoryList();
+    showWelcome();
+  } catch (e) {
+    document.getElementById('loading').innerHTML = `
+      <div class="loading-text" style="color: var(--accent-red)">
+        Failed to load taxonomy_data.json<br>
+        <span style="color: var(--text-muted); font-size: 11px;">
+          Run: python export_taxonomy.py<br>
+          Then: python -m http.server 8080
+        </span>
+      </div>`;
+  }
+}
+
+function renderCategoryList() {
+  const list = document.getElementById('category-list');
+  list.innerHTML = DATA.categories.map((cat, i) => `
+    <button class="category-btn" onclick="selectCategory(${i})" id="cat-btn-${i}">
+      <span>${cat.search_term}</span>
+      <span class="cat-cov">${cat.coverage}%</span>
+      <span class="cat-count">${cat.total.toLocaleString()}</span>
+    </button>
+  `).join('');
+}
+
+function showWelcome() {
+  document.getElementById('main').innerHTML = `
+    <div class="welcome">
+      <h2>Select a category</h2>
+      <p>${DATA.categories.length} categories loaded with ${DATA.categories.reduce((s,c) => s + c.total, 0).toLocaleString()} total listings</p>
+    </div>`;
+}
+
+function selectCategory(idx) {
+  currentCategory = DATA.categories[idx];
+  activeFilters = {};
+  modifierFilters = {};
+  listingPage = 0;
+
+  // Update active button
+  document.querySelectorAll('.category-btn').forEach((b, i) => {
+    b.classList.toggle('active', i === idx);
+  });
+
+  // Update header metrics
+  const cat = currentCategory;
+  document.getElementById('header-metrics').innerHTML = `
+    <div class="header-metric">
+      <span class="label">Coverage</span>
+      <span class="value ${cat.coverage >= 75 ? 'good' : cat.coverage >= 50 ? 'warn' : 'bad'}">${cat.coverage}%</span>
+    </div>
+    <div class="header-metric">
+      <span class="label">Conflicts</span>
+      <span class="value ${cat.conflicts <= 3 ? 'good' : cat.conflicts <= 6 ? 'warn' : 'bad'}">${cat.conflicts}%</span>
+    </div>
+    <div class="header-metric">
+      <span class="label">Cells</span>
+      <span class="value" style="color: var(--accent-purple)">${cat.cells.length}</span>
+    </div>
+    <div class="header-metric">
+      <span class="label">Listings</span>
+      <span class="value" style="color: var(--text-secondary)">${cat.total.toLocaleString()}</span>
+    </div>`;
+
+  renderAxisFilters();
+  renderModifierFilters();
+  renderMain();
+}
+
+function renderModifierFilters() {
+  const container = document.getElementById('modifier-filters');
+  const list = document.getElementById('modifier-filter-list');
+  const mods = currentCategory.modifier_filters || [];
+
+  if (mods.length === 0) {
+    container.style.display = 'none';
+    return;
+  }
+  container.style.display = 'block';
+
+  list.innerHTML = `<div class="axis-values">${mods.map(m => {
+    const state = modifierFilters[m.label] || null;
+    const cls = state === 'include' ? 'mod-include' : state === 'exclude' ? 'mod-exclude' : '';
+    return `<span class="axis-value-chip ${cls}"
+                  onclick="toggleModifier('${esc(m.label)}')">
+              ${m.label}<span class="chip-pct">${m.pct}%</span>
+            </span>`;
+  }).join('')}</div>`;
+}
+
+function toggleModifier(mod) {
+  const current = modifierFilters[mod] || null;
+  if (current === null) {
+    modifierFilters[mod] = 'include';
+  } else if (current === 'include') {
+    modifierFilters[mod] = 'exclude';
+  } else {
+    delete modifierFilters[mod];
+  }
+  listingPage = 0;
+  renderModifierFilters();
+  renderMain();
+}
+
+function computeAvailableValues() {
+  // For each axis, find which values exist in cells that match
+  // all OTHER active filters. This gives contextual availability.
+  const available = {};  // axis -> { value -> count }
+
+  for (const axis of currentCategory.axes) {
+    available[axis.name] = {};
+
+    // Build filters excluding this axis
+    const otherFilters = {};
+    for (const [ax, vals] of Object.entries(activeFilters)) {
+      if (ax !== axis.name) { otherFilters[ax] = vals; }
+    }
+
+    // Check which cells match the other filters
+    for (const cell of currentCategory.cells) {
+      const matchesOthers = Object.entries(otherFilters).every(([ax, vals]) => {
+        return vals.has(cell.cell[ax]);
+      });
+      if (!matchesOthers) { continue; }
+
+      // This cell is reachable — record which value of THIS axis it has
+      const val = cell.cell[axis.name];
+      if (val) {
+        available[axis.name][val] = (available[axis.name][val] || 0) + cell.count;
+      }
+    }
+  }
+
+  return available;
+}
+
+function renderAxisFilters() {
+  const container = document.getElementById('axis-filters');
+  const list = document.getElementById('axis-filter-list');
+  container.style.display = 'block';
+
+  const hasFilters = Object.keys(activeFilters).length > 0;
+  const available = hasFilters ? computeAvailableValues() : null;
+
+  list.innerHTML = currentCategory.axes.map(axis => {
+    const values = axis.values.map(v => {
+      const isActive = isFilterActive(axis.name, v.label);
+      const isAvailable = !hasFilters || isActive || (available[axis.name] && available[axis.name][v.label] > 0);
+      const count = hasFilters && available[axis.name] ? (available[axis.name][v.label] || 0) : null;
+      const countLabel = count !== null ? `<span class="chip-count">${count}</span>` : `<span class="chip-pct">${v.pct}%</span>`;
+
+      return `<span class="axis-value-chip ${isActive ? 'active' : ''} ${!isAvailable ? 'unavailable' : ''}"
+                    onclick="toggleFilter('${esc(axis.name)}', '${esc(v.label)}')">
+                ${v.label}${countLabel}
+              </span>`;
+    }).join('');
+
+    return `
+      <div class="axis-filter">
+        <div class="axis-name">${axis.name}</div>
+        <div class="axis-values">${values}</div>
+      </div>`;
+  }).join('');
+}
+
+function esc(s) { return s.replace(/'/g, "\\'").replace(/"/g, '&quot;'); }
+
+function isFilterActive(axis, value) {
+  return activeFilters[axis] && activeFilters[axis].has(value);
+}
+
+function toggleFilter(axis, value) {
+  if (!activeFilters[axis]) { activeFilters[axis] = new Set(); }
+  if (activeFilters[axis].has(value)) {
+    activeFilters[axis].delete(value);
+    if (activeFilters[axis].size === 0) { delete activeFilters[axis]; }
+  } else {
+    activeFilters[axis].add(value);
+  }
+  listingPage = 0;
+  renderAxisFilters();
+  renderMain();
+}
+
+function getFilteredCells() {
+  if (Object.keys(activeFilters).length === 0) { return currentCategory.cells; }
+  return currentCategory.cells.filter(cell => {
+    return Object.entries(activeFilters).every(([axis, values]) => {
+      return values.has(cell.cell[axis]);
+    });
+  });
+}
+
+function matchesModifiers(listing) {
+  for (const [mod, state] of Object.entries(modifierFilters)) {
+    const has = listing.modifiers && listing.modifiers.includes(mod);
+    if (state === 'include' && !has) { return false; }
+    if (state === 'exclude' && has) { return false; }
+  }
+  return true;
+}
+
+function getFilteredListings() {
+  return currentCategory.listings.filter(l => {
+    const matchesAxes = Object.entries(activeFilters).every(([axis, values]) => {
+      return values.has(l.cell[axis]);
+    });
+    return matchesAxes && matchesModifiers(l);
+  });
+}
+
+function renderMain() {
+  const main = document.getElementById('main');
+  const filtered = currentView === 'cells' ? getFilteredCells() : getFilteredListings();
+
+  main.innerHTML = `
+    <div class="view-tabs">
+      <button class="view-tab ${currentView === 'cells' ? 'active' : ''}"
+              onclick="switchView('cells')">Cells (${getFilteredCells().length})</button>
+      <button class="view-tab ${currentView === 'listings' ? 'active' : ''}"
+              onclick="switchView('listings')">Listings (${getFilteredListings().length.toLocaleString()})</button>
+    </div>
+    <div id="view-content"></div>`;
+
+  if (currentView === 'cells') {
+    renderCells();
+  } else {
+    renderListings();
+  }
+}
+
+function switchView(view) {
+  currentView = view;
+  listingPage = 0;
+  renderMain();
+}
+
+function fmtPrice(p) {
+  if (p == null) { return '—'; }
+  return '£' + p.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function cellSpecificity(cell) {
+  return Object.keys(cell.cell).length;
+}
+
+function cellMargin(cell) {
+  if (!cell.median_active || !cell.median_sold) { return null; }
+  return (cell.median_active - cell.median_sold) / cell.median_sold * 100;
+}
+
+function sortCells(cells) {
+  const sorted = [...cells];
+  const totalAxes = currentCategory.axes.length;
+
+  sorted.sort((a, b) => {
+    switch (cellSort) {
+      case 'specificity': {
+        // Most specific first, then by count
+        const specDiff = cellSpecificity(b) - cellSpecificity(a);
+        if (specDiff !== 0) { return specDiff; }
+        return b.count - a.count;
+      }
+      case 'margin': {
+        // Highest margin first (listings where active > sold = opportunity)
+        const ma = cellMargin(a) ?? -999;
+        const mb = cellMargin(b) ?? -999;
+        return mb - ma;
+      }
+      case 'sell_through': {
+        return b.sell_through - a.sell_through;
+      }
+      case 'count': {
+        return b.count - a.count;
+      }
+      case 'price': {
+        return (b.median_sold || 0) - (a.median_sold || 0);
+      }
+      default:
+        return 0;
+    }
+  });
+  return sorted;
+}
+
+function changeCellSort(val) {
+  cellSort = val;
+  renderCells();
+}
+
+function renderCells() {
+  const rawCells = getFilteredCells();
+  const container = document.getElementById('view-content');
+
+  if (rawCells.length === 0) {
+    container.innerHTML = `<div class="welcome"><h2>No cells match filters</h2></div>`;
+    return;
+  }
+
+  const cells = sortCells(rawCells);
+  const totalAxes = currentCategory.axes.length;
+
+  const sortOptions = [
+    ['specificity', 'Most specific first'],
+    ['margin', 'Highest margin'],
+    ['sell_through', 'Best sell-through'],
+    ['price', 'Highest price'],
+    ['count', 'Most listings'],
+  ];
+
+  container.innerHTML = `
+    <div class="cells-sort-bar">
+      <span>Sort by</span>
+      <select onchange="changeCellSort(this.value)">
+        ${sortOptions.map(([val, label]) =>
+          `<option value="${val}" ${cellSort === val ? 'selected' : ''}>${label}</option>`
+        ).join('')}
+      </select>
+      <span style="margin-left: auto">${cells.length} variants</span>
+    </div>
+    <div class="cells-table-wrap">
+      <table class="cells-table">
+        <thead>
+          <tr>
+            <th>Variant</th>
+            <th class="right">Listings</th>
+            <th class="right" title="Median price of active listings">Buy At</th>
+            <th class="right" title="Median price of sold listings">Sells For</th>
+            <th class="right" title="Price range (min – max)">Range</th>
+            <th class="right" title="% of listings that sold">Sell-thru</th>
+            <th class="right" title="Spread between active ask and sold price">Margin</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${cells.map(cell => {
+            const spec = cellSpecificity(cell);
+            const margin = cellMargin(cell);
+
+            // Specificity dots
+            const specDots = Array.from({length: totalAxes}, (_, i) =>
+              `<span class="spec-dot ${i < spec ? '' : 'empty'}"></span>`
+            ).join('');
+
+            // Tags
+            const tags = Object.entries(cell.cell)
+              .map(([axis, value]) => `<span class="cell-tag" title="${axis}">${value}</span>`)
+              .join('');
+
+            // Margin pill
+            let marginHtml = '<span class="margin-pill neutral">—</span>';
+            if (margin !== null) {
+              const cls = margin > 0 ? 'positive' : margin < -2 ? 'negative' : 'neutral';
+              marginHtml = `<span class="margin-pill ${cls}">${margin > 0 ? '+' : ''}${margin.toFixed(0)}%</span>`;
+            }
+
+            // Price range
+            let rangeHtml = '<span class="num" style="color:var(--text-muted)">—</span>';
+            if (cell.min_price && cell.max_price) {
+              rangeHtml = `<span class="num" style="color:var(--text-muted);font-size:11px">${fmtPrice(cell.min_price)} – ${fmtPrice(cell.max_price)}</span>`;
+            }
+
+            const cellJson = JSON.stringify(cell.cell).replace(/"/g, '&quot;');
+
+            return `<tr onclick="filterToCell(null, ${cellJson})">
+              <td>
+                <div class="variant-tags">${tags}</div>
+              </td>
+              <td class="num count-col">
+                <span title="${cell.active} active / ${cell.sold} sold">${cell.count}</span>
+              </td>
+              <td class="num price-buy">${fmtPrice(cell.median_active)}</td>
+              <td class="num price-sell">${fmtPrice(cell.median_sold)}</td>
+              <td class="num">${rangeHtml}</td>
+              <td class="num sell-through">${cell.sell_through}%</td>
+              <td class="num" style="text-align:center">${marginHtml}</td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+    </div>`;
+}
+
+function filterToCell(_, cellObj) {
+  activeFilters = {};
+  Object.entries(cellObj).forEach(([axis, value]) => {
+    activeFilters[axis] = new Set([value]);
+  });
+  currentView = 'listings';
+  listingPage = 0;
+  renderAxisFilters();
+  renderMain();
+}
+
+function renderListings() {
+  let listings = getFilteredListings();
+  const total = listings.length;
+
+  // Sort
+  if (listingSort.col) {
+    listings = [...listings].sort((a, b) => {
+      let va, vb;
+      if (listingSort.col === 'title') { va = a.title; vb = b.title; }
+      else if (listingSort.col === 'price') { va = a.price || 0; vb = b.price || 0; }
+      else if (listingSort.col === 'status') { va = a.status || ''; vb = b.status || ''; }
+      else { return 0; }
+      if (va < vb) { return listingSort.dir === 'asc' ? -1 : 1; }
+      if (va > vb) { return listingSort.dir === 'asc' ? 1 : -1; }
+      return 0;
+    });
+  }
+
+  // Paginate
+  const start = listingPage * PAGE_SIZE;
+  const page = listings.slice(start, start + PAGE_SIZE);
+  const totalPages = Math.ceil(total / PAGE_SIZE);
+
+  const sortArrow = (col) => {
+    if (listingSort.col !== col) { return ''; }
+    return `<span class="sort-arrow">${listingSort.dir === 'asc' ? '▲' : '▼'}</span>`;
+  };
+
+  const container = document.getElementById('view-content');
+  container.innerHTML = `
+    <div class="listings-table-wrap">
+      <table class="listings-table">
+        <thead>
+          <tr>
+            <th class="sortable" onclick="sortListings('title')">Title${sortArrow('title')}</th>
+            <th class="sortable" onclick="sortListings('price')" style="width:100px">Price${sortArrow('price')}</th>
+            <th class="sortable" onclick="sortListings('status')" style="width:80px">Status${sortArrow('status')}</th>
+            <th style="width:220px">Cell</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${page.map(l => {
+            const statusClass = l.status === 'Active' ? 'active' :
+              (l.status === 'Sold' ? 'sold' : 'ended');
+            const cellTags = l.covered
+              ? Object.entries(l.cell).map(([ax, val]) =>
+                  `<span class="cell-tag" title="${ax}">${val}</span>`).join('')
+              : `<span class="uncovered-tag">uncovered</span>`;
+            return `<tr>
+              <td class="title-cell" title="${l.title.replace(/"/g, '&quot;')}">${l.title}</td>
+              <td class="price-cell">${l.price ? fmtPrice(l.price) : '—'}</td>
+              <td><span class="status-badge ${statusClass}">${l.status || '—'}</span></td>
+              <td><div class="cell-tags-cell">${cellTags}</div></td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+    </div>
+    <div class="pagination">
+      <span class="pagination-info">
+        ${start + 1}–${Math.min(start + PAGE_SIZE, total)} of ${total.toLocaleString()}
+      </span>
+      <div class="pagination-btns">
+        <button class="pagination-btn" onclick="goPage(0)" ${listingPage === 0 ? 'disabled' : ''}>«</button>
+        <button class="pagination-btn" onclick="goPage(${listingPage - 1})" ${listingPage === 0 ? 'disabled' : ''}>‹</button>
+        <button class="pagination-btn" onclick="goPage(${listingPage + 1})" ${listingPage >= totalPages - 1 ? 'disabled' : ''}>›</button>
+        <button class="pagination-btn" onclick="goPage(${totalPages - 1})" ${listingPage >= totalPages - 1 ? 'disabled' : ''}>»</button>
+      </div>
+    </div>`;
+}
+
+function sortListings(col) {
+  if (listingSort.col === col) {
+    listingSort.dir = listingSort.dir === 'asc' ? 'desc' : 'asc';
+  } else {
+    listingSort.col = col;
+    listingSort.dir = col === 'price' ? 'desc' : 'asc';
+  }
+  listingPage = 0;
+  renderListings();
+}
+
+function goPage(p) {
+  listingPage = Math.max(0, p);
+  renderListings();
+}
+
+// Boot
+loadData();
+</script>
+</body>
+</html>

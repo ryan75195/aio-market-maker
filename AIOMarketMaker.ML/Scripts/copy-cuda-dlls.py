@@ -68,8 +68,9 @@ def main():
     solution_dir = os.path.dirname(os.path.dirname(script_dir))
 
     targets = [
-        os.path.join(solution_dir, "AIOMarketMaker.Tests", "bin", "Debug", "net8.0"),
+        os.path.join(solution_dir, "AIOMarketMaker.Api", "bin", "Debug", "net8.0"),
         os.path.join(solution_dir, "AIOMarketMaker.Console", "bin", "Debug", "net8.0"),
+        os.path.join(solution_dir, "AIOMarketMaker.Tests.Integration", "bin", "Debug", "net8.0"),
     ]
 
     for target in targets:

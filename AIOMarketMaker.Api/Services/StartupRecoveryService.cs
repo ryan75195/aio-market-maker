@@ -1,42 +1,30 @@
 using Microsoft.EntityFrameworkCore;
 using AIOMarketMaker.Core.Data;
 using AIOMarketMaker.Core.Services;
+using AIOMarketMaker.Core.Services.Pipeline;
 
 namespace AIOMarketMaker.Api.Services;
 
 public class StartupRecoveryService : IHostedService
 {
     private readonly IServiceScopeFactory _scopeFactory;
+    private readonly IBatchPipelineRunner _pipeline;
     private readonly ILogger<StartupRecoveryService> _logger;
     private readonly ScrapingConfig _scrapingConfig;
 
     public StartupRecoveryService(
         IServiceScopeFactory scopeFactory,
+        IBatchPipelineRunner pipeline,
         ILogger<StartupRecoveryService> logger,
         ScrapingConfig scrapingConfig)
     {
         _scopeFactory = scopeFactory;
+        _pipeline = pipeline;
         _logger = logger;
         _scrapingConfig = scrapingConfig;
     }
 
     public async Task StartAsync(CancellationToken ct)
-    {
-        var toResume = await FindOrphanedRuns(ct);
-        if (toResume.Count == 0)
-        {
-            return;
-        }
-
-        _logger.LogInformation("Resuming {Count} orphaned scrape runs", toResume.Count);
-
-        // Fire-and-forget parallel execution (same pattern as ScrapeEndpoints/NightlyScrapeService)
-        _ = Task.Run(() => ExecuteRuns(toResume));
-    }
-
-    public Task StopAsync(CancellationToken ct) => Task.CompletedTask;
-
-    private async Task<List<OrphanedRun>> FindOrphanedRuns(CancellationToken ct)
     {
         using var scope = _scopeFactory.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<EtlDbContext>();
@@ -48,30 +36,63 @@ public class StartupRecoveryService : IHostedService
 
         if (orphanedRuns.Count == 0)
         {
-            return [];
+            return;
         }
 
-        var jobIds = orphanedRuns
-            .Where(r => r.JobId.HasValue)
-            .Select(r => r.JobId!.Value)
-            .Distinct();
+        _logger.LogInformation("Found {Count} orphaned scrape runs", orphanedRuns.Count);
 
-        var jobs = await db.ScrapeJobs
-            .Where(j => jobIds.Contains(j.Id))
-            .ToDictionaryAsync(j => j.Id, j => new ScrapeJobConfig(j.Id, j.SearchTerm, j.LastRunUtc), ct);
+        // Group by BatchId for phased recovery
+        var batched = orphanedRuns.Where(r => r.BatchId != null).GroupBy(r => r.BatchId!.Value).ToList();
+        var legacy = orphanedRuns.Where(r => r.BatchId == null).ToList();
 
-        return orphanedRuns
-            .Where(r => r.JobId.HasValue && jobs.ContainsKey(r.JobId.Value))
-            .Select(r => new OrphanedRun(r.Id, jobs[r.JobId.Value]))
-            .ToList();
+        // Resume batched runs by phase
+        foreach (var batch in batched)
+        {
+            var batchId = batch.Key;
+            var phase = batch.First().BatchPhase ?? "Searching";
+            _logger.LogInformation("Resuming batch {BatchId} from phase {Phase} ({Count} runs)",
+                batchId, phase, batch.Count());
+
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await _pipeline.ResumeFromPhase(batchId, phase);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Batch recovery failed for {BatchId}", batchId);
+                }
+            });
+        }
+
+        // Resume legacy runs (pre-BatchPipelineRunner) individually
+        if (legacy.Count > 0)
+        {
+            _logger.LogInformation("Resuming {Count} legacy orphaned runs", legacy.Count);
+
+            var jobIds = legacy.Where(r => r.JobId.HasValue).Select(r => r.JobId!.Value).Distinct();
+            var jobs = await db.ScrapeJobs
+                .Where(j => jobIds.Contains(j.Id))
+                .ToDictionaryAsync(j => j.Id, j => new ScrapeJobConfig(j.Id, j.SearchTerm, j.LastRunUtc), ct);
+
+            var legacyRuns = legacy
+                .Where(r => r.JobId.HasValue && jobs.ContainsKey(r.JobId.Value))
+                .Select(r => (RunId: r.Id, Job: jobs[r.JobId!.Value]))
+                .ToList();
+
+            _ = Task.Run(() => ExecuteLegacyRuns(legacyRuns));
+        }
     }
 
-    private async Task ExecuteRuns(List<OrphanedRun> toResume)
+    public Task StopAsync(CancellationToken ct) => Task.CompletedTask;
+
+    private async Task ExecuteLegacyRuns(List<(int RunId, ScrapeJobConfig Job)> runs)
     {
-        var parallelism = new SemaphoreSlim(_scrapingConfig.MaxConcurrentRuns);
-        var tasks = toResume.Select(item => Task.Run(async () =>
+        using var semaphore = new SemaphoreSlim(_scrapingConfig.MaxConcurrentRuns);
+        var tasks = runs.Select(item => Task.Run(async () =>
         {
-            await parallelism.WaitAsync();
+            await semaphore.WaitAsync();
             try
             {
                 using var jobScope = _scopeFactory.CreateScope();
@@ -86,15 +107,13 @@ public class StartupRecoveryService : IHostedService
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Recovery failed for run {RunId}", item.RunId);
+                _logger.LogError(ex, "Legacy recovery failed for run {RunId}", item.RunId);
             }
             finally
             {
-                parallelism.Release();
+                semaphore.Release();
             }
         }));
         await Task.WhenAll(tasks);
     }
-
-    private record OrphanedRun(int RunId, ScrapeJobConfig Job);
 }

@@ -42,10 +42,10 @@ The solution consists of these main projects:
 - NUnit with Moq
 - Test data: Saved HTML files in `Tests.Common\Data\Listings\`
 
-### AIOWebScraper.Storage.Azure
-- External dependency (located in `..\..\AIOWebScraper\`)
-- Azure Table Storage and Blob Storage abstractions
-- Provides `IJobRepository` for managing scrape jobs
+### Storage.Azure (external dependency)
+- Provides Azure Table Storage and Blob Storage abstractions
+- Exposes `IJobRepository` for managing scrape jobs
+- Sourced from a separate web-scraper repository (out of scope for this codebase)
 
 ## Key Architecture Patterns
 
@@ -75,6 +75,82 @@ The `WebscraperClient` wraps this API and handles polling until jobs complete.
 - Registration happens in `ScraperServiceCollectionExtensions.AddEbayScraperPipeline()`
 - Requires `StorageConnectionString` configuration for Azure Storage
 - Parsers are registered as singletons (stateless)
+
+## The Variant Matching Problem
+
+**Core question:** Given an active eBay listing, which sold listings represent the *same product variant*? Getting this wrong means pricing a PS5 Digital against a PS5 Pro, or including accessories in console pricing.
+
+**Why it's hard:**
+- Titles are unstructured: "PS5 Slim 1TB White" vs "Sony PlayStation 5 Slim Disc Edition 1TB Console - White"
+- Accessories contaminate results: "PS5 Controller White" matches "white" and "PS5"
+- Variants are category-specific: PS5 has edition/storage/form_factor; sneakers have size/colorway/style code
+- O(n²) pairwise comparison doesn't scale (7,230 listings = 26M pairs)
+
+### Generation 1: Pairwise Comparison
+
+**ONNX Pairwise Classifier** (`ML/Services/VariantModelRunner.cs`) — RoBERTa-large fine-tuned on 143K labeled pairs. Given two titles, predicts "same variant?" with a confidence score. F1=0.913 on test set, 12ms/pair on GPU.
+
+**Problem:** O(n²) scaling. A job with 7,230 listings produces 26 million pairs. Even at 12ms/pair on GPU that's 87 hours. We tried reducing the candidate set with embedding similarity (Pinecone, then USearch) but similarity search is too noisy — it returns accessories, wrong products, and adjacent variants that look similar in embedding space but are different products.
+
+**Ensemble Calibration** combined the ONNX logit with embedding cosine similarity via logistic regression, improving confidence scores. But it's still fundamentally O(n²).
+
+**Status:** Active as a fallback for small batches. Pinecone removed, USearch disabled.
+
+### Generation 2: Bottom-Up Taxonomy (Current Production)
+
+**N-gram Taxonomy** (`Core/Services/Taxonomy/TaxonomyService.cs`) — Discovers variant axes automatically from title text. Pipeline: extract n-grams → find mutually exclusive pairs (e.g., "disc" and "digital" rarely co-occur) → cluster into axes via Louvain community detection → LLM refines the raw communities.
+
+**What works:** Produces interpretable axes cheaply (~$0.01/category, <15 seconds). Now running across all 126 jobs with 16,310 computed opportunities via cell-based pricing.
+
+**Problem 1: 8.4% average conflict rate.** Listings get assigned to contradictory cells — e.g., a listing matching both "disc" and "digital" values on the same axis. This happens because n-gram matching is fuzzy and community detection sometimes groups unrelated tokens. ~31K listings across all jobs have unreliable cell assignments, which corrupts the comparable pool for pricing.
+
+**Problem 2: 78% average coverage.** 22% of listings get no cell assignment at all — either they're accessories (correctly excluded) or the taxonomy missed their variant attributes (incorrectly excluded). We added brand token decontamination and regex injection for structured IDs (LEGO set numbers, Nike style codes) which helped, but coverage plateaus.
+
+**Problem 3: Axes are statistical, not semantic.** The pipeline discovers what tokens co-occur, not what they mean. It can't distinguish variant-defining axes (edition, storage) from condition axes (packaging, contents). A cell like `{"form_factor":"pro"}` with only 1 axis matched is a subcategory, not a variant — but the system treats it the same as a fully-specified cell.
+
+**Augmentations built on top:**
+- `LlmTaxonomyRefiner` — GPT-4o-mini post-processes axes. Helps but can over-prune statistically valid values.
+- `LlmBrandTokenExtractor` + `TitleDecontaminator` — Filters wrong products before taxonomy. Only catches brand-level mismatches, not accessory contamination within a brand.
+- `LLM Regex Injection` — LLM suggests structured ID patterns. Works well for categories with model numbers but doesn't help categories like sneakers where variants are color names.
+
+### Generation 3: Top-Down Extraction (Experimental, 2026-03-12)
+
+**Skeleton + Extraction** (`Core/Services/Taxonomy/TopDownTaxonomyService.cs`, `ML/Services/ExtractionModelRunner.cs`) — Two-stage approach: (1) GPT-5-nano examines sample titles and defines the axes + allowed values once per category (the "skeleton"), then (2) a fine-tuned Qwen3-4B GGUF model extracts values from each title locally on GPU.
+
+**What works:** Produces cleaner axes because the LLM understands product semantics. PS5 test: 84.4% coverage (up from 69%), 0% conflicts (down from 5.5%), 7 meaningful axes (model, edition, capacity, form_factor, color, packaging, contents).
+
+**Problem 1: Too slow.** 45 minutes for one job (7,230 listings) because the StatelessExecutor creates and destroys a CUDA context per title. Full backfill across 126 jobs would take days.
+
+**Problem 2: The model makes errors.** DualSense controller matched `color:white` instead of being rejected as an accessory. CFI-1216B was hallucinated as "pro" generation. These errors flow into pricing.
+
+**Problem 3: The extraction step may be over-engineered.** Running a 4B decoder model to match "1TB" against a known list of `["825gb", "1tb", "2tb"]` is overkill. The skeleton (defining axes + values) is the creative step that needs an LLM. The extraction (matching known values in title text) is a mechanical step that could be fuzzy string matching — except fuzzy matching can't reject accessories, which is where the LLM adds real value.
+
+**Problem 4: Partial-axis cells aren't variants.** A cell must specify ALL variant-defining axes to be a true comparable group. But most titles don't mention every axis (few PS5 listings say "white" because it's the default). Requiring full coverage kills volume; allowing partial coverage creates noisy subcategories.
+
+### Current State (2026-03-12)
+
+**Production:** Bottom-up taxonomy → cell-based pricing. 126 jobs, 374K listings, 16,310 opportunities.
+
+**Key unsolved problems:**
+1. **Conflict rate (8.4%)** — The biggest pricing accuracy issue. Conflicted listings get wrong cell assignments.
+2. **Variant vs condition axis distinction** — No approach separates axes that define the product (edition, storage) from axes that modify the price (packaging, condition, bundled accessories).
+3. **Accessory rejection at extraction time** — Bottom-up decontamination only filters by brand. Top-down model sometimes matches accessory attributes.
+4. **Partial-axis cells** — Neither approach enforces that a cell must fully specify all variant axes. Sparse cells create overlapping, noisy comparable groups.
+5. **Skeleton consistency across runs** — Each backfill generates fresh axes. "form_factor" today might be "generation" tomorrow for the same category. Cells are incomparable across runs.
+
+### Key Files
+
+- `Core/Services/Taxonomy/TaxonomyService.cs` — bottom-up pipeline (production)
+- `Core/Services/Taxonomy/TopDownTaxonomyService.cs` — top-down extraction (experimental)
+- `Core/Services/Taxonomy/CellPricingService.cs` — cell-based pricing
+- `Core/Services/Taxonomy/TaxonomyOpportunityService.cs` — opportunity detection
+- `ML/Services/ExtractionModelRunner.cs` — Qwen3-4B GGUF inference
+- `ML/Services/VariantModelRunner.cs` — ONNX pairwise classifier (fallback)
+
+## Git & Committing
+
+- **Main branch:** `master`
+- Plan docs live under `docs/plans/`
 
 ## Common Commands
 
@@ -113,6 +189,91 @@ dotnet run --project AIOMarketMaker.Api/AIOMarketMaker.Api.csproj
 # Runs on http://localhost:5000
 ```
 
+## Desktop App (Electron + Playwright)
+
+### Project Location
+`AIOMarketMaker.Desktop/electron/` — Electron app with Vue 3 (CDN-loaded), Chart.js, vanilla CSS.
+
+### Running the Desktop App
+```bash
+cd AIOMarketMaker.Desktop/electron
+npm install    # First time only
+npm run dev    # Launch Electron app
+```
+
+The app connects to the API at `http://localhost:5000` — start the API first.
+
+### Desktop Test Suite
+
+Tests use **Vitest** as the runner with **Playwright** for Electron automation. No separate Playwright config file — Playwright is configured inline in test files.
+
+```bash
+cd AIOMarketMaker.Desktop/electron
+
+# Run all desktop tests (unit + integration)
+npm test
+
+# Watch mode for development
+npm run test:watch
+```
+
+**Test files** in `tests/`:
+
+| File | Type | What it tests |
+|------|------|---------------|
+| `progress.test.js` | Unit (Vitest only) | Progress calculation functions from `src/progress.js` — percentages, ETA, rate, formatting |
+| `ui.test.js` | Integration (Vitest + Playwright) | Electron app launch, navigation, batch list, batch detail, progress bars, stats banner |
+| `e2e-monitor.js` | E2E script | Long-running batch monitoring with stall detection. Run with `node tests/e2e-monitor.js` (optionally `--start` to trigger a new batch) |
+| `audit-ui.js` | Visual audit script | Takes screenshots of every UI view for regression review. Run with `node tests/audit-ui.js` |
+
+### Writing Playwright Tests for Electron
+
+Tests use Playwright's `_electron` module to launch and control the app:
+
+```javascript
+import { _electron as electron } from 'playwright';
+
+// Launch the Electron app
+const electronApp = await electron.launch({
+  args: [path.join(__dirname, '..', 'main.js')],
+  env: { ...process.env, NODE_ENV: 'test' },
+});
+
+// Get the first window
+const page = await electronApp.firstWindow();
+
+// Wait for Vue to mount (app loads data on mount)
+await page.waitForTimeout(2000);
+
+// Interact with the UI
+await page.click('.sidebar button:nth-child(2)');
+const title = await page.locator('.view-title').textContent();
+
+// Take a screenshot
+await page.screenshot({ path: 'tests/screenshots/test.png' });
+
+// Clean up
+await electronApp.close();
+```
+
+**Key locator patterns used in existing tests:**
+- `.sidebar button` — navigation buttons
+- `.batch-row`, `.batch-card` — batch list items
+- `.progress-bar`, `.progress-fill`, `.progress-text` — progress indicators
+- `.stats-banner`, `.stat` — stats display
+- `.status-badge` — run status badges
+
+**Wait strategies:**
+- `page.waitForTimeout(2000)` — wait for Vue mount + API data load
+- Playwright locators auto-wait for elements by default (30s timeout)
+
+### Screenshots
+
+Test screenshots are saved to `tests/screenshots/`:
+- `tests/screenshots/` — general test captures
+- `tests/screenshots/audit/` — systematic UI audit (all views)
+- `tests/screenshots/monitor/` — E2E monitoring captures with stall detection
+
 ## Important Configuration
 
 ### local.settings.json
@@ -137,14 +298,7 @@ dotnet run --project AIOMarketMaker.Api/AIOMarketMaker.Api.csproj
 - Azure Storage Emulator or real Azure Storage account for job persistence
 
 ### Running the Scraper Dependency
-AIOMarketMaker depends on AIOWebScraper for HTML fetching. Start it before running the API:
-
-```bash
-# From the AIOWebScraper folder
-cd ../AIOWebScraper/ScraperWorker
-dotnet run -- --dedicated-mode
-# Runs on http://localhost:7126
-```
+AIOMarketMaker depends on an external HTML-fetching scraper service. Start that service before running the API; it should listen on `http://localhost:7126`.
 
 ### Clearing Azurite Queues
 To clear the scrape work queue during development:
@@ -162,7 +316,7 @@ When scrapes return small/invalid HTML:
 
 ## Migration & Refactor Planning - LESSONS LEARNED
 
-**Context:** The 2026-01-31 Durable Functions migration introduced regressions because the plan didn't explicitly document behavioral requirements.
+**Context:** A previous Durable Functions migration introduced regressions because the plan didn't explicitly document behavioral requirements. The guidance below grew out of that retrospective.
 
 ### Required Sections in Any Migration Plan
 
@@ -190,7 +344,7 @@ If simplifying, list EVERY feature being removed:
 
 #### 3. Tests Must Encode Business Requirements
 
-**The 2026-01-31 regression happened because:**
+**A real regression happened because:**
 ```csharp
 // The test created a listing with NULL status
 var existing = new Listing { ListingId = "itm002" };

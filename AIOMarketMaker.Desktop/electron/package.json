@@ -5,11 +5,15 @@
   "main": "main.js",
   "scripts": {
     "dev": "electron .",
-    "build": "electron-builder"
+    "build": "electron-builder",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "devDependencies": {
     "electron": "^28.0.0",
-    "electron-builder": "^24.9.1"
+    "electron-builder": "^24.9.1",
+    "playwright": "^1.58.2",
+    "vitest": "^4.0.18"
   },
   "build": {
     "appId": "com.aiomarketmaker.desktop",

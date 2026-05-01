@@ -66,16 +66,19 @@ public class ComparablesEtlService_UnitTests
         _connection.Dispose();
     }
 
-    private Listing SeedListing(int id, string title, string status, decimal price = 100m)
+    private Listing SeedListing(int id, string title, string status, decimal price = 100m, int jobId = 1)
     {
         using var dbContext = new EtlDbContext(_contextOptions);
 
-        var job = dbContext.ScrapeJobs.FirstOrDefault() ?? dbContext.ScrapeJobs.Add(new ScrapeJob
+        if (!dbContext.ScrapeJobs.Any(j => j.Id == jobId))
         {
-            Id = 1,
-            SearchTerm = "test"
-        }).Entity;
-        dbContext.SaveChanges();
+            dbContext.ScrapeJobs.Add(new ScrapeJob
+            {
+                Id = jobId,
+                SearchTerm = $"test-{jobId}"
+            });
+            dbContext.SaveChanges();
+        }
 
         var listing = new Listing
         {
@@ -86,7 +89,7 @@ public class ComparablesEtlService_UnitTests
             Price = price,
             Condition = "New",
             Description = $"Description for {title}",
-            ScrapeJobId = job.Id
+            ScrapeJobId = jobId
         };
         dbContext.Listings.Add(listing);
         dbContext.SaveChanges();
@@ -118,7 +121,7 @@ public class ComparablesEtlService_UnitTests
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(new[] { new PairResult(true, 0.95f) });
 
-        var result = await _service.Run(dryRun: false);
+        var result = await _service.RunForJob(jobId: 1);
 
         using var dbContext = new EtlDbContext(_contextOptions);
         var verdict = dbContext.ListingRelationships.SingleOrDefault();
@@ -129,7 +132,7 @@ public class ComparablesEtlService_UnitTests
             Assert.That(verdict.ListingIdB, Is.EqualTo(2));
             Assert.That(verdict.IsComparable, Is.True);
             Assert.That(verdict.Explanation, Does.Contain("Model: confidence="));
-            Assert.That(result.LlmCallsMade, Is.EqualTo(1));
+            Assert.That(result.PairsClassified, Is.EqualTo(1));
         });
     }
 
@@ -154,7 +157,7 @@ public class ComparablesEtlService_UnitTests
 
         MockVectorSearchResult("1", ("2", 0.92));
 
-        var result = await _service.Run(dryRun: false);
+        var result = await _service.RunForJob(jobId: 1);
 
         _classifierMock.Verify(
             c => c.Classify(It.IsAny<IEnumerable<ClassifyPairRequest>>(), It.IsAny<CancellationToken>()),
@@ -176,7 +179,7 @@ public class ComparablesEtlService_UnitTests
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(new[] { new PairResult(true, 0.92f) });
 
-        await _service.Run(dryRun: false);
+        await _service.RunForJob(jobId: 1);
 
         using var dbContext = new EtlDbContext(_contextOptions);
         var verdict = dbContext.ListingRelationships.Single();
@@ -189,28 +192,6 @@ public class ComparablesEtlService_UnitTests
 
     // Predictions are computed live by ListingPredictionService CTE queries.
     // No ETL step to test — prediction logic is verified by ListingPredictionService unit tests.
-
-    [Test]
-    public async Task Should_report_counts_without_making_llm_calls_in_dry_run()
-    {
-        var active = SeedListing(1, "iPhone 15 Pro", "Active", 800m);
-        var sold = SeedListing(2, "iPhone 15 Pro 256GB", "Sold", 850m);
-
-        MockVectorSearchResult("1", ("2", 0.92));
-
-        var result = await _service.Run(dryRun: true);
-
-        _classifierMock.Verify(
-            c => c.Classify(It.IsAny<IEnumerable<ClassifyPairRequest>>(), It.IsAny<CancellationToken>()),
-            Times.Never);
-
-        Assert.Multiple(() =>
-        {
-            Assert.That(result.LlmCallsRequired, Is.EqualTo(1));
-            Assert.That(result.LlmCallsMade, Is.EqualTo(0));
-            Assert.That(result.CacheHits, Is.EqualTo(0));
-        });
-    }
 
     [Test]
     public async Task Should_skip_active_neighbors_and_only_classify_sold()
@@ -227,10 +208,10 @@ public class ComparablesEtlService_UnitTests
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(new[] { new PairResult(true, 0.95f) });
 
-        var result = await _service.Run(dryRun: false);
+        var result = await _service.RunForJob(jobId: 1);
 
         // Should only classify 1 pair (active1 <-> sold1), not active1 <-> active2
-        Assert.That(result.LlmCallsMade, Is.EqualTo(1));
+        Assert.That(result.PairsClassified, Is.EqualTo(1));
         using var dbContext = new EtlDbContext(_contextOptions);
         var verdict = dbContext.ListingRelationships.Single();
         Assert.Multiple(() =>
@@ -238,5 +219,257 @@ public class ComparablesEtlService_UnitTests
             Assert.That(verdict.ListingIdA, Is.EqualTo(1));
             Assert.That(verdict.ListingIdB, Is.EqualTo(3));
         });
+    }
+
+    // ---- RunForJob (scoped path) tests ----
+
+    [Test]
+    public async Task RunForJob_should_only_process_active_listings_from_specified_job()
+    {
+        // Job 1: active listing
+        SeedListing(1, "iPhone 15 Pro", "Active", 800m, jobId: 1);
+        // Job 2: active listing (should NOT be processed)
+        SeedListing(2, "Samsung Galaxy", "Active", 700m, jobId: 2);
+        // Shared sold listing
+        SeedListing(3, "iPhone 15 Pro 256GB", "Sold", 850m, jobId: 1);
+
+        MockVectorSearchResult("1", ("3", 0.92));
+        // If job 2 listing were processed, it would also search
+        MockVectorSearchResult("2", ("3", 0.88));
+
+        _classifierMock.Setup(c => c.Classify(
+                It.IsAny<IEnumerable<ClassifyPairRequest>>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new[] { new PairResult(true, 0.95f) });
+
+        var result = await _service.RunForJob(jobId: 1);
+
+        // Only listing 1 (job 1) should have been vector-searched
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.VectorQueries, Is.EqualTo(1));
+            Assert.That(result.PairsClassified, Is.EqualTo(1));
+        });
+
+        // Vector search should only have been called for listing "1", not "2"
+        _searchMock.Verify(s => s.FindSimilar("1", It.IsAny<int?>(), It.IsAny<CancellationToken>()), Times.Once);
+        _searchMock.Verify(s => s.FindSimilar("2", It.IsAny<int?>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Test]
+    public async Task RunForJob_should_find_comparables_in_sold_listings_from_other_jobs()
+    {
+        // Job 1: active listing
+        SeedListing(1, "iPhone 15 Pro", "Active", 800m, jobId: 1);
+        // Job 2: sold listing (should be found as comparable via vector search)
+        SeedListing(2, "iPhone 15 Pro 256GB", "Sold", 850m, jobId: 2);
+
+        MockVectorSearchResult("1", ("2", 0.92));
+
+        _classifierMock.Setup(c => c.Classify(
+                It.IsAny<IEnumerable<ClassifyPairRequest>>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new[] { new PairResult(true, 0.95f) });
+
+        var result = await _service.RunForJob(jobId: 1);
+
+        // Should classify the cross-job pair
+        Assert.That(result.PairsClassified, Is.EqualTo(1));
+
+        using var dbContext = new EtlDbContext(_contextOptions);
+        var verdict = dbContext.ListingRelationships.Single();
+        Assert.Multiple(() =>
+        {
+            Assert.That(verdict.ListingIdA, Is.EqualTo(1));
+            Assert.That(verdict.ListingIdB, Is.EqualTo(2));
+            Assert.That(verdict.IsComparable, Is.True);
+        });
+    }
+
+    [Test]
+    public async Task RunForJob_should_skip_cached_verdicts()
+    {
+        SeedListing(1, "iPhone 15 Pro", "Active", 800m, jobId: 1);
+        SeedListing(2, "iPhone 15 Pro 256GB", "Sold", 850m, jobId: 1);
+
+        using (var dbContext = new EtlDbContext(_contextOptions))
+        {
+            dbContext.ListingRelationships.Add(new ListingRelationship
+            {
+                ListingIdA = 1,
+                ListingIdB = 2,
+                IsComparable = true,
+                Explanation = "Already evaluated",
+                SimilarityScore = 0.92
+            });
+            dbContext.SaveChanges();
+        }
+
+        MockVectorSearchResult("1", ("2", 0.92));
+
+        var result = await _service.RunForJob(jobId: 1);
+
+        _classifierMock.Verify(
+            c => c.Classify(It.IsAny<IEnumerable<ClassifyPairRequest>>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+        Assert.That(result.CacheHits, Is.EqualTo(1));
+    }
+
+    [Test]
+    public async Task RunForJob_should_return_early_when_job_has_no_active_listings()
+    {
+        // Only sold listings for job 1
+        SeedListing(1, "iPhone 15 Pro", "Sold", 800m, jobId: 1);
+
+        var result = await _service.RunForJob(jobId: 1);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.ListingsProcessed, Is.EqualTo(0));
+            Assert.That(result.VectorQueries, Is.EqualTo(0));
+        });
+
+        _searchMock.Verify(
+            s => s.FindSimilar(It.IsAny<string>(), It.IsAny<int?>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Test]
+    public async Task RunForJob_should_skip_active_neighbors_and_only_classify_sold()
+    {
+        SeedListing(1, "iPhone 15 Pro", "Active", 800m, jobId: 1);
+        SeedListing(2, "iPhone 15 Pro Black", "Active", 810m, jobId: 1);
+        SeedListing(3, "iPhone 15 Pro 256GB", "Sold", 850m, jobId: 1);
+
+        // Vector search returns both active and sold as neighbors
+        MockVectorSearchResult("1", ("2", 0.91), ("3", 0.89));
+
+        _classifierMock.Setup(c => c.Classify(
+                It.IsAny<IEnumerable<ClassifyPairRequest>>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new[] { new PairResult(true, 0.95f) });
+
+        var result = await _service.RunForJob(jobId: 1);
+
+        // Should only classify sold match, not active-to-active
+        Assert.That(result.PairsClassified, Is.EqualTo(1));
+        using var dbContext = new EtlDbContext(_contextOptions);
+        var verdict = dbContext.ListingRelationships.Single();
+        Assert.Multiple(() =>
+        {
+            Assert.That(verdict.ListingIdA, Is.EqualTo(1));
+            Assert.That(verdict.ListingIdB, Is.EqualTo(3));
+        });
+    }
+
+    // ---- RunForListings tests ----
+
+    [Test]
+    public async Task RunForListings_should_only_search_specified_listing_ids()
+    {
+        SeedListing(1, "iPhone 15 Pro", "Active", 800m, jobId: 1);
+        SeedListing(2, "Samsung Galaxy S24", "Active", 700m, jobId: 1);
+        SeedListing(3, "iPhone 15 Pro 256GB", "Sold", 850m, jobId: 1);
+
+        MockVectorSearchResult("1", ("3", 0.92));
+        MockVectorSearchResult("2", ("3", 0.88));
+
+        _classifierMock.Setup(c => c.Classify(
+                It.IsAny<IEnumerable<ClassifyPairRequest>>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new[] { new PairResult(true, 0.95f) });
+
+        // Only request listing 1, not listing 2
+        var result = await _service.RunForListings(new[] { 1 });
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.ListingsProcessed, Is.EqualTo(1));
+            Assert.That(result.VectorQueries, Is.EqualTo(1));
+            Assert.That(result.PairsClassified, Is.EqualTo(1));
+        });
+
+        // Vector search should only be called for listing "1", not "2"
+        _searchMock.Verify(s => s.FindSimilar("1", It.IsAny<int?>(), It.IsAny<CancellationToken>()), Times.Once);
+        _searchMock.Verify(s => s.FindSimilar("2", It.IsAny<int?>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Test]
+    public async Task RunForListings_should_load_verdicts_only_for_specified_ids()
+    {
+        SeedListing(1, "iPhone 15 Pro", "Active", 800m, jobId: 1);
+        SeedListing(2, "iPhone 15 Pro 256GB", "Sold", 850m, jobId: 1);
+
+        // Pre-existing verdict for this pair
+        using (var dbContext = new EtlDbContext(_contextOptions))
+        {
+            dbContext.ListingRelationships.Add(new ListingRelationship
+            {
+                ListingIdA = 1,
+                ListingIdB = 2,
+                IsComparable = true,
+                Explanation = "Already evaluated",
+                SimilarityScore = 0.92
+            });
+            dbContext.SaveChanges();
+        }
+
+        MockVectorSearchResult("1", ("2", 0.92));
+
+        var result = await _service.RunForListings(new[] { 1 });
+
+        // Should hit cache, no classification needed
+        _classifierMock.Verify(
+            c => c.Classify(It.IsAny<IEnumerable<ClassifyPairRequest>>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+        Assert.That(result.CacheHits, Is.EqualTo(1));
+    }
+
+    [Test]
+    public async Task RunForListings_should_return_early_for_empty_input()
+    {
+        var result = await _service.RunForListings(Enumerable.Empty<int>());
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.ListingsProcessed, Is.EqualTo(0));
+            Assert.That(result.VectorQueries, Is.EqualTo(0));
+        });
+
+        _searchMock.Verify(
+            s => s.FindSimilar(It.IsAny<string>(), It.IsAny<int?>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Test]
+    public async Task RunForListings_should_span_multiple_jobs()
+    {
+        SeedListing(1, "iPhone 15 Pro", "Active", 800m, jobId: 1);
+        SeedListing(2, "Samsung Galaxy S24", "Active", 700m, jobId: 2);
+        SeedListing(3, "iPhone 15 Pro 256GB", "Sold", 850m, jobId: 1);
+        SeedListing(4, "Samsung Galaxy S24 Ultra", "Sold", 750m, jobId: 2);
+
+        MockVectorSearchResult("1", ("3", 0.92));
+        MockVectorSearchResult("2", ("4", 0.88));
+
+        _classifierMock.Setup(c => c.Classify(
+                It.IsAny<IEnumerable<ClassifyPairRequest>>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IEnumerable<ClassifyPairRequest> reqs, CancellationToken _) =>
+                reqs.Select(_ => new PairResult(true, 0.95f)).ToList());
+
+        // Request listings from both jobs
+        var result = await _service.RunForListings(new[] { 1, 2 });
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.ListingsProcessed, Is.EqualTo(2));
+            Assert.That(result.VectorQueries, Is.EqualTo(2));
+            Assert.That(result.PairsClassified, Is.EqualTo(2));
+        });
+
+        // Both listings should have been vector-searched
+        _searchMock.Verify(s => s.FindSimilar("1", It.IsAny<int?>(), It.IsAny<CancellationToken>()), Times.Once);
+        _searchMock.Verify(s => s.FindSimilar("2", It.IsAny<int?>(), It.IsAny<CancellationToken>()), Times.Once);
     }
 }

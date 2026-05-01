@@ -28,16 +28,15 @@ public class OverviewEndpoints_UnitTests
         _db.Dispose();
     }
 
-    private async Task<OverviewResponse> CallOverview()
+    private async Task<OverviewResponse> CallOverview(int? minComps = null)
     {
         var method = typeof(OverviewEndpoints).GetMethod(
             "GetOverview",
             BindingFlags.NonPublic | BindingFlags.Static);
 
-        var service = new ListingPredictionService(_db, Options.Create(new PricingOptions()));
         var pricingOptions = Options.Create(new PricingOptions());
         var resultTask = (Task<IResult>)method!.Invoke(null,
-            new object[] { _db, service, pricingOptions, (int?)3, (decimal?)13.25m, true })!;
+            new object?[] { _db, pricingOptions, minComps })!;
         var result = await resultTask;
 
         var okResult = (Ok<OverviewResponse>)result;
@@ -141,7 +140,7 @@ public class OverviewEndpoints_UnitTests
 
         var response = await CallOverview();
 
-        // TopJobsByOpportunities uses SQL Server CTEs — returns empty on SQLite
+        // No TaxonomyOpportunities seeded — top jobs should be empty
         Assert.That(response.TopJobsByOpportunities, Is.Empty);
     }
 
