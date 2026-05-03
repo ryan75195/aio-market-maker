@@ -373,6 +373,7 @@ local.settings.json
 local.settings.local.json
 appsettings.Development.json
 clusters.txt
+.claude/settings.local.json
 
 # Console task output files
 output.txt
